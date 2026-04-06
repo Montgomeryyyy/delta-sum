@@ -90,3 +90,7 @@ stages:
   - add_age_rows:
       header: "## "
       birth_code: "#### Birth"
+  ### Metadata stages
+  - extract_code_metadata
+  - finalize_MEDS_metadata
+  - finalize_MEDS_data
