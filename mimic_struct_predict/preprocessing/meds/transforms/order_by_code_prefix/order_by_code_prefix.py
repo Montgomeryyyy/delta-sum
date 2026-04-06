@@ -29,7 +29,6 @@ def order_by_code_prefix(
         stage_cfg: Configuration containing:
             - prefix_priority: List of prefix strings in priority order (first =
               highest priority).
-            - column: Name of the column to match against (default: "code").
 
     Returns:
         Function that orders the DataFrame by prefix priority.
