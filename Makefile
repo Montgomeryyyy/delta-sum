@@ -10,7 +10,7 @@ MIMICIV_RAW_DIR      := data/raw_input
 MIMICIV_PRE_MEDS_DIR := data/pre_MEDS
 MIMICIV_MEDS_COHORT_DIR     := data/MEDS_cohort
 
-MEDS_DIR := foresight_r/preprocessing/meds
+MEDS_DIR := mimic_struct_predict/preprocessing/meds
 N_WORKERS          := 1
 
 define check_credentials
@@ -22,20 +22,18 @@ endef
 download-mimic:
 	$(call check_credentials)
 	@mkdir -p $(MIMICIV_RAW_DIR)
-	@cd $(MIMICIV_RAW_DIR) && \
+	cd $(MIMICIV_RAW_DIR) && \
 		wget -r -N -c -np --user $(MIMIC_USER) --password $(MIMIC_PASSWORD) \
-			--no-check-certificate --accept gz,csv --reject "index.html*" \
-			$(PHYSIONET_URL)/$(DATASET_NAME)/$(MIMIC_VERSION) && \
-		[ -d physionet.org ] && mv physionet.org/files/$(DATASET_NAME)/$(MIMIC_VERSION)/* . && \
-		rm -rf physionet.org || true
-	@echo "Downloaded MIMIC-IV-demo v$(MIMIC_VERSION) to $(MIMICIV_RAW_DIR)"
+			--no-check-certificate --accept gz,csv --reject "index.html*" -nH --cut-dirs=3 \
+			$(PHYSIONET_URL)/$(DATASET_NAME)/$(MIMIC_VERSION)/
+	@echo "Downloaded $(DATASET_NAME) v$(MIMIC_VERSION) to $(MIMICIV_RAW_DIR)"
 
 
 .PHONY: meds-dataset
 meds-dataset:
 	@echo "Creating pre-MEDS dataset from MIMIC-IV..."
 	rm -rf $(MIMICIV_PRE_MEDS_DIR)
-	uv run foresight_r/preprocessing/meds_mimic/pre_MEDS.py \
+	uv run mimic_struct_predict/preprocessing/meds/pre_MEDS.py \
 		input_dir=$(MIMICIV_RAW_DIR) \
 		output_dir=$(MIMICIV_PRE_MEDS_DIR) \
 		do_overwrite=true \
@@ -44,7 +42,7 @@ meds-dataset:
 	@echo "Running MEDS transform pipeline..."
 	rm -rf $(MIMICIV_MEDS_COHORT_DIR)
 	uv run MEDS_transform-pipeline \
-		"./foresight_r/preprocessing/meds_mimic/config/ETL.yaml"\
+		"./mimic_struct_predict/preprocessing/meds/config/ETL.yaml"\
 		--overrides \
 		"input_dir=$(MIMICIV_PRE_MEDS_DIR)" \
 		"output_dir=$(MIMICIV_MEDS_COHORT_DIR)" \

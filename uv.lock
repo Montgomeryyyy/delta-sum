@@ -515,7 +515,7 @@ wheels = [
 [[package]]
 name = "mimic-struct-predict"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "es-aces" },
     { name = "meds-extract" },

@@ -10,3 +10,29 @@ dependencies = [
     "meds-tab>=0.0.2",
     "meds-transforms>=0.6.2",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 120
+target-version = ['py313']
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.12"
+# Enforce type annotations on all function definitions
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+# Error on functions that return Any implicitly
+warn_return_any = true
+warn_unused_ignores = true
+# Ignore missing stubs for third-party packages
+ignore_missing_imports = true

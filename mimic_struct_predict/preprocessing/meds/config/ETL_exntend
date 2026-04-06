@@ -1,0 +1,114 @@
+defaults:
+  - _extract
+  - _self_
+
+description: |-
+  This pipeline extracts a dataset in longitudinal, sparse form from an input dataset meeting
+  select criteria and converts them to the MEDS format.
+
+  This pipeline is for the ${etl_metadata.dataset_name} dataset version ${etl_metadata.dataset_version}.
+
+  Key variables for this pipeline are
+    - `input_dir=$PATH_TO_INPUT_DIR`
+    - `cohort_dir=$PATH_TO_OUTPUT_DIR`.
+    - `event_conversion_config_fp=$PATH_TO_EVENT_CONVERSION_CONFIG_FP`
+
+  See the MEDS-Transforms Extract documentation for configuration file details.
+
+# The event conversion configuration file is used throughout the pipeline to define the events to extract.
+event_conversion_config_fp: ${oc.env:EVENT_CONVERSION_CONFIG_FP}
+
+input_dir: ${oc.env:PRE_MEDS_DIR}
+cohort_dir: ${oc.env:MEDS_COHORT_DIR}
+
+etl_metadata:
+  dataset_name: ${oc.env:DATASET_NAME}
+  dataset_version: ${oc.env:DATASET_VERSION}
+
+stage_configs:
+  shard_events:
+    infer_schema_length: 999999999
+  split_and_shard_subjects:
+    n_subjects_per_shard: 1000
+  create_prefix_column:
+    _script: custom-meds-transform-create-prefix-column
+  regex_replacement:
+    _script: custom-meds-transform-regex-replacement
+    column: "code"
+    patterns:
+      - pattern: "/{3,}"
+        replacement: "//"
+      - pattern: "//$"
+        replacement: ""
+      - pattern: "_"
+        replacement: " "
+      - pattern: "//UNK$"
+        replacement: "//UNKNOWN"
+      - pattern: "//UNK//"
+        replacement: "//UNKNOWN//"
+  title_case_codes:
+    _script: custom-meds-transform-title-case-codes
+  order_events:
+    _script: custom-meds-transform-order-events
+    # Order of prefixes if events happen at the same time
+    prefix_priority:
+      # Birth
+      - "Birth"
+      # Admissions
+      - "Emergency Department"
+      - "Hospital Transfer" # Includes ED->Hospital transfers
+      - "Hospital Admission"
+      - "Patient Demographics" # Recorded at admission time
+      - "Icu Admission"
+      # Lab results and observations
+      - "Laboratory Test"
+      - "Clinical Observation"
+      - "Icu Observation"
+      - "Icu Output"
+      # Interventions and treatments
+      - "Pharmacy Prescription"
+      - "Medication Administration"
+      - "Icu Medication"
+      - "Icu Input"
+      - "Hospital Procedure"
+      - "Icu Procedure"
+      # Death (discharge and billing happens after death)
+      - "Death"
+      # Discharges
+      - "Icu Discharge"
+      - "Hospital Discharge"
+      # Billing codes
+      - "Diagnosis"
+      - "Diagnosis Related Group"
+      - "Hcpcs Billing Item"
+  calculate_age:
+    _script: custom-meds-transform-calculate-age
+    birth_prefix: "Birth"
+    drop_birth_rows: true
+  add_time_column:
+    _script: custom-meds-transform-add-time-column
+    time_format: "%H:%M"
+    replace_end_of_day: true
+    end_of_day_fill_value: null
+
+
+stages:
+  - shard_events
+  - split_and_shard_subjects
+  - convert_to_sharded_events
+  - merge_to_MEDS_cohort
+  ### Additional stages
+  - regex_replacement
+  - title_case_codes
+  - create_prefix_column
+  - order_events
+  - calculate_age
+  - add_time_column
+  ###
+  - extract_code_metadata
+  - finalize_MEDS_metadata
+  - finalize_MEDS_data
+
+parallelize:
+  n_workers: ${oc.env:N_WORKERS}
+  launcher: "joblib"
