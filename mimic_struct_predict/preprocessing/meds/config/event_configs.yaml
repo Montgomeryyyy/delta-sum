@@ -14,51 +14,51 @@
 hosp/admissions:
   ed_registration:
     code:
-      - EMERGENCY_DEPARTMENT
-      - REGISTRATION
+      - Emergency Department
+      - Registration
     time: col(edregtime)
     time_format: "%Y-%m-%d %H:%M:%S"
   ed_out:
     code:
-      - EMERGENCY_DEPARTMENT
-      - OUT
+      - Emergency Department
+      - Out
     time: col(edouttime)
     time_format: "%Y-%m-%d %H:%M:%S"
   admission:
     code:
-      - HOSPITAL_ADMISSION
-      - TYPE
+      - Hospital Admission
+      - Type
       - col(admission_type)
-      - FROM
+      - From
       - col(admission_location)
     time: col(admittime)
     time_format: "%Y-%m-%d %H:%M:%S"
-  # Make insurance, marital status, and race standalone PATIENT_DEMOGRAPHICS events
+  # Make insurance, marital status, and race standalone Patient Demographics events
   insurance:
     code:
-      - PATIENT_DEMOGRAPHICS
-      - INSURANCE
+      - Patient Demographics
+      - Insurance
       - col(insurance)
     time: col(admittime)
     time_format: "%Y-%m-%d %H:%M:%S"
   language:
     code:
-      - PATIENT_DEMOGRAPHICS
-      - LANGUAGE
+      - Patient Demographics
+      - Language
       - col(language)
     time: col(admittime)
     time_format: "%Y-%m-%d %H:%M:%S"
   marital_status:
     code:
-      - PATIENT_DEMOGRAPHICS
-      - MARITAL_STATUS
+      - Patient Demographics
+      - Marital Status
       - col(marital_status)
     time: col(admittime)
     time_format: "%Y-%m-%d %H:%M:%S"
   race:
     code:
-      - PATIENT_DEMOGRAPHICS
-      - RACE
+      - Patient Demographics
+      - Race
       - col(race)
     time: col(admittime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -67,15 +67,15 @@ hosp/admissions:
   # This is joined from the subjects table in the pre-MEDS step.
   gender:
     code:
-      - PATIENT_DEMOGRAPHICS
-      - GENDER
+      - Patient Demographics
+      - Gender
       - col(gender)
     time: col(admittime)
     time_format: "%Y-%m-%d %H:%M:%S"
   discharge:
     code:
-      - HOSPITAL_DISCHARGE
-      - TO
+      - Hospital Discharge
+      - To
       - col(discharge_location)
     time: col(dischtime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -84,7 +84,7 @@ hosp/admissions:
 hosp/diagnoses_icd:
   diagnosis:
     code:
-      - DIAGNOSIS
+      - Diagnosis
       - col(long_title)
     time: col(hadm_discharge_time)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -92,11 +92,11 @@ hosp/diagnoses_icd:
 hosp/drgcodes:
   drg:
     code:
-      - DIAGNOSIS_RELATED_GROUP
+      - Diagnosis Related Group
       - col(description)
-      - SEVERITY
+      - Severity
       - col(drg_severity)
-      - RISK_OF_MORTALITY
+      - Risk Of Mortality
       - col(drg_mortality)
     time: col(hadm_discharge_time)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -104,7 +104,7 @@ hosp/drgcodes:
 hosp/emar:
   medication:
     code:
-      - MEDICATION_ADMINISTRATION
+      - Medication Administration
       - col(medication)
       - col(event_txt)
     time: col(charttime)
@@ -113,7 +113,7 @@ hosp/emar:
 hosp/hcpcsevents:
   hcpcs:
     code:
-      - HCPCS_BILLING_ITEM
+      - HCPCS Billing Item
       # Uses long_description if available, otherwise short_description (done in preMEDS.py)
       - col(long_description)
     time: col(chartdate)
@@ -122,12 +122,12 @@ hosp/hcpcsevents:
 hosp/labevents:
   lab:
     code:
-      - LABORATORY_TEST
+      - Laboratory Test
       - col(fluid)
       - col(label)
-      - PRIORITY
+      - Priority
       - col(priority)
-      - VALUE
+      - Value
       - col(valueuom)
       # HACK: If valuenum (float) is not null value (string) is set to None in preMEDS.py
       # Subsequent processing cleans up // notation
@@ -139,7 +139,7 @@ hosp/labevents:
 hosp/omr:
   omr:
     code:
-      - CLINICAL_OBSERVATION
+      - Clinical Observation
       - col(result_name)
     # Pre-MEDS transforms this to numeric so can be used for structured quantiles matching vital signs
     numeric_value: col(result_num)
@@ -150,8 +150,8 @@ hosp/patients:
   dob:
     code:
       # Not using the MEDS official code for birth (MEDS_BIRTH) due to semantics.
-      - BIRTH
-      - BORN
+      - Birth
+      - Born
     time: col(year_of_birth)
     # Set as Y-01-01 00:00:00 internally in pre-MEDS
     # Leave at 00:00:00 to ensure no events come before this event
@@ -159,8 +159,8 @@ hosp/patients:
   death:
     code:
       # Not using the MEDS official code for death (MEDS_DEATH) due to semantics.
-      - DEATH
-      - DIED
+      - Death
+      - Died
     time: col(dod)
     # Days precision times set to EOD in pre-MEDS
     time_format:
@@ -169,22 +169,22 @@ hosp/patients:
 hosp/pharmacy:
  medication_start:
    code:
-     - PHARMACY_PRESCRIPTION
-     - START
+     - Pharmacy Prescription
+     - Start
      - col(medication)
-     - ROUTE
+     - Route
      - col(route)
-     - FREQUENCY
+     - Frequency
      - col(frequency)
-     - DOSES_PER_24_HRS
+     - Doses Per 24 Hrs
      - col(doses_per_24_hrs)
    time: col(starttime)
    time_format:
      - "%Y-%m-%d %H:%M:%S"
  medication_stop:
    code:
-     - PHARMACY_PRESCRIPTION
-     - STOP
+     - Pharmacy Prescription
+     - Stop
      - col(medication)
    time: col(stoptime)
    time_format:
@@ -193,7 +193,7 @@ hosp/pharmacy:
 hosp/procedures_icd:
   procedure:
     code:
-      - HOSPITAL_PROCEDURE
+      - Hospital Procedure
       - col(long_title)
     time: col(chartdate)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -201,10 +201,10 @@ hosp/procedures_icd:
 hosp/transfers:
   transfer:
     code:
-      - HOSPITAL_TRANSFER
-      - TYPE
+      - Hospital Transfer
+      - Type
       - col(eventtype)
-      - TO
+      - To
       - col(careunit)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -212,15 +212,15 @@ hosp/transfers:
 icu/icustays:
   icu_admission:
     code:
-      - ICU_ADMISSION
-      - TO
+      - Icu Admission
+      - To
       - col(first_careunit)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
   icu_discharge:
     code:
-      - ICU_DISCHARGE
-      - FROM
+      - Icu Discharge
+      - From
       - col(last_careunit)
     time: col(outtime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -228,9 +228,9 @@ icu/icustays:
 icu/chartevents:
   event:
     code:
-      - ICU_OBSERVATION
+      - Icu Observation
       - col(label)
-      - VALUE
+      - Value
       - col(valueuom)
       # HACK: If valuenum (float) is not null value (string) is set to None in preMEDS.py
       # Subsequent processing cleans up // notation
@@ -242,15 +242,15 @@ icu/chartevents:
 icu/procedureevents:
   start:
     code:
-      - ICU_PROCEDURE
-      - START
+      - Icu Procedure
+      - Start
       - col(label)
     time: col(starttime)
     time_format: "%Y-%m-%d %H:%M:%S"
   end:
     code:
-      - ICU_PROCEDURE
-      - END
+      - Icu Procedure
+      - End
       - col(label)
     time: col(endtime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -258,34 +258,34 @@ icu/procedureevents:
 icu/inputevents:
   input_start:
     code:
-      - ICU_INPUT
-      - START
+      - Icu Input
+      - Start
       - col(label)
-      - ORDER_CATEGORY
+      - Order Category
       - col(ordercategorydescription)
-      - RATE
+      - Rate
       - col(rateuom)
     time: col(starttime)
     time_format: "%Y-%m-%d %H:%M:%S"
     numeric_value: rate
   input_end:
     code:
-      - ICU_INPUT
-      - END
+      - Icu Input
+      - End
       - col(label)
-      - ORDER_CATEGORY
+      - Order Category
       - col(ordercategorydescription)
-      - STATUS
+      - Status
       - col(statusdescription)
-      - AMOUNT
+      - Amount
       - col(amountuom)
     time: col(endtime)
     time_format: "%Y-%m-%d %H:%M:%S"
     numeric_value: amount
   subject_weight:
     code:
-      - ICU_OBSERVATION
-      - PATIENT_WEIGHT
+      - Icu Observation
+      - Patient Weight
       - KG
     time: col(starttime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -294,7 +294,7 @@ icu/inputevents:
 icu/outputevents:
   output:
     code:
-      - ICU_OUTPUT
+      - Icu Output
       - col(label)
       - col(valueuom)
     time: col(charttime)

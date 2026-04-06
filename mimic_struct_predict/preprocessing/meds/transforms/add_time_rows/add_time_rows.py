@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+"""Custom MAP stage that adds a row with HH:MM when time or subject changes."""
+
+from collections.abc import Callable
+
+import polars as pl
+from MEDS_transforms.stages import Stage
+from omegaconf import DictConfig
+
+from ..utils import _changed, insert_parent_rows
+
+
+@Stage.register(is_metadata=False)
+def add_time_rows(
+    stage_cfg: DictConfig,
+) -> Callable[[pl.LazyFrame], pl.LazyFrame]:
+    """Returns a function that inserts a row with HH:MM whenever the time or subject_id changes.
+
+    Args:
+        stage_cfg: Configuration for the stage containing:
+            - header: Optional string to prepend to the HH:MM time (default: "")
+
+    Returns:
+        Function that transforms a LazyFrame by inserting time rows
+
+    Examples:
+        >>> from datetime import datetime
+        >>> df = pl.DataFrame({
+        ...     "subject_id": [1, 1, 1, 2],
+        ...     "time": [
+        ...         datetime(2024, 1, 1, 10, 0),
+        ...         datetime(2024, 1, 1, 10, 0),
+        ...         datetime(2024, 1, 1, 10, 5),
+        ...         datetime(2024, 1, 1, 10, 5),
+        ...     ],
+        ...     "code": ["A", "B", "C", "D"]
+        ... }).lazy()
+        >>> fn = add_time_rows(DictConfig({"header": "TIME//"}))
+        >>> result = fn(df).collect()
+        >>> result.select("subject_id", "time", "code")
+        shape: (7, 3)
+        ┌────────────┬─────────────────────┬────────────┐
+        │ subject_id ┆ time                ┆ code       │
+        │ ---        ┆ ---                 ┆ ---        │
+        │ i64        ┆ datetime[μs]        ┆ str        │
+        ╞════════════╪═════════════════════╪════════════╡
+        │ 1          ┆ 2024-01-01 10:00:00 ┆ TIME//10:00│
+        │ 1          ┆ 2024-01-01 10:00:00 ┆ A          │
+        │ 1          ┆ 2024-01-01 10:00:00 ┆ B          │
+        │ 1          ┆ 2024-01-01 10:05:00 ┆ TIME//10:05│
+        │ 1          ┆ 2024-01-01 10:05:00 ┆ C          │
+        │ 2          ┆ 2024-01-01 10:05:00 ┆ TIME//10:05│
+        │ 2          ┆ 2024-01-01 10:05:00 ┆ D          │
+        └────────────┴─────────────────────┴────────────┘
+    """
+
+    header = stage_cfg.get("header", "")
+
+    def add_time_rows_fn(df: pl.LazyFrame) -> pl.LazyFrame:
+        """Insert HH:MM rows on subject or time changes."""
+
+        # 1. Format the time as HH:MM
+        df = df.with_columns(_formatted_time=pl.col("time").dt.strftime("%H:%M"))
+
+        # 2. Detect when formatted time or subject changes
+        # "not date though" is handled by only checking the formatted HH:MM part
+        change_cond = _changed("subject_id") | _changed("_formatted_time")
+
+        # 3. Use utility to insert parent rows
+        return insert_parent_rows(
+            df,
+            change_cond=change_cond,
+            code_expr=pl.lit(header) + pl.col("_formatted_time"),
+            exclude_cols=["_formatted_time"],
+        )
+
+    return add_time_rows_fn

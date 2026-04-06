@@ -20,12 +20,73 @@ event_conversion_config_fp: mimic_struct_predict/preprocessing/meds/config/event
 # The shards mapping is stored in the root of the final output directory.
 shards_map_fp: "${output_dir}/metadata/.shards.json"
 
+  # calculate_age:
+  #   birth_prefix: "Birth"
+  #   drop_birth_rows: true
+  # add_time_column:
+  #   time_format: "%H:%M"
+  #   replace_end_of_day: true
+  #   end_of_day_fill_value: null
+
+
+
 stages:
   - shard_events
   - split_and_shard_subjects
   - convert_to_subject_sharded
   - convert_to_MEDS_events
   - merge_to_MEDS_cohort
-  - extract_code_metadata
-  - finalize_MEDS_metadata
-  - finalize_MEDS_data
+  ### Custom MEDS transforms
+  - regex_replacement:
+      column: "code"
+      # Fix up repeated/trailing slashes and UNK tokens
+      patterns:
+        - pattern: "/{3,}"
+          replacement: "//"
+        - pattern: "//$"
+          replacement: ""
+        - pattern: "//UNK$"
+          replacement: "//UNKNOWN"
+        - pattern: "//UNK//"
+          replacement: "//UNKNOWN//"
+  - title_case_codes
+  - order_by_code_prefix:
+      # Priority from first to last
+      prefix_priority:
+      # Birth
+      - "Birth"
+      # Admissions
+      - "Emergency Department"
+      - "Hospital Transfer" # Includes ED->Hospital transfers
+      - "Hospital Admission"
+      - "Patient Demographics" # Recorded at admission time
+      - "Icu Admission"
+      # Lab results and observations
+      - "Laboratory Test"
+      - "Clinical Observation"
+      - "Icu Observation"
+      - "Icu Output"
+      # Interventions and treatments
+      - "Pharmacy Prescription"
+      - "Medication Administration"
+      - "Icu Medication"
+      - "Icu Input"
+      - "Hospital Procedure"
+      - "Icu Procedure"
+      # Death (discharge and billing happens after death)
+      - "Death"
+      # Discharges
+      - "Icu Discharge"
+      - "Hospital Discharge"
+      # Billing codes
+      - "Diagnosis"
+      - "Diagnosis Related Group"
+      - "Hcpcs Billing Item"
+  ### Additional columns for next token prediction format
+  - add_prefix_rows:
+      header: "#### "
+  - add_time_rows:
+      header: "### "
+  - add_age_rows:
+      header: "## "
+      birth_code: "#### Birth"

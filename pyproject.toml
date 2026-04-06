@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "es-aces>=0.7.2",
+    "jupyter>=1.1.1",
     "meds-extract>=0.5.0",
     "meds-tab>=0.0.2",
     "meds-transforms>=0.6.2",
@@ -14,6 +15,16 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[project.entry-points."MEDS_transforms.stages"]
+regex_replacement = "mimic_struct_predict.preprocessing.meds.transforms.regex_replacement.regex_replacement:regex_replacement"
+title_case_codes = "mimic_struct_predict.preprocessing.meds.transforms.to_title_case.title_case_codes:title_case_codes"
+order_by_code_prefix = "mimic_struct_predict.preprocessing.meds.transforms.order_by_code_prefix.order_by_code_prefix:order_by_code_prefix"
+add_prefix_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_prefix_rows.add_prefix_rows:create_prefix_column"
+add_time_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_time_rows.add_time_rows:add_time_rows"
+add_age_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_age_rows.add_age_rows:add_age_rows"
+
+
 
 [tool.black]
 line-length = 120
