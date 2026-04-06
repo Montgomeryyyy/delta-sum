@@ -21,8 +21,9 @@ def insert_parent_rows(
         df: Input LazyFrame
         change_cond: Boolean expression that triggers a new parent row
         code_expr: Expression for the 'code' column in the parent row
-        exclude_cols: Columns to exclude from the nulling out in the parent row.
-                      'subject_id', 'time', and 'code' are always excluded.
+        exclude_cols: Columns to exclude from the final output. These are typically
+                      temporary columns used for calculations.
+                      'subject_id', 'time', and 'code' are always included.
 
     Returns:
         LazyFrame with inserted parent rows
