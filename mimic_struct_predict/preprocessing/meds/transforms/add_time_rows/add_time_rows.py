@@ -54,13 +54,13 @@ def add_time_rows(
         └────────────┴─────────────────────┴────────────┘
     """
 
-    header = stage_cfg.get("header", "")
+    header = stage_cfg.get("header", "Time//")
 
     def add_time_rows_fn(df: pl.LazyFrame) -> pl.LazyFrame:
         """Insert HH:MM rows on subject or time changes."""
 
         # 1. Format the time as HH:MM
-        df = df.with_columns(_formatted_time=pl.col("time").dt.strftime("%H:%M"))
+        df = df.with_columns(_formatted_time=pl.col("time").dt.strftime("%H//%M"))
 
         # 2. Detect when formatted time or subject changes
         # "not date though" is handled by only checking the formatted HH:MM part
