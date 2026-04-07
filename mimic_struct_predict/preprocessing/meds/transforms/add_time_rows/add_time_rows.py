@@ -54,7 +54,7 @@ def add_time_rows(
         └────────────┴─────────────────────┴────────────┘
     """
 
-    header = stage_cfg.get("header", "Time//")
+    header = stage_cfg.get("header", "Time") + "//"
 
     def add_time_rows_fn(df: pl.LazyFrame) -> pl.LazyFrame:
         """Insert HH:MM rows on subject or time changes."""

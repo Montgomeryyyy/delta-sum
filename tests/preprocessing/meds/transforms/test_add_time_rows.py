@@ -19,7 +19,7 @@ def test_add_time_rows_inserts_correctly():
             "code": ["A", "B", "C"],
         }
     ).lazy()
-    cfg = DictConfig({"header": "T//"})
+    cfg = DictConfig({"header": "T"})
     fn = add_time_rows(cfg)
 
     # Act

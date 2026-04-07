@@ -80,9 +80,9 @@ stages:
   - add_prefix_rows:
       header: "#### "
   - add_time_rows:
-      header: "### Time//"
+      header: "### Time"
   - add_age_rows:
-      header: "## Age//"
+      header: "## Age"
       birth_code: "#### Birth"
   ### Metadata stages
   - extract_code_metadata
