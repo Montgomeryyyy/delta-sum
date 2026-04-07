@@ -81,6 +81,6 @@ def test_add_time_rows_eod():
     result = fn(df).collect()
 
     # Assert
-    expected_codes = ["T//10 hours//00 mins", "A", "T//23 hours//59 mins", "B", "END_OF_DAY", "C"]
+    expected_codes = ["T//10 hours//00 mins", "A", "T//23 hours//59 mins", "B", "T//END_OF_DAY", "C"]
     assert result["code"].to_list() == expected_codes
     assert result.shape[0] == 6

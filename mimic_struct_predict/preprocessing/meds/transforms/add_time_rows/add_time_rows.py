@@ -74,7 +74,7 @@ def add_time_rows(
         code_expr = pl.lit(header) + time_hh_mm
         if eod_string is not None:
             is_eod = pl.col("time").dt.time() == END_OF_DAY
-            code_expr = pl.when(is_eod).then(pl.lit(eod_string)).otherwise(code_expr)
+            code_expr = pl.when(is_eod).then(pl.lit(header + eod_string)).otherwise(code_expr)
             # Differentiates between 23:59 and 23:59:59.999999
             change_cond = change_cond | _changed(is_eod)
 
