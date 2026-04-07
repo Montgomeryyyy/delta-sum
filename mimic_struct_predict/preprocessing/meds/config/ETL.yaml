@@ -81,10 +81,10 @@ stages:
       header: "#### "
   - add_time_rows:
       header: "### Time"
-  - add_age_rows:
+  - add_age_rows: # <- output used for tabular data (with times filtered out)
       header: "## Age"
       birth_code: "#### Birth"
-  - merge_age_column: # <- output used for tabular data (with times filtered out)
+  - merge_age_column: 
       age_code: "## Age"
   - aggregate_code_metadata:
       aggregations:
