@@ -31,7 +31,7 @@ def test_add_time_rows_inserts_correctly():
     # 3. B
     # 4. T// (Parent for row 2)
     # 5. C
-    expected_codes = ["T//10//00", "A", "B", "T//10//05", "C"]
+    expected_codes = ["T//10 hours//00 mins", "A", "B", "T//10 hours//05 mins", "C"]
     assert result["code"].to_list() == expected_codes
     assert result.shape[0] == 5
 
@@ -56,6 +56,6 @@ def test_add_time_rows_multiple_subjects():
 
     # Assert
     # Even if time is same, subject changed so new parent row
-    expected_codes = ["Time//10//00", "A", "Time//10//00", "B"]
+    expected_codes = ["Time//10 hours//00 mins", "A", "Time//10 hours//00 mins", "B"]
     assert result["code"].to_list() == expected_codes
     assert result["subject_id"].to_list() == [1, 1, 2, 2]

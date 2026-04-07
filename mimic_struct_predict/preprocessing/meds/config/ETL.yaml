@@ -15,19 +15,13 @@ description: |-
       various subfolders of this dir depending on the stage, as intermediate stages cache their output during
       computation for efficiency of re-running and distributing.
 
+output_dir: ???
+input_dir: ???
+
 # The event conversion configuration file is used throughout the pipeline to define the events to extract.
 event_conversion_config_fp: mimic_struct_predict/preprocessing/meds/config/event_configs.yaml
 # The shards mapping is stored in the root of the final output directory.
 shards_map_fp: "${output_dir}/metadata/.shards.json"
-
-  # calculate_age:
-  #   birth_prefix: "Birth"
-  #   drop_birth_rows: true
-  # add_time_column:
-  #   time_format: "%H:%M"
-  #   replace_end_of_day: true
-  #   end_of_day_fill_value: null
-
 
 
 stages:
@@ -82,13 +76,13 @@ stages:
       - "Diagnosis"
       - "Diagnosis Related Group"
       - "Hcpcs Billing Item"
-  ### Additional columns for next token prediction format
+  ### Insert hierarchical rows to reduce repeated tokens
   - add_prefix_rows:
       header: "#### "
   - add_time_rows:
-      header: "### Time"
+      header: "### Time//"
   - add_age_rows:
-      header: "## Age"
+      header: "## Age//"
       birth_code: "#### Birth"
   ### Metadata stages
   - extract_code_metadata
