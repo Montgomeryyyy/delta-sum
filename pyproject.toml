@@ -23,7 +23,8 @@ order_by_code_prefix = "mimic_struct_predict.preprocessing.meds.transforms.order
 add_prefix_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_prefix_rows.add_prefix_rows:create_prefix_column"
 add_time_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_time_rows.add_time_rows:add_time_rows"
 add_age_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_age_rows.add_age_rows:add_age_rows"
-
+merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age_column.merge_age_column:merge_age_column"
+replace_quantile_with_numeric_value = "mimic_struct_predict.preprocessing.meds.transforms.replace_quantile_with_numeric_value.replace_quantile_with_numeric_value:replace_quantile_with_numeric_value"
 
 
 [tool.black]

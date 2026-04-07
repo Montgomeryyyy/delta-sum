@@ -106,7 +106,7 @@ def add_age_rows(
             change_cond=change_cond,
             code_expr=pl.lit(header),
             extra_exprs={
-                "text_value": pl.col("_formatted_age"),
+                "age_text_value": pl.col("_formatted_age"),
                 "numeric_value": pl.col("_decimal_age"),
             },
             exclude_cols=["_formatted_age", "_decimal_age", "_date"],

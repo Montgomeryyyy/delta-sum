@@ -84,7 +84,14 @@ stages:
   - add_age_rows:
       header: "## Age"
       birth_code: "#### Birth"
-  ### Metadata stages
-  - extract_code_metadata
-  - finalize_MEDS_metadata
-  - finalize_MEDS_data
+  - merge_age_column: # <- output used for tabular data (with times filtered out)
+      age_code: "## Age"
+  - aggregate_code_metadata:
+      aggregations:
+        - name: "values/quantiles"
+          quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  - bin_numeric_values: # <- output used for structured data
+      code_with_bin_name: "{code}//Quantile {bin}" 
+  - replace_quantile_with_numeric_value: # <- output used for natural language data
+      drop_numeric_values: true
+      sig_figs: 3

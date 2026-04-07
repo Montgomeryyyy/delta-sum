@@ -161,9 +161,9 @@ def test_add_age_rows_leap_year_increment_days():
                 datetime(1998, 1, 1),  # Sub 2: Born Jan 1
                 datetime(1999, 3, 1),  # Non-leap year check (1999)
                 datetime(1999, 3, 1),  # Sub 3: Born Mar 1
-                datetime(2000, 2, 29), # Leap year check (2000)
+                datetime(2000, 2, 29),  # Leap year check (2000)
                 datetime(1997, 3, 1),  # Sub 4: Born Mar 1
-                datetime(1998, 2, 28), # Non-leap year check (1998)
+                datetime(1998, 2, 28),  # Non-leap year check (1998)
             ],
             "code": ["BORN", "E1", "BORN", "E1", "BORN", "E1", "BORN", "E1"],
         }
