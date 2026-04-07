@@ -54,7 +54,7 @@ def test_add_age_rows_inserts_correct_ages():
                 "TEST//",
                 "DIAG",
             ],
-            "text_value": [
+            "age_text_value": [
                 "0 years//0 days",
                 None,
                 "20 years//0 days",
@@ -98,7 +98,7 @@ def test_add_age_rows_multiple_subjects():
     # Assert
     expected_codes = ["Age", "BORN", "Age", "EVENT", "Age", "BORN", "Age", "EVENT"]
     assert result["code"].to_list() == expected_codes
-    assert result["text_value"][:2].to_list() == ["0 years//0 days", None]
+    assert result["age_text_value"][:2].to_list() == ["0 years//0 days", None]
     assert result["subject_id"].to_list() == [1, 1, 1, 1, 2, 2, 2, 2]
 
 
@@ -132,7 +132,7 @@ def test_add_age_rows_leap_year_handling():
 
     # helper to get age text at a specific time
     def get_age(df, dt):
-        return df.filter((pl.col("code") == "Age") & (pl.col("time") == dt)).select("text_value").item()
+        return df.filter((pl.col("code") == "Age") & (pl.col("time") == dt)).select("age_text_value").item()
 
     # E1: 2001-02-27 -> 0 years, 364 days
     assert get_age(sub1, datetime(2001, 2, 27)) == "0 years//364 days"
@@ -147,3 +147,53 @@ def test_add_age_rows_leap_year_handling():
     sub2 = result.filter(pl.col("subject_id") == 2)
     # E1: 2000-02-29 -> 1 years, 1 day
     assert get_age(sub2, datetime(2000, 2, 29)) == "1 years//1 days"
+
+
+def test_add_age_rows_leap_year_increment_days():
+    """Verify that leap years correctly increment the day count irrespective of birthdate."""
+    # Arrange
+    df = pl.DataFrame(
+        {
+            "subject_id": [1, 1, 2, 2, 3, 3, 4, 4],
+            "time": [
+                datetime(1999, 1, 1),  # Sub 1: Born Jan 1
+                datetime(2000, 3, 1),  # Leap year check (2000)
+                datetime(1998, 1, 1),  # Sub 2: Born Jan 1
+                datetime(1999, 3, 1),  # Non-leap year check (1999)
+                datetime(1999, 3, 1),  # Sub 3: Born Mar 1
+                datetime(2000, 2, 29), # Leap year check (2000)
+                datetime(1997, 3, 1),  # Sub 4: Born Mar 1
+                datetime(1998, 2, 28), # Non-leap year check (1998)
+            ],
+            "code": ["BORN", "E1", "BORN", "E1", "BORN", "E1", "BORN", "E1"],
+        }
+    ).lazy()
+    cfg = DictConfig({"birth_code": "BORN"})
+    fn = add_age_rows(cfg)
+
+    # Act
+    result = fn(df).collect()
+
+    # Assert
+    def get_age(df, sid, dt):
+        return (
+            df.filter((pl.col("subject_id") == sid) & (pl.col("code") == "Age") & (pl.col("time") == dt))
+            .select("age_text_value")
+            .item()
+        )
+
+    # Subject 1: Born 1999-01-01, checking 2000-03-01 (Leap Year)
+    # In leap year 2000, Jan 1 to Mar 1 is 31 (Jan) + 29 (Feb) = 60 days
+    assert get_age(result, 1, datetime(2000, 3, 1)) == "1 years//60 days"
+
+    # Subject 2: Born 1998-01-01, checking 1999-03-01 (Non-Leap Year)
+    # In non-leap year 1999, Jan 1 to Mar 1 is 31 (Jan) + 28 (Feb) = 59 days
+    assert get_age(result, 2, datetime(1999, 3, 1)) == "1 years//59 days"
+
+    # Subject 3: Born 1999-03-01, checking 2000-02-29 (Leap Year)
+    # Since it's a leap year, the day before the birthday is day 365
+    assert get_age(result, 3, datetime(2000, 2, 29)) == "0 years//365 days"
+
+    # Subject 4: Born 1997-03-01, checking 1998-02-28 (Non-Leap Year)
+    # In a non-leap year, the day before the birthday is day 364
+    assert get_age(result, 4, datetime(1998, 2, 28)) == "0 years//364 days"
