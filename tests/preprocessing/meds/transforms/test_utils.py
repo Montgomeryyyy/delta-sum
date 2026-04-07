@@ -79,7 +79,7 @@ def test_insert_parent_rows_inserts_correctly():
     assert_frame_equal(result, expected)
 
 
-def test_insert_parent_rows_respects_exclude_cols():
+def test_insert_parent_rows_preserves_all_columns():
     # Arrange
     df = pl.DataFrame(
         {
@@ -95,23 +95,23 @@ def test_insert_parent_rows_respects_exclude_cols():
     code_expr = pl.lit("PARENT")
 
     # Act
-    # exclude_cols should result in the column being dropped entirely
+    # Without exclude_cols, all columns are preserved
     result = insert_parent_rows(
         df,
         change_cond=change_cond,
         code_expr=code_expr,
-        exclude_cols=["drop_me"],
     ).collect()
 
     # Assert
-    # We expect 'drop_me' to be gone, and 'keep_val' to be nulled in the parent row
+    # We expect 'drop_me' and 'keep_val' to be nulled in the parent row
     expected = pl.DataFrame(
         {
             "subject_id": [1, 1],
             "time": [10, 10],
             "code": ["PARENT", "a"],
             "keep_val": [None, 100],
+            "drop_me": [None, 200],
         },
-        schema_overrides={"keep_val": pl.Int64},
+        schema_overrides={"keep_val": pl.Int64, "drop_me": pl.Int64},
     )
     assert_frame_equal(result, expected)

@@ -59,19 +59,20 @@ def add_time_rows(
     def add_time_rows_fn(df: pl.LazyFrame) -> pl.LazyFrame:
         """Insert HH:MM rows on subject or time changes."""
 
-        # 1. Format the time as HH:MM
-        df = df.with_columns(_formatted_time=pl.col("time").dt.strftime("%H hours//%M mins"))
+        # 1. Expressions for HH:MM parsing and checking
+        time_hh_mm = pl.col("time").dt.strftime("%H hours//%M mins")
+        time_hour = pl.col("time").dt.hour()
+        time_min = pl.col("time").dt.minute()
 
-        # 2. Detect when formatted time or subject changes
-        # "not date though" is handled by only checking the formatted HH:MM part
-        change_cond = _changed("subject_id") | _changed("_formatted_time")
+        # 2. Detect when hour/minute or subject changes
+        # "not date though" is handled by only checking the HH:MM part
+        change_cond = _changed("subject_id") | _changed(time_hour) | _changed(time_min)
 
         # 3. Use utility to insert parent rows
         return insert_parent_rows(
             df,
             change_cond=change_cond,
-            code_expr=pl.lit(header) + pl.col("_formatted_time"),
-            exclude_cols=["_formatted_time"],
+            code_expr=pl.lit(header) + time_hh_mm,
         )
 
     return add_time_rows_fn

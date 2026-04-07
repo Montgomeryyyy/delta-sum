@@ -63,16 +63,16 @@ def add_age_rows(
         """Insert Age rows on subject or date changes."""
 
         # 1. Calculate Birth Time for each subject
-        birth_time = pl.col("time").filter(pl.col("code") == birth_code).first().over("subject_id")
+        df = df.with_columns(birth_time=pl.col("time").filter(pl.col("code") == birth_code).first().over("subject_id"))
 
         # 2. Calculate age_year and age_day (logic from calculate_age.py)
         current_year = pl.col("time").dt.year()
         current_month = pl.col("time").dt.month()
         current_day = pl.col("time").dt.day()
 
-        birth_year = birth_time.dt.year()
-        birth_month = birth_time.dt.month()
-        birth_day = birth_time.dt.day()
+        birth_year = pl.col("birth_time").dt.year()
+        birth_month = pl.col("birth_time").dt.month()
+        birth_day = pl.col("birth_time").dt.day()
 
         # Age in years
         is_feb_29_birth = (birth_month == 2) & (birth_day == 29)
@@ -87,29 +87,21 @@ def add_age_rows(
         age_years = current_year - birth_year - pl.when(is_birthday_or_after).then(0).otherwise(1)
 
         # Last birthday date and days since then
-        last_birthday = birth_time.dt.offset_by(pl.format("{}y", age_years))
+        last_birthday = pl.col("birth_time").dt.offset_by(pl.format("{}y", age_years))
         age_days = (pl.col("time") - last_birthday).dt.total_days()
 
-        # 3. Format the age strings and decimal age
-        df = df.with_columns(
-            _formatted_age=pl.format("{} years//{} days", age_years, age_days),
-            _decimal_age=age_years + age_days / 365.25,
-            _date=pl.col("time").dt.date(),
-        )
+        # 3. Detect when subject or date changes
+        change_cond = _changed("subject_id") | _changed(pl.col("time").dt.date())
 
-        # 4. Detect when subject or date changes
-        change_cond = _changed("subject_id") | _changed("_date")
-
-        # 5. Use utility to insert parent rows
+        # 4. Use utility to insert parent rows
         return insert_parent_rows(
             df,
             change_cond=change_cond,
             code_expr=pl.lit(header),
             extra_exprs={
-                "age_text_value": pl.col("_formatted_age"),
-                "numeric_value": pl.col("_decimal_age"),
+                "age_text_value": pl.format("{} years//{} days", age_years, age_days),
+                "numeric_value": age_years + age_days / 365.25,
             },
-            exclude_cols=["_formatted_age", "_decimal_age", "_date"],
-        )
+        ).drop(["birth_time"])
 
     return add_age_rows_fn

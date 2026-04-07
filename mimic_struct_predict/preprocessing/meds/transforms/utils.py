@@ -4,9 +4,11 @@
 import polars as pl
 
 
-def _changed(col: str, fill_null: bool = True) -> pl.Expr:
-    """Detect when a column value changes from the previous row."""
-    return (pl.col(col) != pl.col(col).shift(1)).fill_null(fill_null)
+def _changed(expr: str | pl.Expr, fill_null: bool = True) -> pl.Expr:
+    """Detect when an expression's value changes from the previous row."""
+    if isinstance(expr, str):
+        expr = pl.col(expr)
+    return (expr != expr.shift(1)).fill_null(fill_null)
 
 
 def insert_parent_rows(
@@ -14,7 +16,6 @@ def insert_parent_rows(
     change_cond: pl.Expr,
     code_expr: pl.Expr,
     extra_exprs: dict[str, pl.Expr] | None = None,
-    exclude_cols: list[str] | None = None,
 ) -> pl.LazyFrame:
     """Inserts a parent row whenever the change condition is met.
 
@@ -25,51 +26,75 @@ def insert_parent_rows(
         extra_exprs: Dictionary mapping column names to expressions for the parent row.
                      If a column is not in this dict and is not 'subject_id', 'time', or 'code',
                      it will be null in the parent row.
-        exclude_cols: Columns to exclude from the final output. These are typically
-                      temporary columns used for calculations.
-                      'subject_id', 'time', and 'code' are always included.
 
     Returns:
         LazyFrame with inserted parent rows
     """
     extra_exprs = extra_exprs or {}
+
+    # We need to know the schema up front to ensure the parent rows we create
+    # have the exact same shape (columns and types) as the original rows.
     schema = df.collect_schema()
 
-    # Ensure all extra columns exist in df
+    # Ensure all columns required for the parent rows exist in the dataframe.
+    # If a new column is requested just for parent rows, we initialize it to
+    # null in the original dataframe.
     for c in extra_exprs:
         if c not in schema.names():
             df = df.with_columns(pl.lit(None).alias(c))
+
+    # Refresh the schema in case we just added new columns
     schema = df.collect_schema()
 
-    # Define output columns (original order minus explicitly excluded ones)
-    output_cols = [c for c in schema.names() if c not in (exclude_cols or [])]
+    # Define output columns
+    output_cols = schema.names()
 
-    # Define parent row struct with matching field order
+    # We attach an original row index so we can interleave parent and actual rows
+    # without sorting by temporal / subject columns which could scramble events
+    # occurring at the identical time.
+    df = df.with_row_index("__row_idx")
+
+    # Define the expressions to construct data for the parent rows.
+    # We iterate over output_cols to ensure the columns are created in the
+    # exact same order as the original dataframe.
     parent_row_exprs = []
     for c in output_cols:
         if c == "subject_id":
+            # Parent rows share the same subject_id as the row that triggered them
             parent_row_exprs.append(pl.col("subject_id"))
         elif c == "time":
+            # Parent rows share the exact same timestamp
             parent_row_exprs.append(pl.col("time"))
         elif c == "code":
+            # Apply the logic that generates the parent's code
             parent_row_exprs.append(code_expr.alias("code"))
         elif c in extra_exprs:
+            # Apply any custom expressions for the parent row
             parent_row_exprs.append(extra_exprs[c].alias(c))
         else:
+            # Any remaining columns are empty (null) in the parent row.
+            # We explicitly cast the null to match the original column's datatype
             parent_row_exprs.append(pl.lit(None, dtype=schema.get(c)).alias(c))
 
-    parent_row = pl.struct(parent_row_exprs)
+    # Construct the dataframe containing ONLY the newly generated parent rows.
+    # We filter the original data where a parent row is needed, and generate new row values.
+    # We include '__row_idx' and set '__is_actual' to 0 representing that this is a parent row.
+    parents_df = df.filter(change_cond).select(
+        *parent_row_exprs, pl.col("__row_idx"), pl.lit(0, dtype=pl.Int8).alias("__is_actual")
+    )
 
-    # Define original row struct (matching output_cols order)
-    actual_row = pl.struct(output_cols)
+    # Prepare the original dataframe to be identical in shape to parents_df.
+    # We set '__is_actual' to 1 representing the original data rows.
+    actual_df = df.select(*output_cols, pl.col("__row_idx"), pl.lit(1, dtype=pl.Int8).alias("__is_actual"))
 
+    # Combine both DataFrames vertically.
+    # We sort by __row_idx, then __is_actual.
+    # For any given original row that triggered a parent row, both the new parent
+    # and the original row will share the same __row_idx. Because parent has
+    # __is_actual=0 and actual has __is_actual=1, the parent row will immediately
+    # precede the actual row.
     return (
-        df.with_columns(
-            _rows=pl.when(change_cond)
-            .then(pl.concat_list([parent_row, actual_row]))
-            .otherwise(pl.concat_list([actual_row]))
-        )
-        .select("_rows")
-        .explode("_rows")
-        .unnest("_rows")
+        pl.concat([parents_df, actual_df], how="vertical")
+        .sort(["__row_idx", "__is_actual"])
+        .drop(["__row_idx", "__is_actual"])
     )

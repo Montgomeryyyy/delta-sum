@@ -55,8 +55,6 @@ def create_prefix_column(
 
     def create_prefix_column_fn(df: pl.LazyFrame) -> pl.LazyFrame:
         """Process codes and insert prefix rows on changes."""
-        # Split code on first "//" using splitn for efficiency
-        # field_0 is prefix, field_1 is suffix (null if no //)
         parts = pl.col("code").str.splitn("//", 2)
         prefix = parts.struct.field("field_0")
         suffix = parts.struct.field("field_1")
@@ -77,7 +75,6 @@ def create_prefix_column(
             df,
             change_cond=trigger_cond,
             code_expr=pl.col("prefix"),
-            exclude_cols=["prefix"],
-        )
+        ).drop(["prefix"])
 
     return create_prefix_column_fn
