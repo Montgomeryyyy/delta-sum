@@ -1,0 +1,31 @@
+metadata:
+  description: >-
+    Outcome is true if patient dies between icu admission and icu discharge otherwise false.
+
+predicates:
+  icu_admission:
+    code: {regex: "Icu Admission//.*"}
+  icu_discharge:
+    code: {regex: "Icu Discharge//.*"}
+  death:
+    code: "Death//Died"
+
+trigger: icu_admission
+
+windows:
+  input:
+    start: NULL # Include all events prior to icu admission
+    end: trigger
+    start_inclusive: True
+    end_inclusive: True # Include all events up to and including icu admission
+    index_timestamp: end
+
+  target:
+    # Target true if death event occurs during icu stay
+    start: trigger
+    end: start -> icu_discharge
+
+    start_inclusive: True
+    end_inclusive: True
+
+    label: death

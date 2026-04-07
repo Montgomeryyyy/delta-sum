@@ -6,19 +6,26 @@
 ### Data prep
 
 Download mimic
-`make download-mimic`
-Can comment out for demo or full dataset
+- `make download-mimic`
+- Can comment out for demo or full dataset
+- Requires physionet credentials
+- Output is in `data/raw_input`
 
 Convert to MEDS
-`make convert-to-meds`
-- tabular data
-    - `data/MEDS_cohort/add_age_rows`
-- coded data
-    - `data/MEDS_cohort/bin_numeric_values`
-    - Has age as string rather than numeric and quantiled numeric values
-- natural language data
-    - `data/MEDS_cohort/data`
-    - Has numeric values as strings appended to codes
+- `make meds-dataset`
+- Multiple stage output. Notably:
+    - tabular data
+        - `data/MEDS_cohort/add_age_rows`
+    - coded data
+        - `data/MEDS_cohort/bin_numeric_values`
+        - Has age as string rather than numeric and quantiled numeric values
+    - natural language data
+        - `data/MEDS_cohort/data`
+        - Has numeric values as strings appended to codes
+
+Create ACES labels
+- `make aces-labels`
+- Output is in `data/aces_labels`
 
 ## Plan
 
@@ -27,8 +34,8 @@ Convert to MEDS
 - ~~Download meds~~
 - ~~premeds~~
 - ~~meds pipeline~~
-- aces
-    - Need to define tasks
+- ~~aces~~
+    - Add more tasks
 
 ### Models
 
