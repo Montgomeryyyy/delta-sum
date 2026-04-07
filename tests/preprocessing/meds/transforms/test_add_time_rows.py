@@ -59,3 +59,28 @@ def test_add_time_rows_multiple_subjects():
     expected_codes = ["Time//10 hours//00 mins", "A", "Time//10 hours//00 mins", "B"]
     assert result["code"].to_list() == expected_codes
     assert result["subject_id"].to_list() == [1, 1, 2, 2]
+
+
+def test_add_time_rows_eod():
+    # Arrange
+    df = pl.DataFrame(
+        {
+            "subject_id": [1, 1, 1],
+            "time": [
+                datetime(2024, 1, 1, 10, 0, 0),
+                datetime(2024, 1, 1, 23, 59, 10),          # Natural event in the last minute
+                datetime(2024, 1, 1, 23, 59, 59, 999999),  # Artificial End of day
+            ],
+            "code": ["A", "B", "C"],
+        }
+    ).lazy()
+    cfg = DictConfig({"header": "T", "eod_string": "END_OF_DAY"})
+    fn = add_time_rows(cfg)
+
+    # Act
+    result = fn(df).collect()
+
+    # Assert
+    expected_codes = ["T//10 hours//00 mins", "A", "T//23 hours//59 mins", "B", "END_OF_DAY", "C"]
+    assert result["code"].to_list() == expected_codes
+    assert result.shape[0] == 6

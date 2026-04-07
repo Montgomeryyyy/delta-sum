@@ -9,6 +9,7 @@ from omegaconf import DictConfig
 
 from ..utils import _changed, insert_parent_rows
 
+END_OF_DAY = pl.time(23, 59, 59, 999999)
 
 @Stage.register(is_metadata=False)
 def add_time_rows(
@@ -55,6 +56,7 @@ def add_time_rows(
     """
 
     header = stage_cfg.get("header", "Time") + "//"
+    eod_string = stage_cfg.get("eod_string", None)
 
     def add_time_rows_fn(df: pl.LazyFrame) -> pl.LazyFrame:
         """Insert HH:MM rows on subject or time changes."""
@@ -68,11 +70,19 @@ def add_time_rows(
         # "not date though" is handled by only checking the HH:MM part
         change_cond = _changed("subject_id") | _changed(time_hour) | _changed(time_min)
 
+        # Build the new code column expression
+        code_expr = pl.lit(header) + time_hh_mm
+        if eod_string is not None:
+            is_eod = pl.col("time").dt.time() == END_OF_DAY
+            code_expr = pl.when(is_eod).then(pl.lit(eod_string)).otherwise(code_expr)
+            # Differentiates between 23:59 and 23:59:59.999999
+            change_cond = change_cond | _changed(is_eod)
+
         # 3. Use utility to insert parent rows
         return insert_parent_rows(
             df,
             change_cond=change_cond,
-            code_expr=pl.lit(header) + time_hh_mm,
+            code_expr=code_expr,
         )
 
     return add_time_rows_fn
