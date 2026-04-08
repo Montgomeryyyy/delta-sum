@@ -18,6 +18,9 @@ MEDS_TAB_OUTPUT_DIR := data/MEDS_tab
 NATURAL_LANGUAGE_INPUT_DIR := data/MEDS_cohort/data
 NATURAL_LANGUAGE_OUTPUT_DIR := data/natural_language
 
+STRUCTURED_INPUT_DIR := data/MEDS_cohort/bin_numeric_values
+STRUCTURED_OUTPUT_DIR := data/structured
+
 MEDS_DIR := mimic_struct_predict/preprocessing/meds
 
 ACES_OUTPUT_DIR := data/aces_labels
@@ -127,3 +130,18 @@ create-nl-dataset-no-labels:
 	uv run create_nl_dataset_no_labels \
 		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)
+
+### Structured ###
+
+.PHONY: create-structured-dataset
+create-structured-dataset:
+	uv run create_structured_dataset \
+		meds_data_dir=$(STRUCTURED_INPUT_DIR) \
+		aces_labels_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(STRUCTURED_OUTPUT_DIR)
+
+.PHONY: create-structured-dataset-no-labels
+create-structured-dataset-no-labels:
+	uv run create_structured_dataset_no_labels \
+		meds_data_dir=$(STRUCTURED_INPUT_DIR) \
+		output_dir=$(STRUCTURED_OUTPUT_DIR)

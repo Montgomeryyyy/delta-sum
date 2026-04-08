@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "datasets>=4.0.0",
     "es-aces>=0.7.0",
     "jupyter>=1.1.1",
     "meds~=0.4.0",
@@ -14,6 +15,7 @@ dependencies = [
     "meds-transforms~=0.5.0",
     "polars~=1.27.1",
     "setuptools>=82.0.1",
+    "transformers>=5.5.0",
 ]
 
 [build-system]
@@ -33,6 +35,8 @@ replace_quantile_with_numeric_value = "mimic_struct_predict.preprocessing.meds.t
 [project.scripts]
 create_nl_dataset = "mimic_struct_predict.preprocessing.natural_language.create_nl_dataset:process_shards_with_labels"
 create_nl_dataset_no_labels = "mimic_struct_predict.preprocessing.natural_language.create_nl_dataset_no_labels:process_shards_without_labels"
+create_structured_dataset = "mimic_struct_predict.preprocessing.structured.create_structured_dataset:process_shards_with_labels"
+create_structured_dataset_no_labels = "mimic_struct_predict.preprocessing.structured.create_structured_dataset_no_labels:process_shards_without_labels"
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 
 [tool.black]
