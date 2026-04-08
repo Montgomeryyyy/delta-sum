@@ -46,14 +46,12 @@ meds-dataset:
 
 	@echo "Running MEDS transform pipeline..."
 	rm -rf $(MIMICIV_MEDS_COHORT_DIR)
+	INPUT_DIR=$(MIMICIV_PRE_MEDS_DIR) \
+	OUTPUT_DIR=$(MIMICIV_MEDS_COHORT_DIR) \
+	DATASET_NAME=$(DATASET_NAME) \
+	DATASET_VERSION=$(MIMIC_VERSION) \
 	uv run MEDS_transform-pipeline \
-		"./mimic_struct_predict/preprocessing/meds/config/ETL.yaml"\
-		--overrides \
-		"input_dir=$(MIMICIV_PRE_MEDS_DIR)" \
-		"output_dir=$(MIMICIV_MEDS_COHORT_DIR)" \
-		"etl_metadata.dataset_name=$(DATASET_NAME)" \
-		"etl_metadata.dataset_version=$(MIMIC_VERSION)"
-
+		pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/ETL.yaml\
 
 
 .PHONY: aces-labels

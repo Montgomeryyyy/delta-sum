@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meds-tab"
-dynamic = ["version"]
+version = "0.1.0+local.polars.1.27.1"
 authors = [
   { name="Matthew McDermott", email="mattmcdermott8@gmail.com" },
   { name="Nassim Oufattole", email="noufattole@gmail.com" },
@@ -116,3 +116,6 @@ select = [
 
 [tool.ruff.lint.pep8-naming]
 extend-ignore-names = ["X*", "MEDS*"]
+
+[tool.uv.extra-build-dependencies]
+pyarrow = ["pkg_resources"]
