@@ -27,6 +27,24 @@ Create ACES labels
 - `make aces-labels`
 - Output is in `data/aces_labels`
 
+
+
+uv run meds-tab-describe "MEDS_cohort_dir=data/MEDS_cohort" "input_dir=data/MEDS_cohort/add_age_rows/train"
+
+
+uv run meds-tab-cache-task \
+    "MEDS_cohort_dir=data/MEDS_cohort" \
+    "input_dir=data/MEDS_cohort/add_age_rows" \
+    "output_dir=data/MEDS_cohort/30_day_readmission/task_cache" \
+    "input_label_dir=data/aces_labels/30_day_readmission" \
+    "task_name=30_day_readmission" \
+    "tabularization.min_code_inclusion_frequency=10" \
+    "tabularization.window_sizes=[1d,30d,365d,full]" \
+    "tabularization.aggs=[static/present,static/first,code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]"
+
+
+
+
 ## Plan
 
 ### Data prep

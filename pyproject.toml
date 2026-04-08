@@ -5,11 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "es-aces>=0.7.2",
     "jupyter>=1.1.1",
-    "meds-extract>=0.5.0",
-    "meds-tab>=0.0.2",
-    "meds-transforms>=0.6.2",
+    "meds~=0.4.0",
+    "meds-extract>=0.3.0",
+    "meds-tab",
+    "meds-transforms~=0.5.0",
+    "polars~=1.27.1",
+    "setuptools>=82.0.1",
 ]
 
 [build-system]
@@ -48,3 +50,11 @@ warn_return_any = true
 warn_unused_ignores = true
 # Ignore missing stubs for third-party packages
 ignore_missing_imports = true
+
+[tool.uv.workspace]
+members = [
+    "MEDS_Tabular_AutoML",
+]
+
+[tool.uv.sources]
+meds-tab = { workspace = true }
