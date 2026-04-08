@@ -1092,7 +1092,7 @@ requires-dist = [
     { name = "hydra-optuna-sweeper" },
     { name = "matplotlib", marker = "extra == 'profiling'" },
     { name = "meds", specifier = "~=0.4.0" },
-    { name = "meds-evaluation" },
+    { name = "meds-evaluation", specifier = "==0.0.2" },
     { name = "meds-transforms", specifier = "~=0.5.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = "==1.6.0" },
     { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = "==0.5.0" },

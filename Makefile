@@ -12,11 +12,15 @@ MIMICIV_RAW_DIR      := data/raw_input
 MIMICIV_PRE_MEDS_DIR := data/pre_MEDS
 MIMICIV_MEDS_COHORT_DIR     := data/MEDS_cohort
 
+MEDS_TAB_INPUT_DIR := data/MEDS_cohort/add_age_rows
+MEDS_TAB_OUTPUT_DIR := data/MEDS_tab
+
 MEDS_DIR := mimic_struct_predict/preprocessing/meds
 
 ACES_OUTPUT_DIR := data/aces_labels
 ACES_DEFINITIONS_DIR := mimic_struct_predict/preprocessing/aces_task_definitions
-ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
+# ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
+ACES_TASKS := 30_day_readmission
 
 define check_credentials
 	@test -n "$(MIMIC_USER)" || (echo "Error: MIMIC_USER required" && exit 1)
@@ -67,4 +71,37 @@ aces-labels:
 			cohort_dir=$(ACES_OUTPUT_DIR) \
 			cohort_name="$$task" \
 			-m; \
+	done
+
+.PHONY: train-meds-tab
+train-meds-tab:
+	uv run meds-tab-describe \
+		"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)"
+
+	@echo "Tabularizing static data"
+	uv run meds-tab-tabularize-static \
+		"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
+		do_overwrite=False
+
+	@echo "Tabularizing time series..."
+	uv run meds-tab-tabularize-time-series \
+		"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
+		tabularization.min_code_inclusion_count=10 \
+		tabularization.window_sizes=[1d,7d,30d,365d] \
+		tabularization.aggs=[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max] \
+		do_overwrite=False
+
+	@for task in $(ACES_TASKS); do \
+		mkdir -p "$(MEDS_TAB_OUTPUT_DIR)/$$task"; \
+		rsync -r "$(MEDS_TAB_OUTPUT_DIR)/metadata/" "$(MEDS_TAB_OUTPUT_DIR)/$$task/metadata"; \
+		echo "Running task_specific_caching.py for task: $$task"; \
+		uv run meds-tab-cache-task \
+			hydra/launcher=joblib \
+			"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
+			"input_label_dir=$(ACES_OUTPUT_DIR)/$$task/" "task_name=$$task" do_overwrite=False; \
+		echo "Running xgboost for task: $$task"; \
+		uv run meds-tab-xgboost \
+			"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
+			"output_model_dir=$(MEDS_TAB_OUTPUT_DIR)/models/$$task/" "task_name=$$task" do_overwrite=False \
+			"hydra.sweeper.n_trials=1000" "hydra.sweeper.n_jobs=$(N_WORKERS)"; \
 	done
