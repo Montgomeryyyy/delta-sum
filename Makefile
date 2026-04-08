@@ -15,12 +15,18 @@ MIMICIV_MEDS_COHORT_DIR     := data/MEDS_cohort
 MEDS_TAB_INPUT_DIR := data/MEDS_cohort/add_age_rows
 MEDS_TAB_OUTPUT_DIR := data/MEDS_tab
 
+NATURAL_LANGUAGE_INPUT_DIR := data/MEDS_cohort/data
+NATURAL_LANGUAGE_OUTPUT_DIR := data/natural_language
+
 MEDS_DIR := mimic_struct_predict/preprocessing/meds
 
 ACES_OUTPUT_DIR := data/aces_labels
 ACES_DEFINITIONS_DIR := mimic_struct_predict/preprocessing/aces_task_definitions
 # ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
 ACES_TASKS := 30_day_readmission
+
+
+
 
 define check_credentials
 	@test -n "$(MIMIC_USER)" || (echo "Error: MIMIC_USER required" && exit 1)
@@ -42,7 +48,7 @@ download-mimic:
 meds-dataset:
 	@echo "Creating pre-MEDS dataset from MIMIC-IV..."
 	rm -rf $(MIMICIV_PRE_MEDS_DIR)
-	uv run mimic_struct_predict/preprocessing/meds/pre_MEDS.py \
+	uv run pre_MEDS \
 		input_dir=$(MIMICIV_RAW_DIR) \
 		output_dir=$(MIMICIV_PRE_MEDS_DIR) \
 		do_overwrite=true \
@@ -105,3 +111,19 @@ train-meds-tab:
 			"output_model_dir=$(MEDS_TAB_OUTPUT_DIR)/models/$$task/" "task_name=$$task" do_overwrite=False \
 			"hydra.sweeper.n_trials=1000" "hydra.sweeper.n_jobs=$(N_WORKERS)"; \
 	done
+
+
+### Natural Language ###
+
+.PHONY: create-nl-dataset
+create-nl-dataset:
+	uv run create_nl_dataset \
+		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
+		aces_labels_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)
+
+.PHONY: create-nl-dataset-no-labels
+create-nl-dataset-no-labels:
+	uv run create_nl_dataset_no_labels \
+		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)

@@ -30,6 +30,10 @@ add_age_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_age_rows.
 merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age_column.merge_age_column:merge_age_column"
 replace_quantile_with_numeric_value = "mimic_struct_predict.preprocessing.meds.transforms.replace_quantile_with_numeric_value.replace_quantile_with_numeric_value:replace_quantile_with_numeric_value"
 
+[project.scripts]
+create_nl_dataset = "mimic_struct_predict.preprocessing.natural_language.create_nl_dataset:process_shards_with_labels"
+create_nl_dataset_no_labels = "mimic_struct_predict.preprocessing.natural_language.create_nl_dataset_no_labels:process_shards_without_labels"
+pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 
 [tool.black]
 line-length = 120
@@ -52,6 +56,9 @@ warn_return_any = true
 warn_unused_ignores = true
 # Ignore missing stubs for third-party packages
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+norecursedirs = ["MEDS_Tabular_AutoML"]
 
 [tool.uv.sources]
 meds-tab = { path = "MEDS_Tabular_AutoML", editable = true }

@@ -5,4 +5,4 @@ do_copy: true
 
 hydra:
   run:
-    dir: ${output_dir}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${output_dir}/.logs/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -390,7 +390,7 @@ def _process_file(
 
 @hydra.main(
     version_base=None,
-    config_path="./config",
+    config_path="config",
     config_name="pre_MEDS",
 )
 def main(cfg: DictConfig) -> None:

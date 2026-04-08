@@ -1,0 +1,8 @@
+meds_data_dir: ???
+output_dir: ???
+
+overwrite: False
+
+hydra:
+  run:
+    dir: ${output_dir}/.logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
