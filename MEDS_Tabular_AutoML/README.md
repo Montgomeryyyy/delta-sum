@@ -25,6 +25,9 @@
 > ```bash
 > uv add --editable ./MEDS_Tabular_AutoML
 > ```
+> **Bug Fix**
+> There seems to be a breaking change in meds-evaluation (version not previously constrained)
+> So set hard constraint to time of adding to repo ([PR](https://github.com/mmcdermott/MEDS_Tabular_AutoML/commit/ba80ae463f5814ec89b62675c13bb5e0a0e69d9f)) which is v0.0.2
 
 # Welcome!
 

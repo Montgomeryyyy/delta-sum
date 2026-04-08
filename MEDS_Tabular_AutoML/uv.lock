@@ -642,6 +642,7 @@ dependencies = [
     { name = "jmespath", marker = "python_full_version < '3.12'" },
     { name = "s3transfer", marker = "python_full_version < '3.12'" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/31/9d/a9a7b5a9351e3ff0baae01136f71ba6fc4652fe0dc2da3b0a8ebdfc1be44/boto3-1.42.85.tar.gz", hash = "sha256:1cd3dcbfaba85c6071ba9397c1804b6a94a1a97031b8f1993fdba27c0c5d6eba", size = 112769, upload-time = "2026-04-07T19:40:53.834Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/ab/3167b8ec3cf1d87ad08d2ad5f15823a22945cae7870798274c283c3a18f1/boto3-1.42.85-py3-none-any.whl", hash = "sha256:4f6ac066e41d18ec33f532253fac0f35e0fdca373724458f983ce3d531340b7a", size = 140556, upload-time = "2026-04-07T19:40:52.186Z" },
 ]
@@ -2745,7 +2746,7 @@ wheels = [
 
 [[package]]
 name = "meds-evaluation"
-version = "0.0.3"
+version = "0.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "hydra-core" },
@@ -2755,13 +2756,14 @@ dependencies = [
     { name = "pyarrow" },
     { name = "scikit-learn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/fc/44a77a8cfee1e88f039eb5cd460fec917f4a338e9106dda791605931e556/meds_evaluation-0.0.3.tar.gz", hash = "sha256:586d5f0b27823fef91e59e1f94744ee52fe64932ca73be2ff4c321aff2ab5bfb", size = 17257, upload-time = "2025-03-03T21:35:06.025Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/13/25/d1f1fc228d35a8203239afce85ab6cff72898aea541d32177a557bc8dbf4/meds_evaluation-0.0.2.tar.gz", hash = "sha256:188ef9f3de2468379798ff4a33ed6bdfcffc801159c92479cea2651070715f21", size = 17494, upload-time = "2025-01-27T19:33:35.03Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/fc/d3ca372b9d0724eb334dc7f50676ba8f12c30bc3c35be17178f28313f2c2/meds_evaluation-0.0.3-py3-none-any.whl", hash = "sha256:fb63459b293634bb6e26c0c1ae097e7c22865eb0ba251e7b137a3cb2b9a63035", size = 9420, upload-time = "2025-03-03T21:35:04.449Z" },
+    { url = "https://files.pythonhosted.org/packages/73/8f/333dac46d540ee22d7e7db97eeda8a9e4ebdbbcf2a9325b82e743e5fa5a6/meds_evaluation-0.0.2-py3-none-any.whl", hash = "sha256:f715d00811eb629968882efa96be14ce2e7e9ab2c0881bba251684562cb46e31", size = 9484, upload-time = "2025-01-27T19:33:33.123Z" },
 ]
 
 [[package]]
 name = "meds-tab"
+version = "0.1.0+local.polars.1.27.1"
 source = { editable = "." }
 dependencies = [
     { name = "hydra-core" },
@@ -2820,7 +2822,7 @@ requires-dist = [
     { name = "hydra-optuna-sweeper" },
     { name = "matplotlib", marker = "extra == 'profiling'" },
     { name = "meds", specifier = "~=0.4.0" },
-    { name = "meds-evaluation" },
+    { name = "meds-evaluation", specifier = "==0.0.2" },
     { name = "meds-transforms", specifier = "~=0.5.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = "==1.6.0" },
     { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = "==0.5.0" },
