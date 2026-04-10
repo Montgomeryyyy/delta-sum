@@ -11,16 +11,10 @@ from mimic_struct_predict.models.utils.model_loading import (
     get_token_id,
     load_model_and_tokenizer,
 )
-from mimic_struct_predict.models.utils.prompt_template import (
-    create_prompt,
-)
+from mimic_struct_predict.models.utils.prompt_template import create_prompt_str, truncate_on_ehr_newlines
 
 # from mimic_struct_predict.models.utils.shard_processor import (
 #     process_shards_from_prompt_dataset,
 # )
 
-__all__ = [
-    "get_token_id",
-    "load_model_and_tokenizer",
-    "create_prompt",
-]
+__all__ = ["get_token_id", "load_model_and_tokenizer", "create_prompt_str", "truncate_on_ehr_newlines"]

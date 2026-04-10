@@ -27,9 +27,10 @@ from transformers import (
 )
 
 from mimic_struct_predict.models.utils import (
-    create_prompt,
+    create_prompt_str,
     get_token_id,
     load_model_and_tokenizer,
+    truncate_on_ehr_newlines,
 )
 from mimic_struct_predict.models.utils.metrics import compute_yes_probs
 
@@ -69,11 +70,11 @@ def batch_inference(
     sample_latency = (end_time - start_time) / inputs["input_ids"].shape[0]
 
     # Extract sequences and logits
-    new_tokens = outputs.sequences[:, inputs["input_ids"].shape[1] :]
-    completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
+    completions = tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
 
     # Completetions can be differing lengths, so need to handle extracting the final token logits carefully
     # Create mask for non-padded tokens in new_tokens
+    new_tokens = outputs.sequences[:, inputs["input_ids"].shape[1] :]
     new_tokens_mask = new_tokens != tokenizer.pad_token_id
 
     # Indices of last non-padded tokens per row
@@ -197,7 +198,7 @@ def run_llm_inference(cfg: DictConfig) -> None:
             log.info("Generating prompts...")
             dataset = dataset.map(
                 lambda ehr_text: {
-                    "prompt": create_prompt(
+                    "prompt": create_prompt_str(
                         ehr_text=ehr_text,
                         task_description=task_description,
                         tokenizer=tokenizer,
@@ -208,7 +209,6 @@ def run_llm_inference(cfg: DictConfig) -> None:
                 },
                 input_columns=cfg.get("ehr_text_column", "ehr_text"),
                 # Drop ehr_text after creating prompt to save memory, we won't need it anymore and it can be large.
-                # remove_columns="ehr_text",
                 batched=False,
                 desc="Creating prompts",
             )
@@ -218,14 +218,31 @@ def run_llm_inference(cfg: DictConfig) -> None:
             dataset = dataset.map(
                 lambda prompts: tokenizer(
                     prompts,
-                    truncation=None,  # Truncation handled by create_prompt
+                    truncation=False,  # Truncation handled by truncate_ehr_text
                     max_length=cfg.tokenization.max_prompt_length,
                     padding="do_not_pad",  # We'll handle padding in the DataLoader with a collator
                     return_length=True,
+                    add_special_tokens=False,
+                    return_offsets_mapping=True,
                 ),
                 input_columns="prompt",
                 batched=True,
                 desc="Tokenizing prompts",
+            )
+            print(dataset.column_names)
+            log.info("Truncating prompts on EHR newlines...")
+            dataset = dataset.map(
+                lambda x: truncate_on_ehr_newlines(
+                    x["input_ids"],
+                    x["attention_mask"],
+                    x["offset_mapping"],
+                    x["length"],
+                    x["prompt"],
+                    cfg.tokenization.max_prompt_length,
+                ),
+                remove_columns=["offset_mapping", "prompt"],
+                batched=False,
+                desc="Truncating prompts",
             )
             dataset = dataset.sort("length")  # Sort by prompt length for more efficient batching
 

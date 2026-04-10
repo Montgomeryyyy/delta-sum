@@ -2,12 +2,11 @@
 """Prompt template generation for LLM inference on EHR data."""
 
 import logging
-import re
-from enum import StrEnum
+from typing import Any
 
 from transformers import PreTrainedTokenizer
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 PROMPT_TEMPLATE = """Analyze the following patient Electronic Health Record (EHR) and predict if the following outcome will occur.
@@ -15,20 +14,16 @@ PROMPT_TEMPLATE = """Analyze the following patient Electronic Health Record (EHR
 # Outcome to Predict
 {task_description}
 
-# Patient's EHR
+{ehr_title_header}
 {ehr}
 
-# Instructions
+{instructions_header}
 {instructions}
 """  # noqa: E501
 
 
-class PromptMode(StrEnum):
-    """Supported prompt modes for LLM inference."""
-
-    DIRECT = "direct"
-    THINKING = "thinking"
-
+EHR_TITLE_HEADER = "# Patient's EHR"
+INSTRUCTIONS_HEADER = "# Instructions"
 
 DIRECT_INSTRUCTIONS = """Based on the patient's electronic health record above, predict if the outcome will occur.
 
@@ -63,33 +58,144 @@ Yes/No
 </answer>
 ```"""  # noqa: E501
 
-# Regex to match age headers: ## Age X years Y days
-AGE_HEADER_PATTERN = re.compile(r"^## Age \d+ years \d+ days$", re.MULTILINE)
+
+def _char_to_token_idx(offset_mapping: list[tuple[int, int]], char_idx: int, field_name: str) -> int:
+    """Map a character index to token index and raise a clear error when not possible."""
+    try:
+        return next(i for i, (_, end) in enumerate(offset_mapping) if end > char_idx)
+    except StopIteration as exc:
+        raise ValueError(
+            f"Could not map {field_name} character index to token index. "
+            "Check tokenizer offset mappings and prompt template format."
+        ) from exc
 
 
-def ehr_text_to_prompt(
+def truncate_on_ehr_newlines(
+    input_ids: list[int],
+    attention_mask: list[int],
+    offset_mapping: list[tuple[int, int]],
+    length: int,
+    prompt_str: str,
+    max_prompt_length: int,
+) -> dict[str, Any]:
+    """Truncate prompt tokens from the start of the EHR section while preserving the instructions section."""
+    if max_prompt_length <= 0:
+        raise ValueError("max_prompt_length must be greater than 0.")
+
+    if length != len(input_ids) or length != len(attention_mask):
+        raise ValueError("length must match the lengths of input_ids and attention_mask.")
+
+    if length != len(offset_mapping):
+        raise ValueError("length must match the length of offset_mapping.")
+
+    if length <= max_prompt_length:
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "length": length}
+
+    num_tokens_to_drop = length - max_prompt_length
+
+    # 5. Find newline char of {EHR_TITLE_HEADER} as starting point for truncation
+    header = EHR_TITLE_HEADER + "\n"
+    header_start_char_idx = prompt_str.find(header)
+    if header_start_char_idx == -1:
+        raise ValueError("EHR title header not found in prompt. Cannot safely truncate prompt.")
+
+    title_newline_char_idx = header_start_char_idx + len(header) - 1
+
+    instructions_start_char_idx = prompt_str.find("\n" + INSTRUCTIONS_HEADER + "\n", title_newline_char_idx)
+    if instructions_start_char_idx == -1:
+        raise ValueError("Instructions header not found in prompt. Cannot safely truncate prompt.")
+
+    # Map the character index to the specific token index
+    title_newline_token_idx = _char_to_token_idx(offset_mapping, title_newline_char_idx, "EHR title newline")
+    instructions_start_token_idx = _char_to_token_idx(
+        offset_mapping,
+        instructions_start_char_idx,
+        "instructions header",
+    )
+
+    # Calc earliest truncation point
+    truncation_end = title_newline_token_idx + num_tokens_to_drop
+
+    if truncation_end >= instructions_start_token_idx:
+        raise ValueError(
+            f"Cannot truncate prompt to {max_prompt_length} tokens without cutting into instructions. "
+            f"Consider increasing max_prompt_length or reducing the length of instructions/task description."
+        )
+
+    # 6. Map back to characters to find the next clean newline
+    trunc_end_char_idx = offset_mapping[truncation_end][0]
+    next_newline_char_idx = prompt_str.find("\n", trunc_end_char_idx)
+
+    # Map the next newline character index back to its token index
+    if next_newline_char_idx != -1 and next_newline_char_idx < instructions_start_char_idx:
+        next_newline_token_idx = (
+            _char_to_token_idx(
+                offset_mapping[truncation_end:],
+                next_newline_char_idx,
+                "next EHR newline",
+            )
+            + truncation_end
+        )
+    else:
+        # If no more newlines exist in the EHR section, truncate at exact token cutoff.
+        next_newline_token_idx = truncation_end
+
+    # Return the concatenated slices, leaving the middle truncated out
+    # +1 ensures we keep the newline of the title, and drop the newline of the cut text
+    return {
+        "input_ids": input_ids[: title_newline_token_idx + 1] + input_ids[next_newline_token_idx + 1 :],
+        "attention_mask": attention_mask[: title_newline_token_idx + 1] + attention_mask[next_newline_token_idx + 1 :],
+        "length": length - (next_newline_token_idx - title_newline_token_idx),
+    }
+
+
+def create_prompt_str(
     ehr_text: str,
     task_description: str,
-    instructions: str,
     tokenizer: PreTrainedTokenizer,
     enable_thinking: bool,
+    max_prompt_length: int,
+    max_new_tokens: int | None = None,
 ) -> str:
-    """Convert EHR text to a formatted prompt.
-
-    Args:
-        ehr_text: The patient's electronic health record in markdown format.
-        task_description: Description of the prediction task.
-        instructions: Instructions string.
-        tokenizer: Tokenizer for chat templating.
-        enable_thinking: Whether to enable thinking in the prompt.
-
-    Returns:
-        Formatted prompt string ready for LLM input.
     """
+    Create the final chat-template prompt string.
+
+    Tokenization and truncation are intentionally handled in separate steps to support
+    batch tokenization with Hugging Face tokenizers.
+
+    Inputs:
+        ehr_text (str): The patient's EHR data as a single string.
+        task_description (str): A description of the prediction task.
+        tokenizer (PreTrainedTokenizer): The tokenizer corresponding to the LLM being used.
+        enable_thinking (bool): Whether to include step-by-step reasoning instructions.
+        max_prompt_length (int): Validated to be > 0. Enforced during tokenization/truncation.
+        max_new_tokens (int | None): The maximum number of tokens the model is allowed to generate in its response
+                                    (required if thinking is enabled, as it's part of the instructions).
+    Returns:
+        str: Prompt rendered via tokenizer chat template.
+    Raises:
+        ValueError: If `max_new_tokens` is not specified when `enable_thinking` is True, or if
+                `max_prompt_length` is not greater than 0.
+
+    """
+    if max_prompt_length <= 0:
+        raise ValueError("max_prompt_length must be greater than 0.")
+
+    # 1. Recreate the prompt text exactly as the LLM will see it
+    instructions = THINKING_INSTRUCTIONS if enable_thinking else DIRECT_INSTRUCTIONS
+
+    if enable_thinking:
+        if max_new_tokens is None:
+            raise ValueError(
+                "max_new_tokens must be specified when thinking is enabled (as is part of prompt instructions)."
+            )
+        instructions = instructions.format(max_words=max_new_tokens)
 
     formatted_content = PROMPT_TEMPLATE.format(
+        ehr_title_header=EHR_TITLE_HEADER,
         ehr=ehr_text,
         task_description=task_description,
+        instructions_header=INSTRUCTIONS_HEADER,
         instructions=instructions,
     )
 
@@ -102,128 +208,13 @@ def ehr_text_to_prompt(
             }
         )
 
-    prompt = tokenizer.apply_chat_template(
-        messages,
-        enable_thinking=enable_thinking,
-        add_generation_prompt=enable_thinking,
-        continue_final_message=not enable_thinking,
-        tokenize=False,
-    )
-
-    return str(prompt)
-
-
-def truncate_ehr(
-    ehr_text: str,
-    instructions: str,
-    tokenizer: PreTrainedTokenizer,
-    max_prompt_length: int,
-    task_description: str,
-    enable_thinking: bool,
-) -> str:
-    """Truncate EHR text at age header boundaries to fit within token limit.
-
-    Args:
-        ehr_text: The patient's EHR in markdown format.
-        instructions: Instructions string.
-        tokenizer: HuggingFace tokenizer for counting tokens.
-        max_prompt_length: Maximum total sequence length (context window).
-        task_description: Task description.
-        enable_thinking: Whether to enable thinking in the prompt.
-
-    Returns:
-        Truncated EHR text that fits within the token limit.
-    """
-    # Calculate lengths based on the actual full prompt
-    # 1. Check if the full text already fits
-    full_prompt = ehr_text_to_prompt(
-        ehr_text,
-        task_description,
-        instructions,
-        tokenizer,
-        enable_thinking,
-    )
-    full_tokens = tokenizer.tokenize(full_prompt)
-
-    if len(full_tokens) <= max_prompt_length:
-        return ehr_text
-
-    # 2. Derive available tokens correctly
-    ehr_tokens = tokenizer.tokenize(ehr_text)
-    num_tokens_to_drop = len(full_tokens) - max_prompt_length
-    available_tokens = len(ehr_tokens) - num_tokens_to_drop
-
-    if available_tokens <= 0:
-        # This means even dropping ALL EHR tokens isn't enough (overhead > max_len)
-        overhead_estimate = len(full_tokens) - len(ehr_tokens)
-        raise ValueError(
-            f"Available tokens ({available_tokens}) <= 0. "
-            f"max_prompt_length={max_prompt_length}, "
-            f"estimated_overhead={overhead_estimate}, "
-            f"ehr_tokens={len(ehr_tokens)}"
+    # 2. Get the prompt as a raw string so we can map characters to tokens
+    return str(
+        tokenizer.apply_chat_template(
+            messages,
+            enable_thinking=enable_thinking,
+            add_generation_prompt=enable_thinking,
+            continue_final_message=not enable_thinking,
+            tokenize=False,  # Return string instead of token IDs
         )
-
-    # 3. Try to truncate to age header using regex
-    ehr_suffix = str(tokenizer.convert_tokens_to_string(ehr_tokens[-available_tokens:]))
-
-    match = AGE_HEADER_PATTERN.search(ehr_suffix)
-    if match:
-        return ehr_suffix[match.start() :]
-
-    # Last resort: truncate tokens from the end
-    logger.warning(
-        f"Could not find a compatible header to truncate on. "
-        f"EHR tokens: {len(ehr_tokens)}, Available tokens: {available_tokens}. "
-        f"Max prompt length: {max_prompt_length}. Truncating from end."
-    )
-    return ehr_suffix
-
-
-def create_prompt(
-    ehr_text: str,
-    task_description: str,
-    tokenizer: PreTrainedTokenizer,
-    enable_thinking: bool,
-    max_prompt_length: int | None = None,
-    max_new_tokens: int | None = None,
-) -> str:
-    """Create a formatted prompt from EHR text and task description.
-
-    Args:
-        ehr_text: The patient's electronic health record in markdown format.
-        task_description: Description of the prediction task.
-        tokenizer: Tokenizer for truncation and chat templating.
-        mode: Prompt mode selecting which instruction template to use.
-        max_prompt_length: Maximum total sequence length (context window).
-        max_new_tokens: Maximum new tokens (required for THINKING mode).
-
-    Returns:
-        Formatted prompt string ready for LLM input.
-    """
-    instructions = THINKING_INSTRUCTIONS if enable_thinking else DIRECT_INSTRUCTIONS
-
-    if enable_thinking:
-        if max_new_tokens is None:
-            raise ValueError(
-                "max_new_tokens must be specified when mode is "
-                "PromptMode.THINKING_YES_NO or PromptMode.THINKING_PROB"
-            )
-        instructions = instructions.format(max_words=max_new_tokens)
-
-    if max_prompt_length is not None:
-        ehr_text = truncate_ehr(
-            ehr_text,
-            instructions,
-            tokenizer,
-            max_prompt_length,
-            task_description,
-            enable_thinking,
-        )
-
-    return ehr_text_to_prompt(
-        ehr_text,
-        task_description,
-        instructions,
-        tokenizer,
-        enable_thinking,
     )
