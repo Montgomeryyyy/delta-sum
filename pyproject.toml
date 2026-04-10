@@ -7,14 +7,18 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "datasets>=4.0.0",
     "es-aces>=0.7.0",
+    "huggingface-hub>=1.9.2",
     "jupyter>=1.1.1",
     "meds~=0.4.0",
     "meds-evaluation==0.0.2",
     "meds-extract>=0.3.0",
     "meds-tab",
     "meds-transforms~=0.5.0",
+    "peft>=0.18.1",
     "polars~=1.27.1",
+    "pytest-mock>=3.15.1",
     "setuptools>=82.0.1",
+    "torch>=2.10.0",
     "transformers>=5.5.0",
 ]
 
@@ -33,11 +37,10 @@ merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age
 replace_quantile_with_numeric_value = "mimic_struct_predict.preprocessing.meds.transforms.replace_quantile_with_numeric_value.replace_quantile_with_numeric_value:replace_quantile_with_numeric_value"
 
 [project.scripts]
-create_nl_dataset = "mimic_struct_predict.preprocessing.natural_language.create_nl_dataset:process_shards_with_labels"
-create_nl_dataset_no_labels = "mimic_struct_predict.preprocessing.natural_language.create_nl_dataset_no_labels:process_shards_without_labels"
-create_structured_dataset = "mimic_struct_predict.preprocessing.structured.create_structured_dataset:process_shards_with_labels"
-create_structured_dataset_no_labels = "mimic_struct_predict.preprocessing.structured.create_structured_dataset_no_labels:process_shards_without_labels"
+create_text_pre_training_dataset = "mimic_struct_predict.preprocessing.text_dataset.create_pre_training_dataset:main"
+create_text_task_dataset = "mimic_struct_predict.preprocessing.text_dataset.create_task_dataset:main"
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
+llm_inference = "mimic_struct_predict.models.inference.llm_inference:run_llm_inference"
 
 [tool.black]
 line-length = 120

@@ -28,7 +28,7 @@ ACES_DEFINITIONS_DIR := mimic_struct_predict/preprocessing/aces_task_definitions
 # ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
 ACES_TASKS := 30_day_readmission
 
-
+LLM_INFERENCE_OUTPUT_DIR := outputs/llm_inference
 
 
 define check_credentials
@@ -115,22 +115,6 @@ train-meds-tab:
 			"hydra.sweeper.n_trials=1000" "hydra.sweeper.n_jobs=$(N_WORKERS)"; \
 	done
 
-
-### Natural Language ###
-
-.PHONY: create-nl-dataset
-create-nl-dataset:
-	uv run create_nl_dataset \
-		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
-		aces_labels_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)
-
-.PHONY: create-nl-dataset-no-labels
-create-nl-dataset-no-labels:
-	uv run create_nl_dataset_no_labels \
-		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)
-
 ### Structured ###
 
 .PHONY: create-structured-dataset
@@ -138,10 +122,44 @@ create-structured-dataset:
 	uv run create_structured_dataset \
 		meds_data_dir=$(STRUCTURED_INPUT_DIR) \
 		aces_labels_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(STRUCTURED_OUTPUT_DIR)
+		output_dir=$(STRUCTURED_OUTPUT_DIR) \
+		split_on_doubleslash=False
 
-.PHONY: create-structured-dataset-no-labels
-create-structured-dataset-no-labels:
-	uv run create_structured_dataset_no_labels \
+.PHONY: create-code-pretraining-dataset
+create-code-pretraining-dataset:
+	uv run create_text_pre_training_dataset \
 		meds_data_dir=$(STRUCTURED_INPUT_DIR) \
-		output_dir=$(STRUCTURED_OUTPUT_DIR)
+		output_dir=$(STRUCTURED_OUTPUT_DIR) \
+		split_on_doubleslash=False
+
+
+### Natural Language ###
+
+.PHONY: create-nl-task-dataset
+create-nl-task-dataset:
+	uv run create_text_task_dataset \
+		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
+		aces_labels_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR) \
+		split_on_doubleslash=True
+
+.PHONY: create-nl-pretraining-dataset
+create-nl-pretraining-dataset:
+	uv run create_text_pre_training_dataset \
+		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR) \
+		split_on_doubleslash=True
+
+
+
+.PHONY: download-qwen-06B
+download-qwen-06B:
+	uv run hf auth login
+	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
+
+.PHONY: llm-inference
+llm-inference:
+	uv run llm_inference \
+		"dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)" \
+		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)" \
+		"split=tuning"

@@ -2,6 +2,8 @@
 
 data/
 notebooks/
+pre_trained_models/
+outputs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

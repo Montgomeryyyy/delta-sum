@@ -1,0 +1,29 @@
+pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
+enable_thinking: false
+dtype: float32
+
+
+dataset_dir: ???  # Required: directory of pre-built prompt datasets
+output_dir: ???          # Required: directory to save outputs
+split: ???
+
+batch_size: 8
+
+tokenization:
+  max_prompt_length: 256
+  enable_thinking: false
+
+generation:
+  do_sample: false
+  max_new_tokens: 1
+
+post_processing:
+  logits: true
+
+task_description:
+  30_day_readmission: "'Yes' if the patient will be hospitalised within 30 days of discharge, 'No' otherwise"
+  icu_mortality: "'Yes' if the patient will die before being discharged from the ICU, 'No' otherwise"
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
