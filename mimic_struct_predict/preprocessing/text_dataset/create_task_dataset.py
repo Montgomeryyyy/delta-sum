@@ -36,7 +36,13 @@ def main(cfg: DictConfig) -> None:
 
     log.info(f"Found {len(aces_shards)} ACES shards across tasks/splits.")
 
-    agg_expr = pl.col("code").str.join("\n")
+    
+    agg_expr = (
+        pl.col("code")
+        .filter(pl.col("time") <= pl.col("prediction_time"))
+        .sort_by("meds_row_idx")  # Relies on the row index injected below
+        .str.join("\n")
+    )
     if cfg.split_on_doubleslash:
         agg_expr = agg_expr.str.replace_all("//", " ", literal=True)
 
@@ -67,24 +73,20 @@ def main(cfg: DictConfig) -> None:
         log.info(f"Processing Task: [{task}] | Split: [{split}] | Shard: {shard_filename}")
 
         try:
-            # 1. Lazily load ACES and inject the task and split columns
-            aces_lazy = pl.scan_parquet(aces_path).with_columns(
-                pl.lit(task).alias("task"),
-            )
+            # 1. Lazily load dfs
+            aces_lazy = pl.scan_parquet(aces_path)
+            meds_lazy = pl.scan_parquet(meds_path).with_row_index("meds_row_idx")
 
-            # 2. Lazily load the matching MEDS shard
-            meds_lazy = pl.scan_parquet(meds_path)
-
-            # 3. The Transformation Pipeline
+            # 2. The Transformation Pipeline
             result = (
                 aces_lazy.join(meds_lazy, on="subject_id", how="inner")
                 .filter(pl.col("time") <= pl.col("prediction_time"))
-                # Include boolean_value and task in the group_by so they are retained in the output
-                .group_by(["subject_id", "prediction_time", "boolean_value", "task"])
-                .agg(agg_expr.alias("ehr_text"))  # Join all codes into a single string per subject_id/prediction_time
+                # Include boolean_value so they are retained in the output
+                .group_by(["subject_id", "prediction_time", "boolean_value"])
+                .agg(ehr_text=agg_expr)  # Join all codes into a single string per subject_id/prediction_time
             )
 
-            # 4. Execute and stream to disk
+            # 3. Execute and stream to disk
             result.sink_parquet(out_file_path)
             log.debug(f"Saved processed output to {out_file_path}")
 
