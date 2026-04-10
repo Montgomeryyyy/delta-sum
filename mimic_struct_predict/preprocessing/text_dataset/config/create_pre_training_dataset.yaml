@@ -1,0 +1,11 @@
+meds_data_dir: ???
+output_dir: ???
+
+# Whether to split code tokens on '//'. Set true for natural language but false for coded (use // for tokenization delimiter)
+split_on_doubleslash: False
+
+overwrite: False
+
+hydra:
+  run:
+    dir: ${output_dir}/.logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
