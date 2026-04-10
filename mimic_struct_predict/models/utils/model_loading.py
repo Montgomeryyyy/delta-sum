@@ -39,13 +39,22 @@ def resolve_dtype(dtype_str: str | None) -> torch.dtype | None:
     raise ValueError(f"Unrecognised dtype '{dtype_str}'. Expected one of {list(_DTYPE_MAP)} or null.")
 
 
-def get_string_id(tokenizer: PreTrainedTokenizerBase, string: str) -> int:
+def get_token_id(tokenizer: PreTrainedTokenizerBase, string: str) -> int:
     """Get the token ID for a given string, validating it is known and encodes to one token."""
-    token_id = tokenizer.convert_tokens_to_ids(string)
-    if isinstance(token_id, list):
-        raise ValueError(f"'{string}' must encode to exactly 1 token, got a list {token_id}")
+    token_ids = tokenizer.encode(string, add_special_tokens=False)
+    # 1. Check for multi-token decomposition
+    if len(token_ids) != 1:
+        raise ValueError(
+            f"'{string}' must encode to exactly 1 token. "
+            f"Instead, it encoded to {len(token_ids)} tokens: {token_ids}"
+        )
+
+    token_id = token_ids[0]
+
+    # 2. Check if it's an Out-of-Vocabulary (Unknown) token
     if token_id == tokenizer.unk_token_id:
-        raise ValueError(f"'{string}' token is not valid for this tokeniser.")
+        raise ValueError(f"'{string}' is not in the tokenizer vocabulary (UNK).")
+
     return int(token_id)
 
 

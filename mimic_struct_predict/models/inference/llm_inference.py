@@ -28,7 +28,7 @@ from transformers import (
 
 from mimic_struct_predict.models.utils import (
     create_prompt,
-    get_string_id,
+    get_token_id,
     load_model_and_tokenizer,
 )
 from mimic_struct_predict.models.utils.metrics import compute_yes_probs
@@ -170,8 +170,8 @@ def run_llm_inference(cfg: DictConfig) -> None:
         eval_mode=True,
         padding_side="left",
     )
-    yes_token_id = get_string_id(tokenizer, "Yes")
-    no_token_id = get_string_id(tokenizer, "No")
+    yes_token_id = get_token_id(tokenizer, "Yes")
+    no_token_id = get_token_id(tokenizer, "No")
     log.info(f"Yes token ID: {yes_token_id}, No token ID: {no_token_id}")
 
     for shard_path in shards:
@@ -184,7 +184,7 @@ def run_llm_inference(cfg: DictConfig) -> None:
 
         try:
             # 3a. Load shard data (it's not the train dataset but means 1 dataset is returned)
-            dataset = datasets.Dataset.from_parquet(shard_path)
+            dataset = datasets.Dataset.from_parquet(str(shard_path))
             log.info(f"Loaded {len(dataset)} examples from shard.")
 
             try:

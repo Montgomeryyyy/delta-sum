@@ -8,7 +8,7 @@
 #     write_latest_sentinel,
 # )
 from mimic_struct_predict.models.utils.model_loading import (
-    get_string_id,
+    get_token_id,
     load_model_and_tokenizer,
 )
 from mimic_struct_predict.models.utils.prompt_template import (
@@ -20,7 +20,7 @@ from mimic_struct_predict.models.utils.prompt_template import (
 # )
 
 __all__ = [
-    "get_string_id",
+    "get_token_id",
     "load_model_and_tokenizer",
     "create_prompt",
 ]
