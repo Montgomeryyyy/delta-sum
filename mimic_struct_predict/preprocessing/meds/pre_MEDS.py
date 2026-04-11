@@ -65,12 +65,23 @@ def _add_discharge_time_by_hadm_id(
 
 
 def process_admissions_df(admissions_df: pl.LazyFrame, patients_df: pl.LazyFrame) -> pl.LazyFrame:
-    """Joins admissions with `patients` to add the standardised `gender` column."""
-    patients_df = patients_df.select("subject_id", "gender").with_columns(
-        pl.col("gender").replace_strict({"F": "Female", "M": "Male"}, default=pl.col("gender")),
+    """
+    Joins admissions with patients to add a standardized gender column
+    and calculates the patient's age at the time of admission.
+    """
+    # 1. Standardize gender and select only the necessary columns from patients
+    patients_clean = patients_df.select("subject_id", "gender", "anchor_year", "anchor_age").with_columns(
+        pl.col("gender").replace_strict({"F": "Female", "M": "Male"}, default=pl.col("gender"))
     )
 
-    return admissions_df.join(patients_df, on="subject_id", how="left")
+    # 2. Join with admissions, calculate age, and clean up anchor columns
+    return (
+        admissions_df.join(patients_clean, on="subject_id", how="left")
+        .with_columns(
+            age=pl.col("anchor_age") + (pl.col("admittime").str.to_datetime().dt.year() - pl.col("anchor_year"))
+        )
+        .drop(["anchor_age", "anchor_year"])
+    )
 
 
 def process_icd_df(icd_df: pl.LazyFrame, admissions_df: pl.LazyFrame, d_icd_df: pl.LazyFrame) -> pl.LazyFrame:
@@ -193,7 +204,6 @@ def process_patients_df(patients_df: pl.LazyFrame, death_times_df: pl.LazyFrame)
             # then parse and combine with end-of-day time
             pl.col("dod").cast(pl.String).str.strptime(pl.Date, format="%Y-%m-%d", strict=False).dt.combine(END_OF_DAY),
         ).alias("dod"),
-        (pl.col("anchor_year") - pl.col("anchor_age")).cast(pl.String).alias("year_of_birth"),
     )
 
 
@@ -245,7 +255,7 @@ def process_icu_output_events_df(icu_output_events_df: pl.LazyFrame, d_items_df:
 FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[str]]] | None]] = {
     "hosp/admissions": (
         process_admissions_df,
-        [("hosp/patients", ["subject_id", "gender"])],
+        [("hosp/patients", ["subject_id", "gender", "anchor_year", "anchor_age"])],
     ),
     "hosp/diagnoses_icd": (
         process_icd_df,

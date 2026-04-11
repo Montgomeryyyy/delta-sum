@@ -31,7 +31,7 @@ def test_add_time_rows_inserts_correctly():
     # 3. B
     # 4. T// (Parent for row 2)
     # 5. C
-    expected_codes = ["T//10 hours//00 mins", "A", "B", "T//10 hours//05 mins", "C"]
+    expected_codes = ["T//10h//00m", "A", "B", "T//10h//05m", "C"]
     assert result["code"].to_list() == expected_codes
     assert result.shape[0] == 5
 
@@ -56,7 +56,7 @@ def test_add_time_rows_multiple_subjects():
 
     # Assert
     # Even if time is same, subject changed so new parent row
-    expected_codes = ["Time//10 hours//00 mins", "A", "Time//10 hours//00 mins", "B"]
+    expected_codes = ["Time//10h//00m", "A", "Time//10h//00m", "B"]
     assert result["code"].to_list() == expected_codes
     assert result["subject_id"].to_list() == [1, 1, 2, 2]
 
@@ -68,7 +68,7 @@ def test_add_time_rows_eod():
             "subject_id": [1, 1, 1],
             "time": [
                 datetime(2024, 1, 1, 10, 0, 0),
-                datetime(2024, 1, 1, 23, 59, 10),          # Natural event in the last minute
+                datetime(2024, 1, 1, 23, 59, 10),  # Natural event in the last minute
                 datetime(2024, 1, 1, 23, 59, 59, 999999),  # Artificial End of day
             ],
             "code": ["A", "B", "C"],
@@ -81,6 +81,6 @@ def test_add_time_rows_eod():
     result = fn(df).collect()
 
     # Assert
-    expected_codes = ["T//10 hours//00 mins", "A", "T//23 hours//59 mins", "B", "T//END_OF_DAY", "C"]
+    expected_codes = ["T//10h//00m", "A", "T//23h//59m", "B", "T//END_OF_DAY", "C"]
     assert result["code"].to_list() == expected_codes
     assert result.shape[0] == 6

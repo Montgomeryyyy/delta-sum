@@ -33,7 +33,7 @@ stages:
   - split_and_shard_subjects
   - convert_to_subject_sharded
   - convert_to_MEDS_events
-  - merge_to_MEDS_cohort
+  - merge_to_MEDS_cohort # <- output used for tabular data (below is the exact same data but transformed for language modelling)
   ### Custom MEDS transforms
   - regex_replacement:
       column: "code"
@@ -86,17 +86,14 @@ stages:
   - add_time_rows:
       header: "### Time"
       eod_string: "Unspecified"
-  - add_age_rows: # <- output used for tabular data (with times filtered out)
-      header: "## Age"
-      birth_code: "#### Birth"
-  - merge_age_column: 
-      age_code: "## Age"
+  - add_delta_rows:
+      header: "## Delta"
   - aggregate_code_metadata:
       aggregations:
         - name: "values/quantiles"
           quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-  - bin_numeric_values: # <- output used for structured data
-      code_with_bin_name: "{code}//Quantile {bin}" 
-  - replace_quantile_with_numeric_value: # <- output used for natural language data
+  - bin_numeric_values: # <- output used for structured data (has quantile bins instead of numeric values)
+      code_with_bin_name: "{code}//Quantile {bin}"
+  - replace_quantile_with_numeric_value: # <- output used for natural language data (has numeric values instead of quantile bins)
       drop_numeric_values: true
       sig_figs: 3

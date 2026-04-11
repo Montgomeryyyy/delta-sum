@@ -11,11 +11,12 @@ from ..utils import _changed, insert_parent_rows
 
 END_OF_DAY = pl.time(23, 59, 59, 999999)
 
+
 @Stage.register(is_metadata=False)
 def add_time_rows(
     stage_cfg: DictConfig,
 ) -> Callable[[pl.LazyFrame], pl.LazyFrame]:
-    """Returns a function that inserts a row with HH:MM whenever the time or subject_id changes.
+    """Returns a function that inserts a row with HHh MMm whenever the time or subject_id changes.
 
     Args:
         stage_cfg: Configuration for the stage containing:
@@ -59,10 +60,10 @@ def add_time_rows(
     eod_string = stage_cfg.get("eod_string", None)
 
     def add_time_rows_fn(df: pl.LazyFrame) -> pl.LazyFrame:
-        """Insert HH:MM rows on subject or time changes."""
+        """Insert HHh MMm rows on subject or time changes."""
 
-        # 1. Expressions for HH:MM parsing and checking
-        time_hh_mm = pl.col("time").dt.strftime("%H hours//%M mins")
+        # 1. Expressions for HHh MMm parsing and checking
+        time_hh_mm = pl.col("time").dt.strftime("%Hh//%Mm")
         time_hour = pl.col("time").dt.hour()
         time_min = pl.col("time").dt.minute()
 

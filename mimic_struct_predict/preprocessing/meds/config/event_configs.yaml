@@ -72,6 +72,14 @@ hosp/admissions:
       - col(gender)
     time: col(admittime)
     time_format: "%Y-%m-%d %H:%M:%S"
+  # Calculated from anchor_age and anchor_year in pre_MEDS.py
+  age:
+     code:
+       - Patient Demographics
+       - Age
+     numeric_value: col(age)
+     time: col(admittime)
+     time_format: "%Y-%m-%d %H:%M:%S"
   discharge:
     code:
       - Hospital Discharge
@@ -147,15 +155,6 @@ hosp/omr:
     time_format: "%Y-%m-%d %H:%M:%S"
 
 hosp/patients:
-  dob:
-    code:
-      # Not using the MEDS official code for birth (MEDS_BIRTH) due to semantics.
-      - Birth
-      - Born
-    time: col(year_of_birth)
-    # Set as Y-01-01 00:00:00 internally in pre-MEDS
-    # Leave at 00:00:00 to ensure no events come before this event
-    time_format: "%Y"
   death:
     code:
       # Not using the MEDS official code for death (MEDS_DEATH) due to semantics.
