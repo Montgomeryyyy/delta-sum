@@ -28,35 +28,25 @@ INSTRUCTIONS_HEADER = "# Instructions"
 DIRECT_INSTRUCTIONS = """Based on the patient's electronic health record above, predict if the outcome will occur.
 
 ## Constraints
-You must respond with EXACTLY one word: "Yes" or "No" enclosed in <answer> tags. Do not explain your reasoning.
+Do not explain your reasoning.
+Your response must start with "Answer: " followed by either "Yes" or "No".
 
 ## Output Format
-You must adhere exactly to the following XML output format:
-```xml
-<answer>
-Yes/No
-</answer>
+Answer: Yes/No
 ```"""  # noqa: E501
 
-THINKING_INSTRUCTIONS = """Based on the patient's electronic health record above, predict the probability that the outcome will occur.
+THINKING_INSTRUCTIONS = """Based on the patient's electronic health record above, predict if the outcome will occur.
 
-Step 1: Inside of <think> tags, reason step by step if the outcome will occur.
-Step 2: Then inside of <answer> tags, respond with "Yes" or "No" if the outcome will occur.
+First, write out your step-by-step clinical reasoning inside <think> and </think> tags. 
+After you have finished thinking, you must provide your final answer.
 
 ## Constraints
-Inside of <answer> tags, you must respond with EXACTLY one word: "Yes" or "No".
-Your response assistant message must be less than {max_words} words.
+Your final answer must start with "Answer: " followed by either "Yes" or "No".
+Your entire response, including thinking, must be less than {max_tokens} tokens.
 
 ## Output Format
-You must adhere exactly to the following XML output format:
-```xml
-<think>
-Detailed clinical reasoning process less than {max_words} words
-</think>
-<answer>
-Yes/No
-</answer>
-```"""  # noqa: E501
+Answer: Yes/No
+"""  # noqa: E501
 
 
 def _char_to_token_idx(offset_mapping: list[tuple[int, int]], char_idx: int, field_name: str) -> int:
@@ -189,7 +179,7 @@ def create_prompt_str(
             raise ValueError(
                 "max_new_tokens must be specified when thinking is enabled (as is part of prompt instructions)."
             )
-        instructions = instructions.format(max_words=max_new_tokens)
+        instructions = instructions.format(max_tokens=max_new_tokens)
 
     formatted_content = PROMPT_TEMPLATE.format(
         ehr_title_header=EHR_TITLE_HEADER,
@@ -204,7 +194,8 @@ def create_prompt_str(
         messages.append(
             {
                 "role": "assistant",
-                "content": "<answer>\n",
+                # Note no space after "Answer:" to ensure " Yes" or " No" are generated.
+                "content": "Answer:",
             }
         )
 

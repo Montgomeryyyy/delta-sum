@@ -70,7 +70,9 @@ def batch_inference(
     sample_latency = (end_time - start_time) / inputs["input_ids"].shape[0]
 
     # Extract sequences and logits
-    completions = tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
+    prompts = tokenizer.batch_decode(outputs.sequences[:, : inputs["input_ids"].shape[1]], skip_special_tokens=True)
+    new_tokens = outputs.sequences[:, inputs["input_ids"].shape[1] :]
+    completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
 
     # Completetions can be differing lengths, so need to handle extracting the final token logits carefully
     # Create mask for non-padded tokens in new_tokens
@@ -98,6 +100,7 @@ def batch_inference(
     format_adherence = is_yes | is_no
 
     return {
+        "prompt": prompts,
         "completion": completions,
         "probability": [float(p) for p in probabilities],
         "sample_latency": [sample_latency] * inputs["input_ids"].shape[0],
@@ -171,8 +174,8 @@ def run_llm_inference(cfg: DictConfig) -> None:
         eval_mode=True,
         padding_side="left",
     )
-    yes_token_id = get_token_id(tokenizer, "Yes")
-    no_token_id = get_token_id(tokenizer, "No")
+    yes_token_id = get_token_id(tokenizer, cfg.tokenization.yes_token)
+    no_token_id = get_token_id(tokenizer, cfg.tokenization.no_token)
     log.info(f"Yes token ID: {yes_token_id}, No token ID: {no_token_id}")
 
     for shard_path in shards:
@@ -229,7 +232,7 @@ def run_llm_inference(cfg: DictConfig) -> None:
                 batched=True,
                 desc="Tokenizing prompts",
             )
-            print(dataset.column_names)
+
             log.info("Truncating prompts on EHR newlines...")
             dataset = dataset.map(
                 lambda x: truncate_on_ehr_newlines(
@@ -262,6 +265,7 @@ def run_llm_inference(cfg: DictConfig) -> None:
             # 3d. Batch Inference via DataLoader
             log.info(f"Running inference on {len(dataset)} examples...")
             results: dict[str, list[Any]] = {
+                "prompt": [],
                 "completion": [],
                 "probability": [],
                 "sample_latency": [],

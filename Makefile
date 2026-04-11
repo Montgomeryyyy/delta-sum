@@ -157,9 +157,18 @@ download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
 
-.PHONY: llm-inference
-llm-inference:
+.PHONY: llm-inference-direct
+llm-inference-direct:
 	uv run llm_inference \
 		"dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)" \
-		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)" \
+		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)"/direct \
 		"split=tuning"
+
+.PHONY: llm-inference-thinking
+llm-inference-thinking:
+	uv run llm_inference \
+		--config-name llm_inference_thinking.yaml \
+		"dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)" \
+		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)"/thinking \
+		"split=tuning" \
+		"tasks=icu_mortality" \
