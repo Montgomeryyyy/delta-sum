@@ -1,20 +1,11 @@
-pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
-dtype: float32
-
-
-dataset_dir: ???  # Required: directory of pre-built prompt datasets
-output_dir: ???          # Required: directory to save outputs
-split: ???
-tasks: null # If null or empty, will run on all tasks in the dataset
-
-batch_size: 8
+# Inherits from llm_inference_direct.yaml, but overrides settings to enable thinking and adjust generation parameters accordingly.
+defaults:
+  - llm_inference_direct
+  - _self_
 
 tokenization:
   max_prompt_length: 256
   enable_thinking: true
-  # Note space
-  yes_token: " Yes"
-  no_token: " No"
 
 generation:
   do_sample: true
@@ -26,11 +17,3 @@ generation:
   top_p: 0.95
   top_k: 20
   min_p: 0.0
-
-task_description:
-  30_day_readmission: "'Yes' if the patient will be hospitalised within 30 days of discharge, 'No' otherwise"
-  icu_mortality: "'Yes' if the patient will die before being discharged from the ICU, 'No' otherwise"
-
-hydra:
-  run:
-    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

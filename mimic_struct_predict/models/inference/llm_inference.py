@@ -111,7 +111,7 @@ def batch_inference(
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="llm_inference",
+    config_name="llm_inference_direct",
 )
 def run_llm_inference(cfg: DictConfig) -> None:
     """

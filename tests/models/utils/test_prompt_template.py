@@ -98,7 +98,7 @@ def test_create_prompt_str_non_thinking_uses_prefilled_answer_tag() -> None:
     )
 
     assert tokenizer.last_messages is not None
-    assert tokenizer.last_messages[-1] == {"role": "assistant", "content": "<answer>\n"}
+    assert tokenizer.last_messages[-1] == {"role": "assistant", "content": "Answer:"}
     assert tokenizer.last_apply_kwargs == {
         "enable_thinking": False,
         "add_generation_prompt": False,
@@ -126,7 +126,7 @@ def test_create_prompt_str_includes_thinking_config_when_enabled() -> None:
         "continue_final_message": False,
         "tokenize": False,
     }
-    assert "less than 64 words" in prompt_str
+    assert "less than 64 tokens" in prompt_str
     assert "[assistant]" in prompt_str
 
 
