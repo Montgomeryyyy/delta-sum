@@ -12,7 +12,7 @@ MIMICIV_RAW_DIR      := data/raw_input
 MIMICIV_PRE_MEDS_DIR := data/pre_MEDS
 MIMICIV_MEDS_COHORT_DIR     := data/MEDS_cohort
 
-MEDS_TAB_INPUT_DIR := data/MEDS_cohort/add_age_rows
+MEDS_TAB_INPUT_DIR := data/MEDS_cohort/merge_to_MEDS_cohort
 MEDS_TAB_OUTPUT_DIR := data/MEDS_tab
 
 NATURAL_LANGUAGE_INPUT_DIR := data/MEDS_cohort/data
@@ -172,3 +172,9 @@ llm-inference-thinking:
 		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)"/thinking \
 		"split=tuning" \
 		"tasks=icu_mortality" \
+
+.PHONY: sft-train
+sft-train:
+	uv run sft_train \
+		"dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)" \
+		"output_dir=outputs/models/sft" \

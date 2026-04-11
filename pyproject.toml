@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "bitsandbytes>=0.49.2",
     "datasets>=4.0.0",
     "es-aces>=0.7.0",
     "huggingface-hub>=1.9.2",
@@ -19,7 +20,9 @@ dependencies = [
     "pytest-mock>=3.15.1",
     "setuptools>=82.0.1",
     "torch>=2.10.0",
+    "trackio>=0.21.1",
     "transformers>=5.5.0",
+    "trl>=0.29.1",
 ]
 
 [build-system]
@@ -41,6 +44,7 @@ create_text_pre_training_dataset = "mimic_struct_predict.preprocessing.text_data
 create_text_task_dataset = "mimic_struct_predict.preprocessing.text_dataset.create_task_dataset:main"
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 llm_inference = "mimic_struct_predict.models.inference.llm_inference:run_llm_inference"
+sft_train = "mimic_struct_predict.models.train.sft:train_sft"
 
 [tool.black]
 line-length = 120

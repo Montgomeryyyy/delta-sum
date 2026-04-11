@@ -1,0 +1,81 @@
+model:
+  pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
+  dtype: float32
+
+dataset_dir: ???  # Required: directory of pre-built prompt datasets
+output_dir: ???          # Required: directory to save outputs
+tasks: null # If null or empty, will run on all tasks in the dataset
+seed: 42
+
+tokenization:
+  max_prompt_length: 256
+  enable_thinking: false
+  # Note space
+  yes_token: " Yes"
+  no_token: " No"
+  batch_size: null
+
+task_description:
+  30_day_readmission: "'Yes' if the patient will be hospitalised within 30 days of discharge, 'No' otherwise"
+  icu_mortality: "'Yes' if the patient will die before being discharged from the ICU, 'No' otherwise"
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+
+tracking:
+  report_to: trackio
+  project: mimic-struct-predict-sft
+
+lora:
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+### SFT Specific ###
+
+split_names:
+  train: train
+  val: tuning
+
+training:
+  # SFTTrainer parameters
+  ## Parameters that control the data preprocessing
+  shuffle_dataset: true # TODO: Think about this more
+  pad_to_multiple_of: 8
+  ## Parameters that control the loss
+  completion_only_loss: true
+  # TrainingArguments parameters
+  ## Training Duration and Batch Size
+  per_device_train_batch_size: 4
+  max_steps : 6
+  ## Learning Rate & Scheduler
+  learning_rate: 2e-5
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.1
+  ## Optimizer
+  optim: adamw_8bit
+  weight_decay: 0.01
+  ## Regularization & Training Stability
+  gradient_accumulation_steps: 4
+  ## Mixed Precision Training
+  fp16: true
+  ## Logging & Monitoring Training
+  logging_strategy: steps
+  logging_steps: 2
+  ## Evaluation
+  eval_strategy: steps
+  eval_steps: 2
+  per_device_eval_batch_size: 4
+  ## Checkpointing & Saving
+  save_strategy: steps
+  save_steps: 2  # Must match eval_steps for load_best_model_at_end to work correctly
+  save_total_limit: 3
+  ## Best Model Tracking
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  ## Dataloader
+  dataloader_num_workers: 1

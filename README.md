@@ -15,7 +15,7 @@ Convert to MEDS
 - `make meds-dataset`
 - Multiple stage output. Notably:
     - tabular data
-        - `data/MEDS_cohort/add_age_rows`
+        - `data/MEDS_cohort/merge_to_MEDS_cohort`
     - coded data
         - `data/MEDS_cohort/bin_numeric_values`
         - Has age as string rather than numeric and quantiled numeric values
@@ -29,12 +29,12 @@ Create ACES labels
 
 
 
-uv run meds-tab-describe "MEDS_cohort_dir=data/MEDS_cohort" "input_dir=data/MEDS_cohort/add_age_rows/train"
+uv run meds-tab-describe "MEDS_cohort_dir=data/MEDS_cohort" "input_dir=data/MEDS_cohort/merge_to_MEDS_cohort/train"
 
 
 uv run meds-tab-cache-task \
     "MEDS_cohort_dir=data/MEDS_cohort" \
-    "input_dir=data/MEDS_cohort/add_age_rows" \
+    "input_dir=data/MEDS_cohort/merge_to_MEDS_cohort" \
     "output_dir=data/MEDS_cohort/30_day_readmission/task_cache" \
     "input_label_dir=data/aces_labels/30_day_readmission" \
     "task_name=30_day_readmission" \
