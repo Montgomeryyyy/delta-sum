@@ -45,6 +45,7 @@ create_text_task_dataset = "mimic_struct_predict.preprocessing.text_dataset.crea
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 llm_inference = "mimic_struct_predict.models.inference.llm_inference:run_llm_inference"
 sft_train = "mimic_struct_predict.models.train.sft:train_sft"
+struct_train = "mimic_struct_predict.models.train.pre_training_coded:main"
 
 [tool.black]
 line-length = 120

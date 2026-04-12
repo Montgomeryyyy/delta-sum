@@ -119,7 +119,7 @@ train-meds-tab:
 
 .PHONY: create-structured-dataset
 create-structured-dataset:
-	uv run create_structured_dataset \
+	uv run create_text_task_dataset \
 		meds_data_dir=$(STRUCTURED_INPUT_DIR) \
 		aces_labels_dir=$(ACES_OUTPUT_DIR) \
 		output_dir=$(STRUCTURED_OUTPUT_DIR) \
@@ -132,6 +132,11 @@ create-code-pretraining-dataset:
 		output_dir=$(STRUCTURED_OUTPUT_DIR) \
 		split_on_doubleslash=False
 
+.PHONY: train-struct-model
+train-struct-model:
+	uv run struct_train \
+		dataset_dir=$(STRUCTURED_OUTPUT_DIR)/pre_training \
+		output_dir=outputs/models/coded_pre_training
 
 ### Natural Language ###
 
@@ -149,8 +154,6 @@ create-nl-pretraining-dataset:
 		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR) \
 		split_on_doubleslash=True
-
-
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
@@ -177,4 +180,4 @@ llm-inference-thinking:
 sft-train:
 	uv run sft_train \
 		"dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)" \
-		"output_dir=outputs/models/sft" \
+		"output_dir=outputs/models/sft"
