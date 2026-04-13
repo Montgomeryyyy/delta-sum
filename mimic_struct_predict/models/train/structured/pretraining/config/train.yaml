@@ -1,35 +1,22 @@
-dataset_dir: ???  # Required: directory of pre-built prompt datasets
+tokenizer_dir: ???  # Required: directory of pre-trained tokenizer (which also contains the tokenized datasets)
 output_dir: ???          # Required: directory to save outputs
 seed: 42
 
-dataset:
-  split_names:
-    train: train
-    val: tuning
-  text_column: ehr_text
+split_names:
+  train: train
+  val: tuning
 
-tokenization:
-  special_tokens:
-    unk_token: "Unknown"
-    pad_token: "<PAD>"
-    eoc_token: "\n" # End of Code token
-  delimiter: "//"
-  min_frequency: 5
-  training_batch_size: 1000
-  model_max_length: 512
-  padding_side: right
-  truncation_side: left
-  stride: 64
-  pad_to_multiple_of: 8
+pad_to_multiple_of: 8
 
 model:
   name: "gpt2"
+  vocab_padding_multiple: 8
 
 # https://huggingface.co/docs/transformers/en/main_classes/trainer#transformers.TrainingArguments
 training_args:
   # Training Duration and Batch Size
   per_device_train_batch_size: 4
-  max_steps : 100
+  max_steps : 10
   # Learning Rate & Scheduler
   learning_rate: 5e-4
   lr_scheduler_type: cosine
@@ -46,7 +33,7 @@ training_args:
   logging_steps: 0.01
   # Experiment Tracking Integration
   report_to: "trackio"
-  project: "mimic-struct-predict-pre-training-coded"
+  project: "mimic-struct-predict-structured-pretraining"
   trackio_space_id: null
   # Evaluation
   eval_strategy: steps

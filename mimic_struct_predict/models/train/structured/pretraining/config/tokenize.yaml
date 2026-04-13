@@ -1,0 +1,30 @@
+dataset_dir: ???  # Required: directory of meds datasets with quantiles
+output_dir: ???          # Required: directory to save outputs
+seed: 42
+
+overwrite: false
+
+dataset:
+  split_names:
+    train: train
+    val: tuning
+
+tokenization:
+  special_tokens:
+    unk_token: "Unknown"
+    pad_token: "<PAD>"
+    eoc_token: "\n" # End of Code token
+  delimiter: "//"
+  min_frequency: 5
+  model_max_length: 512
+  padding_side: right
+  truncation_side: left
+  stride: 64
+  pad_to_multiple_of: 8
+
+num_workers: 4
+batch_size: 50
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

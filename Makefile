@@ -30,6 +30,9 @@ ACES_TASKS := 30_day_readmission
 
 LLM_INFERENCE_OUTPUT_DIR := outputs/llm_inference
 
+TRAINING_DIR := outputs/training
+TRACKIO_DIR := $(TRAINING_DIR)/trackio
+
 
 define check_credentials
 	@test -n "$(MIMIC_USER)" || (echo "Error: MIMIC_USER required" && exit 1)
@@ -117,26 +120,29 @@ train-meds-tab:
 
 ### Structured ###
 
-.PHONY: create-structured-dataset
-create-structured-dataset:
-	uv run create_text_task_dataset \
-		meds_data_dir=$(STRUCTURED_INPUT_DIR) \
-		aces_labels_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(STRUCTURED_OUTPUT_DIR) \
-		split_on_doubleslash=False
+CODED_PRETRAINING_DIR := $(TRAINING_DIR)/coded_pretraining
 
-.PHONY: create-code-pretraining-dataset
-create-code-pretraining-dataset:
-	uv run create_text_pre_training_dataset \
-		meds_data_dir=$(STRUCTURED_INPUT_DIR) \
-		output_dir=$(STRUCTURED_OUTPUT_DIR) \
-		split_on_doubleslash=False
+.PHONY: tokenize-structured-pretraining-dataset
+tokenize-structured-pretraining-dataset:
+	uv run tokenize_structured_pretraining_dataset \
+		dataset_dir=$(STRUCTURED_INPUT_DIR) \
+		output_dir=$(CODED_PRETRAINING_DIR)/tokenizer
 
 .PHONY: train-struct-model
 train-struct-model:
-	uv run struct_train \
-		dataset_dir=$(STRUCTURED_OUTPUT_DIR)/pre_training \
-		output_dir=outputs/models/coded_pre_training
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run train_structured_pretraining \
+		tokenizer_dir=$(CODED_PRETRAINING_DIR)/tokenizer \
+		output_dir=$(CODED_PRETRAINING_DIR)
+
+.PHONY: train-struct-model-multigpu
+train-struct-model-multigpu:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run accelerate launch config_file --config_file=./mimic_struct_predict/models/train/structured/pretraining/config/accelerate_multigpu.yaml \
+		train_structured_pretraining \
+		tokenizer_dir=$(CODED_PRETRAINING_DIR)/tokenizer \
+		output_dir=$(CODED_PRETRAINING_DIR)
+
 
 ### Natural Language ###
 
@@ -150,7 +156,7 @@ create-nl-task-dataset:
 
 .PHONY: create-nl-pretraining-dataset
 create-nl-pretraining-dataset:
-	uv run create_text_pre_training_dataset \
+	uv run create_text_pretraining_dataset \
 		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR) \
 		split_on_doubleslash=True

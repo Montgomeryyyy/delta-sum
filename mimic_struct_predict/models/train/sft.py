@@ -88,7 +88,7 @@ def train_sft(cfg: DictConfig) -> None:
         split = shard_path.parent.name
         if (
             (selected_tasks is None or task in selected_tasks)
-            and task != "pre_training"
+            and task != "pretraining"
             and split in {cfg.split_names.train, cfg.split_names.val}
         ):
             task_to_split_to_shard_path[task][split].append(str(shard_path))

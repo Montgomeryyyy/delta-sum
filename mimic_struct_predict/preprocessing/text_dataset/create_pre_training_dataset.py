@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="create_pre_training_dataset",
+    config_name="create_pretraining_dataset",
 )
 def main(cfg: DictConfig) -> None:
     """Process MEDS shards into an NL dataset without ACES label filtering.
@@ -43,7 +43,7 @@ def main(cfg: DictConfig) -> None:
         split = meds_path.parent.name  # e.g. "train"
         shard_filename = meds_path.name  # e.g. "0.parquet"
 
-        out_file_path = out_dir / "pre_training" / split / shard_filename
+        out_file_path = out_dir / "pretraining" / split / shard_filename
 
         if out_file_path.exists() and not cfg.overwrite:
             log.info(f"Output file {out_file_path} already exists and overwrite is " f"{cfg.overwrite}. Skipping.")
