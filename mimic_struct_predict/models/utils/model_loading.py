@@ -71,6 +71,22 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
+def load_tokenizer(tokenizer_dir: str, padding_side: str = "left") -> PreTrainedTokenizerBase:
+    """Load a HuggingFace tokenizer from a directory.
+
+    Args:
+        tokenizer_dir: Path to the directory containing the tokenizer files.
+        padding_side: Side on which to pad sequences.
+    Returns:
+        PreTrainedTokenizerBase: The loaded tokenizer.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+    tokenizer.padding_side = padding_side
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    return tokenizer
+
+
 def load_model_and_tokenizer(
     model_class: Type[PreTrainedModel],
     model_config: DictConfig,
@@ -100,10 +116,7 @@ def load_model_and_tokenizer(
     device = get_device()
     logger.info(f"Using device: {device}")
 
-    tokenizer = AutoTokenizer.from_pretrained(model_config.pretrained_model_name_or_path)
-    tokenizer.padding_side = padding_side
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer = load_tokenizer(model_config.pretrained_model_name_or_path, padding_side=padding_side)
 
     # Determine best dtype
     resolved_dtype = resolve_dtype(model_config.dtype)

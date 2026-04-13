@@ -46,9 +46,11 @@ create_text_pretraining_dataset = "mimic_struct_predict.preprocessing.text_datas
 create_text_task_dataset = "mimic_struct_predict.preprocessing.text_dataset.create_task_dataset:main"
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 llm_inference = "mimic_struct_predict.models.inference.llm_inference:run_llm_inference"
-sft_train = "mimic_struct_predict.models.train.sft:train_sft"
-train_structured_pretraining = "mimic_struct_predict.models.train.structured.pretraining.train:main"
 tokenize_structured_pretraining_dataset = "mimic_struct_predict.models.train.structured.pretraining.tokenize:main"
+train_structured_pretraining = "mimic_struct_predict.models.train.structured.pretraining.train:main"
+tokenize_natural_language_multitask_sft = "mimic_struct_predict.models.train.natural_language.multitask_sft.tokenize:main"
+train_natural_language_multitask_sft = "mimic_struct_predict.models.train.natural_language.multitask_sft.train:main"
+
 
 [tool.black]
 line-length = 120

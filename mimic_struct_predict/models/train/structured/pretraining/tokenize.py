@@ -16,6 +16,10 @@ from transformers import (
     PreTrainedTokenizerFast,
 )
 
+from mimic_struct_predict.models.utils.meds_to_string_dataset import (
+    meds_to_string_dataset,
+)
+
 log = logging.getLogger(__name__)
 
 TEXT_COLUMN = "ehr_text"
@@ -144,11 +148,12 @@ def main(cfg: DictConfig) -> None:
 
     log.info("Creating raw pretraining dataset from MEDS shards...")
     raw_data_dir = output_dir / "raw_data"
-    create_pretraining_dataset(
+    meds_to_string_dataset(
         meds_dir=meds_data_dir,
         output_dir=raw_data_dir,
         splits={train_split, val_split},
-        eoc_token=cfg.tokenization.special_tokens.eoc_token,
+        code_join_token=cfg.tokenization.special_tokens.eoc_token,
+        split_on_doubleslash=False,  # We use // as delimiter for tokenizer
         overwrite=cfg.overwrite,
     )
 

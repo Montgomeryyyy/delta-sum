@@ -33,8 +33,13 @@ LLM_INFERENCE_OUTPUT_DIR := outputs/llm_inference
 TRAINING_DIR := outputs/training
 TRACKIO_DIR := $(TRAINING_DIR)/trackio
 
-CODED_PRETRAINING_DIR := $(TRAINING_DIR)/coded_pretraining
+STRUCTURED_PRETRAINING_DIR := $(TRAINING_DIR)/structured_pretraining
+NL_MULTITASK_SFT_DIR := $(TRAINING_DIR)/natural_language_multitask_sft
 
+.PHONY: show-trackio
+show-trackio:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run trackio show
 
 define check_credentials
 	@test -n "$(MIMIC_USER)" || (echo "Error: MIMIC_USER required" && exit 1)
@@ -126,45 +131,44 @@ train-meds-tab:
 tokenize-structured-pretraining:
 	uv run tokenize_structured_pretraining_dataset \
 		dataset_dir=$(STRUCTURED_INPUT_DIR) \
-		output_dir=$(CODED_PRETRAINING_DIR)/tokenizer
+		output_dir=$(STRUCTURED_PRETRAINING_DIR)/tokenizer
 
 .PHONY: train-structured-pretraining
 train-structured-pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run train_structured_pretraining \
-		tokenizer_dir=$(CODED_PRETRAINING_DIR)/tokenizer \
-		output_dir=$(CODED_PRETRAINING_DIR)
+		tokenizer_dir=$(STRUCTURED_PRETRAINING_DIR)/tokenizer \
+		output_dir=$(STRUCTURED_PRETRAINING_DIR)
 
 .PHONY: train-structured-pretraining-multigpu
 train-structured-pretraining-multigpu:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run accelerate launch config_file --config_file=./mimic_struct_predict/models/train/structured/pretraining/config/accelerate_multigpu.yaml \
 		train_structured_pretraining \
-		tokenizer_dir=$(CODED_PRETRAINING_DIR)/tokenizer \
-		output_dir=$(CODED_PRETRAINING_DIR)
+		tokenizer_dir=$(STRUCTURED_PRETRAINING_DIR)/tokenizer \
+		output_dir=$(STRUCTURED_PRETRAINING_DIR)
 
 
 ### Natural Language ###
-
-.PHONY: create-nl-task-dataset
-create-nl-task-dataset:
-	uv run create_text_task_dataset \
-		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
-		aces_labels_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR) \
-		split_on_doubleslash=True
-
-.PHONY: create-nl-pretraining-dataset
-create-nl-pretraining-dataset:
-	uv run create_text_pretraining_dataset \
-		meds_data_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR) \
-		split_on_doubleslash=True
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
+
+.PHONY: tokenize-natural-language-multitask-sft
+tokenize-natural-language-multitask-sft:
+	uv run tokenize_natural_language_multitask_sft \
+		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
+		aces_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(NL_MULTITASK_SFT_DIR)/tokenized_dataset
+
+.PHONY: train-natural-language-multitask-sft
+train-natural-language-multitask-sft:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run train_natural_language_multitask_sft \
+		dataset_dir=$(NL_MULTITASK_SFT_DIR)/tokenized_dataset \
+		output_dir=$(NL_MULTITASK_SFT_DIR)
 
 .PHONY: llm-inference-direct
 llm-inference-direct:
@@ -181,9 +185,3 @@ llm-inference-thinking:
 		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)"/thinking \
 		"split=tuning" \
 		"tasks=icu_mortality" \
-
-.PHONY: sft-train
-sft-train:
-	uv run sft_train \
-		"dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)" \
-		"output_dir=outputs/models/sft"
