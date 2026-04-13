@@ -10,8 +10,8 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from transformers import (
     AutoConfig,
+    AutoModelForCausalLM,
     DataCollatorForLanguageModeling,
-    GPT2LMHeadModel,
     PreTrainedTokenizerFast,
     Trainer,
     TrainerCallback,
@@ -68,7 +68,7 @@ def main(cfg: DictConfig) -> None:
         pad_token_id=tokenizer.pad_token_id,
     )
 
-    model = GPT2LMHeadModel(config)
+    model = AutoModelForCausalLM.from_config(config)
     model.train()
     model_size = sum(t.numel() for t in model.parameters())
     log.info(f"Model size: {model_size/1000**2:.1f}M parameters")

@@ -33,6 +33,8 @@ LLM_INFERENCE_OUTPUT_DIR := outputs/llm_inference
 TRAINING_DIR := outputs/training
 TRACKIO_DIR := $(TRAINING_DIR)/trackio
 
+CODED_PRETRAINING_DIR := $(TRAINING_DIR)/coded_pretraining
+
 
 define check_credentials
 	@test -n "$(MIMIC_USER)" || (echo "Error: MIMIC_USER required" && exit 1)
@@ -120,23 +122,21 @@ train-meds-tab:
 
 ### Structured ###
 
-CODED_PRETRAINING_DIR := $(TRAINING_DIR)/coded_pretraining
-
-.PHONY: tokenize-structured-pretraining-dataset
-tokenize-structured-pretraining-dataset:
+.PHONY: tokenize-structured-pretraining
+tokenize-structured-pretraining:
 	uv run tokenize_structured_pretraining_dataset \
 		dataset_dir=$(STRUCTURED_INPUT_DIR) \
 		output_dir=$(CODED_PRETRAINING_DIR)/tokenizer
 
-.PHONY: train-struct-model
-train-struct-model:
+.PHONY: train-structured-pretraining
+train-structured-pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run train_structured_pretraining \
 		tokenizer_dir=$(CODED_PRETRAINING_DIR)/tokenizer \
 		output_dir=$(CODED_PRETRAINING_DIR)
 
-.PHONY: train-struct-model-multigpu
-train-struct-model-multigpu:
+.PHONY: train-structured-pretraining-multigpu
+train-structured-pretraining-multigpu:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run accelerate launch config_file --config_file=./mimic_struct_predict/models/train/structured/pretraining/config/accelerate_multigpu.yaml \
 		train_structured_pretraining \
