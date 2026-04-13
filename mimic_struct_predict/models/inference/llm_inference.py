@@ -27,11 +27,10 @@ from transformers import (
 )
 
 from mimic_struct_predict.models.utils import (
-    create_prompt_str,
     get_token_id,
     load_model_and_tokenizer,
-    truncate_on_ehr_newlines,
 )
+from mimic_struct_predict.models.utils.dataset import ehr_texts_to_message_tokens
 from mimic_struct_predict.models.utils.metrics import compute_yes_probs
 
 log = logging.getLogger(__name__)
@@ -170,7 +169,7 @@ def run_llm_inference(cfg: DictConfig) -> None:
     log.info("Loading model and tokenizer...")
     model, tokenizer = load_model_and_tokenizer(
         model_class=AutoModelForCausalLM,
-        model_config=cfg,
+        model_config=cfg.model,
         eval_mode=True,
         padding_side="left",
     )
@@ -196,56 +195,21 @@ def run_llm_inference(cfg: DictConfig) -> None:
             except KeyError:
                 log.error(f"Task description not found for task: {task}")
                 raise ValueError(f"Task description not found for task: {task}")
+            
 
-            # 3b. Create prompts from EHR text and task descriptions.
-            log.info("Generating prompts...")
             dataset = dataset.map(
-                lambda ehr_text: {
-                    "prompt": create_prompt_str(
-                        ehr_text=ehr_text,
-                        task_description=task_description,
-                        tokenizer=tokenizer,
-                        enable_thinking=cfg.tokenization.enable_thinking,
-                        max_prompt_length=cfg.tokenization.max_prompt_length,
-                        max_new_tokens=cfg.generation.get("max_new_tokens", None),
-                    )
-                },
-                input_columns=cfg.get("ehr_text_column", "ehr_text"),
-                # Drop ehr_text after creating prompt to save memory, we won't need it anymore and it can be large.
-                batched=False,
-                desc="Creating prompts",
-            )
-
-            # 3c.Tokenize prompts and prepare DataLoader.
-            log.info("Tokenizing prompts...")
-            dataset = dataset.map(
-                lambda prompts: tokenizer(
-                    prompts,
-                    truncation=False,  # Truncation handled by truncate_ehr_text
-                    max_length=cfg.tokenization.max_prompt_length,
-                    padding="do_not_pad",  # We'll handle padding in the DataLoader with a collator
-                    return_length=True,
-                    add_special_tokens=False,
-                    return_offsets_mapping=True,
+                lambda ehr_texts: ehr_texts_to_message_tokens(
+                    ehr_texts=ehr_texts,
+                    task_description=task_description,
+                    tokenizer=tokenizer,
+                    max_prompt_length=cfg.tokenization.max_prompt_length,
+                    enable_thinking=cfg.tokenization.enable_thinking,
+                    max_new_tokens=cfg.generation.max_new_tokens,
                 ),
-                input_columns="prompt",
+                input_columns=["ehr_text"],
+                remove_columns=["ehr_text"],
                 batched=True,
-                desc="Tokenizing prompts",
-            )
-
-            log.info("Truncating prompts on EHR newlines...")
-            dataset = dataset.map(
-                lambda x: truncate_on_ehr_newlines(
-                    x["input_ids"],
-                    x["attention_mask"],
-                    x["offset_mapping"],
-                    x["length"],
-                    x["prompt"],
-                    cfg.tokenization.max_prompt_length,
-                ),
-                remove_columns=["offset_mapping", "prompt"],
-                batched=False,
-                desc="Truncating prompts",
+                batch_size=cfg.tokenization.batch_size,
             )
             dataset = dataset.sort("length")  # Sort by prompt length for more efficient batching
 

@@ -1,5 +1,6 @@
-pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
-dtype: float32
+model:
+  pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
+  dtype: float32
 
 
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
@@ -15,6 +16,7 @@ tokenization:
   # Note space
   yes_token: " Yes"
   no_token: " No"
+  batch_size: 50
 
 generation:
   do_sample: false
