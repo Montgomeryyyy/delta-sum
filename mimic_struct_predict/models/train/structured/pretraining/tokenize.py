@@ -1,6 +1,5 @@
 import logging
 import re
-import shutil
 from pathlib import Path
 from typing import Iterable
 
@@ -167,7 +166,7 @@ def main(cfg: DictConfig) -> None:
 
     log.info("Training custom tokenizer on raw pretraining dataset...")
     tokenizer = train_custom_tokenizer(dataset[train_split], cfg.tokenization, cfg.batch_size)
-    tokenizer.save_pretrained(str(output_dir))
+    tokenizer.save_pretrained(str(output_dir / "tokenizer"))
     log.info(f"Tokenizer of vocab size {len(tokenizer)} trained")
 
     log.info("Tokenizing and chunking raw pretraining dataset with the trained tokenizer...")
@@ -198,5 +197,4 @@ def main(cfg: DictConfig) -> None:
     )
     # Save the tokenized dataset to disk and remove the intermediate data directory
     tokenized_dataset.save_to_disk(output_dir / "tokenized_dataset")
-    shutil.rmtree(raw_data_dir)
     log.info(f"Tokenized dataset saved to {output_dir / 'tokenized_dataset'}")

@@ -47,7 +47,7 @@ def main(cfg: DictConfig) -> None:
     run_output_dir = Path(HydraConfig.get().runtime.output_dir)
     run_output_dir.mkdir(parents=True, exist_ok=True)
     tokenizer_dir = Path(cfg.tokenizer_dir)
-    dataset_dir = tokenizer_dir / "tokenized_dataset"
+    dataset_dir = Path(cfg.dataset_dir)
     if not dataset_dir.exists():
         log.info(f"Tokenized dataset not found at {dataset_dir}. Please run the tokenizer script first.")
         raise FileNotFoundError(f"Tokenized dataset not found at {dataset_dir}")

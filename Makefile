@@ -34,6 +34,7 @@ TRAINING_DIR := outputs/training
 TRACKIO_DIR := $(TRAINING_DIR)/trackio
 
 STRUCTURED_PRETRAINING_DIR := $(TRAINING_DIR)/structured_pretraining
+STRUCTURED_PRETRAINING_DATA_DIR := data/structured_pretraining
 NL_MULTITASK_SFT_DIR := $(TRAINING_DIR)/natural_language_multitask_sft
 
 .PHONY: show-trackio
@@ -131,13 +132,14 @@ train-meds-tab:
 tokenize-structured-pretraining:
 	uv run tokenize_structured_pretraining_dataset \
 		dataset_dir=$(STRUCTURED_INPUT_DIR) \
-		output_dir=$(STRUCTURED_PRETRAINING_DIR)/tokenizer
+		output_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)
 
 .PHONY: train-structured-pretraining
 train-structured-pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run train_structured_pretraining \
-		tokenizer_dir=$(STRUCTURED_PRETRAINING_DIR)/tokenizer \
+	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_PRETRAINING_DIR)
 
 .PHONY: train-structured-pretraining-multigpu
