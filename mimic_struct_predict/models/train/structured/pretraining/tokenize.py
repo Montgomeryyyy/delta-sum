@@ -198,3 +198,13 @@ def main(cfg: DictConfig) -> None:
     # Save the tokenized dataset to disk and remove the intermediate data directory
     tokenized_dataset.save_to_disk(output_dir / "tokenized_dataset")
     log.info(f"Tokenized dataset saved to {output_dir / 'tokenized_dataset'}")
+
+    log.info("Counting total tokens in the tokenized training dataset...")
+    def count_tokens_polars(dataset_split):
+    # Convert the HF dataset split directly to a Polars DataFrame
+        df = pl.from_arrow(dataset_split.data.table)
+        
+        # Calculate the sum of the lengths of the input_ids lists
+        return df.select(pl.col("input_ids").list.len().sum()).item()
+    total_tokens = count_tokens_polars(tokenized_dataset["train"])
+    log.info(f"Total tokens in the tokenized training dataset: {total_tokens}")
