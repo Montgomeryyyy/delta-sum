@@ -30,7 +30,6 @@ from mimic_struct_predict.models.utils import (
     get_token_id,
     load_model_and_tokenizer,
 )
-from mimic_struct_predict.models.utils.dataset import ehr_texts_to_message_tokens
 from mimic_struct_predict.models.utils.metrics import compute_yes_probs
 
 log = logging.getLogger(__name__)
@@ -69,13 +68,11 @@ def batch_inference(
     sample_latency = (end_time - start_time) / inputs["input_ids"].shape[0]
 
     # Extract sequences and logits
-    prompts = tokenizer.batch_decode(outputs.sequences[:, : inputs["input_ids"].shape[1]], skip_special_tokens=True)
     new_tokens = outputs.sequences[:, inputs["input_ids"].shape[1] :]
     completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
 
-    # Completetions can be differing lengths, so need to handle extracting the final token logits carefully
+    # Completions can be differing lengths, so need to handle extracting the final token logits carefully
     # Create mask for non-padded tokens in new_tokens
-    new_tokens = outputs.sequences[:, inputs["input_ids"].shape[1] :]
     new_tokens_mask = new_tokens != tokenizer.pad_token_id
 
     # Indices of last non-padded tokens per row
@@ -99,7 +96,6 @@ def batch_inference(
     format_adherence = is_yes | is_no
 
     return {
-        "prompt": prompts,
         "completion": completions,
         "probability": [float(p) for p in probabilities],
         "sample_latency": [sample_latency] * inputs["input_ids"].shape[0],
@@ -141,29 +137,27 @@ def main(cfg: DictConfig) -> None:
 
     log.info("Starting LLM Inference")
     hydra_cfg = HydraConfig.get()
-    dataset_dir = Path(cfg.dataset_dir)
+    dataset_dir = Path(cfg.dataset_dir) / cfg.split
     out_dir = Path(hydra_cfg.run.dir)
     log.info(f"Output directory: {out_dir}")
-    split = cfg.split
 
     # 1. Discovery shards: task/split/*.parquet
     # We follow the structure of dataset_dir / task / split / shard.parquet
     selected_tasks = cfg.get("tasks", None)
-    shards = sorted(
-        shard_path
-        for shard_path in dataset_dir.glob(f"*/{split}/*.parquet")
-        if (selected_tasks is None or shard_path.parent.parent.name in selected_tasks)
-        and shard_path.parent.parent.name != "all_events"
+    task_dirs = sorted(
+        task_dir
+        for task_dir in dataset_dir.iterdir()
+        if task_dir.is_dir() and (selected_tasks is None or task_dir.name in selected_tasks)
     )
 
     # TODO: Update NL dataset file structure/naming
-    if not shards:
+    if not task_dirs:
         log.error(
-            f"No shards found in {dataset_dir} for "
-            f"split {split} and tasks {selected_tasks if selected_tasks else 'ALL'}"
+            f"No task directories found in {dataset_dir} for "
+            f"split {cfg.split} and tasks {selected_tasks if selected_tasks else 'ALL'}"
         )
         return
-    log.info(f"Found {len(shards)} shards to process.")
+    log.info(f"Found {len(task_dirs)} task directories to process.")
 
     # 2. Load model and tokenizer once
     log.info("Loading model and tokenizer...")
@@ -177,45 +171,33 @@ def main(cfg: DictConfig) -> None:
     no_token_id = get_token_id(tokenizer, cfg.tokenization.no_token)
     log.info(f"Yes token ID: {yes_token_id}, No token ID: {no_token_id}")
 
-    for shard_path in shards:
-        task = shard_path.parent.parent.name
-        shard_name = shard_path.name
-        out_file_path = out_dir / task / split / shard_name
-        out_file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        log.info(f"Processing Task: [{task}] | Shard: {shard_name}")
+    for task_dir in task_dirs:
+        # Find all shard files within the current task directory
+        log.info(f"Processing Task: [{task_dir.name}]")
+        dataset = datasets.load_from_disk(str(task_dir))
+        log.info(f"Loaded {len(dataset)} examples from task directory.")
 
         try:
-            # 3a. Load shard data (it's not the train dataset but means 1 dataset is returned)
-            dataset = datasets.Dataset.from_parquet(str(shard_path))
-            log.info(f"Loaded {len(dataset)} examples from shard.")
-
-            try:
-                task_description = cfg.task_description[task]
-            except KeyError:
-                log.error(f"Task description not found for task: {task}")
-                raise ValueError(f"Task description not found for task: {task}")
-
             dataset = dataset.map(
-                lambda ehr_texts: ehr_texts_to_message_tokens(
-                    ehr_texts=ehr_texts,
-                    task_description=task_description,
-                    tokenizer=tokenizer,
-                    max_prompt_length=cfg.tokenization.max_prompt_length,
-                    enable_thinking=cfg.tokenization.enable_thinking,
-                    max_new_tokens=cfg.generation.max_new_tokens,
+                lambda prompts: tokenizer(
+                    prompts,
+                    # Handled in create_prompts
+                    truncation=False,
+                    # Will do at batching stage for more efficient dynamic padding
+                    padding=False,
+                    return_length=True,
                 ),
-                input_columns=["ehr_text"],
-                remove_columns=["ehr_text"],
+                input_columns=["prompt"],
                 batched=True,
                 batch_size=cfg.tokenization.batch_size,
             )
-            dataset = dataset.sort("length")  # Sort by prompt length for more efficient batching
+            # Sort to minimize padding within batches
+            dataset = dataset.sort("length")
 
             inference_dataset = dataset.with_format("torch", columns=["input_ids", "attention_mask"])
             collator = DataCollatorWithPadding(
                 tokenizer=tokenizer,
-                padding=True,
+                padding="longest",
                 pad_to_multiple_of=8,  # For efficient tensor cores if using CUDA
             )
             dataloader = DataLoader(
@@ -228,7 +210,6 @@ def main(cfg: DictConfig) -> None:
             # 3d. Batch Inference via DataLoader
             log.info(f"Running inference on {len(dataset)} examples...")
             results: dict[str, list[Any]] = {
-                "prompt": [],
                 "completion": [],
                 "probability": [],
                 "sample_latency": [],
@@ -255,11 +236,12 @@ def main(cfg: DictConfig) -> None:
             cols_to_drop = ["length", "input_ids", "attention_mask"]
             dataset = dataset.remove_columns(cols_to_drop)
 
-            dataset.to_parquet(out_file_path)
+            out_file_path = out_dir / cfg.split / task_dir.name
+            dataset.save_to_disk(out_file_path)
             log.info(f"Saved results to {out_file_path}")
 
         except Exception as e:
-            log.error(f"Error processing shard {shard_path}: {e}")
+            log.error(f"Error processing task {task_dir.name}: {e}")
             raise
 
     log.info("LLM Inference Complete!")

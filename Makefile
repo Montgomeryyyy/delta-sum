@@ -173,7 +173,8 @@ train-structured-pretraining-multigpu:
 
 
 NATURAL_LANGUAGE_INPUT_DIR := $(DATA_DIR)/MEDS_cohort_with_headers/data
-NATURAL_LANGUAGE_DATA_DIR := $(DATA_DIR)/natural_language
+NATURAL_LANGUAGE_DIRECT_DATA_DIR := $(DATA_DIR)/natural_language_direct
+NATURAL_LANGUAGE_THINKING_DATA_DIR := $(DATA_DIR)/natural_language_thinking
 NATURAL_LANGUAGE_SFT_MODEL_DIR := $(TRAINING_DIR)/natural_language_sft
 
 .PHONY: download-qwen-06B
@@ -181,25 +182,33 @@ download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
 
-.PHONY: natural_language_create_prompts
-natural_language_create_prompts:
+.PHONY: natural_language_create_prompts_direct
+natural_language_create_prompts_direct:
 	uv run natural_language_create_prompts \
 		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
 		aces_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_DATA_DIR)
+		output_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)
+
+.PHONY: natural_language_create_prompts_thinking
+natural_language_create_prompts_thinking:
+	uv run natural_language_create_prompts \
+		--config-name create_prompts_thinking.yaml \
+		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
+		aces_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)
 
 .PHONY: natural_language_sft
 natural_language_sft:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run natural_language_sft \
-		dataset_dir=$(NATURAL_LANGUAGE_DATA_DIR)/hf_dataset \
+		dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)/hf_dataset \
 		output_dir=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)
 
 
 .PHONY: natural_language_inference_direct
 natural_language_inference_direct:
 	uv run natural_language_inference \
-		"dataset_dir=$(NATURAL_LANGUAGE_DATA_DIR)/hf_dataset" \
+		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)/hf_dataset" \
 		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)/direct" \
 		"split=tuning"
 
@@ -207,7 +216,7 @@ natural_language_inference_direct:
 natural_language_inference_thinking:
 	uv run natural_language_inference \
 		--config-name inference_thinking.yaml \
-		"dataset_dir=$(NATURAL_LANGUAGE_DATA_DIR)/hf_dataset" \
+		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)/hf_dataset" \
 		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)/thinking" \
 		"split=tuning" \
 		"tasks=icu_mortality" \

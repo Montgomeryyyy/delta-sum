@@ -7,9 +7,8 @@ overwrite: false
 
 random_seed: 42
 
-split_names:
-  train: train
-  val: tuning
+splits_to_process: ["train", "tuning", "held_out"]
+train_split_name: train
 
 preprocessing:
   code_join_token: "\n"
@@ -21,11 +20,13 @@ model:
 
 tokenization:
   max_prompt_length: 256
-  enable_thinking: false
   # Note space
   yes_token: " Yes"
   no_token: " No"
   batch_size: null
+  # Direct output "Yes"/"No" without "Thinking..." intermediate step
+  enable_thinking: false
+  max_new_tokens: 1
 
 task_description:
   30_day_readmission: "'Yes' if the patient will be hospitalised within 30 days of discharge, 'No' otherwise"

@@ -16,32 +16,28 @@ log = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="create_prompts",
+    config_name="create_prompts_direct",
 )
 def main(cfg: DictConfig) -> None:
     meds_dir = Path(cfg.meds_dir)
     aces_dir = Path(cfg.aces_dir)
     output_dir = Path(cfg.output_dir)
 
-    if not cfg.overwrite and (
-        (output_dir / cfg.split_names.train).exists() or (output_dir / cfg.split_names.val).exists()
-    ):
-        log.info(f"Dataset already exists at {output_dir} and overwrite is " f"{cfg.overwrite}. Skipping tokenization.")
-        return
-
     tokenizer = load_tokenizer(cfg.model.pretrained_model_name_or_path, padding_side="right")
+
+    valid_splits = set(cfg.splits_to_process)
+    valid_tasks = set(cfg.get("tasks") or [])
 
     # --- Build datasets ---
     log.info("Combining MEDS and ACES datasets to raw EHR text datasets...")
     raw_output_dir = output_dir / "raw"
-    selected_tasks = set(cfg.tasks) if cfg.get("tasks", None) else None
     meds_and_aces_to_string_dataset(
         meds_dir=meds_dir,
         aces_dir=aces_dir,
         output_dir=raw_output_dir,
         overwrite=cfg.overwrite,
-        tasks=selected_tasks,
-        splits={cfg.split_names.train, cfg.split_names.val},
+        tasks=valid_tasks if valid_tasks else None,
+        splits=valid_splits,
         code_join_token=cfg.preprocessing.code_join_token,
         split_on_delimiter=True,
         delimiter=cfg.preprocessing.delimiter,
@@ -53,7 +49,8 @@ def main(cfg: DictConfig) -> None:
     for shard_path in raw_output_dir.glob("*/*/*.parquet"):
         task = shard_path.parent.parent.name
         split = shard_path.parent.name
-        if split in {cfg.split_names.train, cfg.split_names.val}:
+
+        if split in valid_splits and (not valid_tasks or task in valid_tasks):
             task_to_split_to_shard_path[task][split].append(str(shard_path))
 
     log.info(f"Created {len(task_to_split_to_shard_path)} raw tasks datasets.")
@@ -68,27 +65,31 @@ def main(cfg: DictConfig) -> None:
             log.error(f"Task description not found for task: {task}")
             raise ValueError(f"Task description not found for task: {task}")
 
-        if cfg.split_names.train not in split_to_shards or cfg.split_names.val not in split_to_shards:
-            log.warning(
-                f"Skipping task '{task}' because it is missing one of required splits "
-                f"[{cfg.split_names.train}, {cfg.split_names.val}]"
-            )
-            continue
-
         dataset = datasets.load_dataset("parquet", data_files=split_to_shards, columns=["ehr_text", "boolean_value"])
-        log.info(
-            f"Loaded {len(dataset[cfg.split_names.train])} train examples and "
-            f"{len(dataset[cfg.split_names.val])} val examples."
-        )
 
+        # Safely handle and remove empty splits so they don't persist to tokenization/interleaving
+        empty_splits = []
+        for split, split_dataset in dataset.items():
+            if len(split_dataset) == 0:
+                log.warning(f"No examples found for task {task} and split {split}. Marking for removal.")
+                empty_splits.append(split)
+            else:
+                log.info(f"Loaded {len(split_dataset)} {split} examples")
+
+        for split in empty_splits:
+            del dataset[split]
+
+        if not dataset:
+            log.warning(f"All splits empty for task {task}. Skipping task entirely.")
+            continue
         dataset = dataset.map(
             lambda ehr_texts: ehr_texts_to_prompt(
                 ehr_texts=ehr_texts,
                 task_description=task_description,
                 tokenizer=tokenizer,
                 max_prompt_length=cfg.tokenization.max_prompt_length,
-                enable_thinking=False,  # Not training a thinking model so not required
-                max_new_tokens=None,
+                enable_thinking=cfg.tokenization.enable_thinking,
+                max_new_tokens=cfg.tokenization.max_new_tokens,
             ),
             input_columns=["ehr_text"],
             remove_columns=["ehr_text"],
@@ -96,41 +97,53 @@ def main(cfg: DictConfig) -> None:
             batch_size=cfg.tokenization.batch_size,
         )
 
-        dataset = dataset.map(
-            lambda boolean_values: {
-                "completion": [
-                    cfg.tokenization.yes_token if boolean_value else cfg.tokenization.no_token
-                    for boolean_value in boolean_values
-                ]
-            },
-            batched=True,
-            batch_size=cfg.tokenization.batch_size,
-            input_columns=["boolean_value"],
-            remove_columns=["boolean_value"],
-        )
+        if cfg.train_split_name in dataset:
+            # Train dataset needs to have "Yes"/"No" completions for supervised fine-tuning instead of boolean labels
+            dataset[cfg.train_split_name] = dataset[cfg.train_split_name].map(
+                lambda boolean_values: {
+                    "completion": [
+                        cfg.tokenization.yes_token if boolean_value else cfg.tokenization.no_token
+                        for boolean_value in boolean_values
+                    ]
+                },
+                batched=True,
+                batch_size=cfg.tokenization.batch_size,
+                input_columns=["boolean_value"],
+                remove_columns=["boolean_value"],
+            )
 
         task_to_datasets[task] = dataset
 
-    if not task_to_datasets:
-        log.error("No tasks had both required splits after filtering; exiting training.")
-        return
-
-    train_dataset = datasets.interleave_datasets(
-        [task_dataset[cfg.split_names.train] for task_dataset in task_to_datasets.values()],
-        probabilities=[1.0 / len(task_to_datasets)] * len(task_to_datasets),
-        seed=cfg.random_seed,
-        stopping_strategy="all_exhausted",  # Crucial for balancing train gradients
-    )
-    train_dataset = train_dataset.shuffle(seed=cfg.random_seed)
-    log.info(f"Combined train dataset has {len(train_dataset)} examples.")
-
-    eval_dict = {task: task_ds[cfg.split_names.val] for task, task_ds in task_to_datasets.items()}
-    log.info(f"Eval datasets: { {task: len(ds) for task, ds in eval_dict.items()} }")
-
-    # --- Save tokenized datasets ---
     hf_output_dir = output_dir / "hf_dataset"
     hf_output_dir.mkdir(parents=True, exist_ok=True)
-    train_dataset.save_to_disk(str(hf_output_dir / cfg.split_names.train))
-    for task, eval_ds in eval_dict.items():
-        eval_ds.save_to_disk(str(hf_output_dir / cfg.split_names.val / task))
-    log.info(f"Saved huggingface datasets to {hf_output_dir}")
+
+    log.info(f"Final datasets: {task_to_datasets}")
+
+    for split in valid_splits:
+        if split == cfg.train_split_name:
+            # Only collect tasks that actually have a valid, populated train split
+            train_datasets = [ds[split] for ds in task_to_datasets.values() if split in ds and len(ds[split]) > 0]
+
+            if not train_datasets:
+                log.warning("No valid train datasets found across any tasks!")
+                continue
+
+            # Interleave train datasets from all tasks to ensure balanced training and shuffle to ensure
+            # random mixing of tasks
+            train_dataset = datasets.interleave_datasets(
+                train_datasets,
+                probabilities=[1.0 / len(train_datasets)] * len(train_datasets),
+                seed=cfg.random_seed,
+                stopping_strategy="all_exhausted",  # Crucial for balancing train gradients
+            )
+            train_dataset = train_dataset.shuffle(seed=cfg.random_seed)
+            train_dataset.save_to_disk(str(hf_output_dir / split))
+            log.info(f"Interleaved train dataset: {len(train_dataset)} examples saved to {hf_output_dir / split}")
+
+        else:
+            # Keep val/test datasets separate by task to allow for per-task evaluation
+            log.info(f"Saving {split} datasets for each task separately...")
+            for task, task_ds in task_to_datasets.items():
+                if split in task_ds and len(task_ds[split]) > 0:
+                    task_ds[split].save_to_disk(str(hf_output_dir / split / task))
+                    log.info(f"{task} dataset: {len(task_ds[split])} examples saved to {hf_output_dir / split / task}")
