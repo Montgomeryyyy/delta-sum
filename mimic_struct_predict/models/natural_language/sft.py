@@ -123,7 +123,7 @@ class MultiTaskSFTTrainer(SFTTrainer):
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="train",
+    config_name="sft",
 )
 def main(cfg: DictConfig) -> None:
     """Run SFT training.

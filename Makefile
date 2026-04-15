@@ -145,16 +145,16 @@ STRUCTURED_INPUT_DIR := $(DATA_DIR)/MEDS_cohort_with_headers_and_quantiles/data
 STRUCTURED_TOKENIZED_DATA_DIR := $(DATA_DIR)/structured_pretraining
 STRUCTURED_PRETRAINING_MODEL_DIR := $(TRAINING_DIR)/structured_pretraining
 
-.PHONY: tokenize-structured-pretraining
-tokenize-structured-pretraining:
-	uv run tokenize_structured_pretraining_dataset \
+.PHONY: structured_pretraining_tokenize
+structured_pretraining_tokenize:
+	uv run structured_pretraining_tokenize \
 		dataset_dir=$(STRUCTURED_INPUT_DIR) \
 		output_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)
 
 .PHONY: train-structured-pretraining
-train-structured-pretraining:
+structured_pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
-	uv run train_structured_pretraining \
+	uv run structured_pretraining \
 	    dataset_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenized_dataset \
 		tokenizer_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_PRETRAINING_MODEL_DIR)
@@ -163,7 +163,7 @@ train-structured-pretraining:
 train-structured-pretraining-multigpu:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run accelerate launch config_file --config_file=./mimic_struct_predict/models/train/structured/pretraining/config/accelerate_multigpu.yaml \
-		train_structured_pretraining \
+		structured_pretraining \
 		dataset_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenized_dataset \
 		tokenizer_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_PRETRAINING_MODEL_DIR)
@@ -173,7 +173,7 @@ train-structured-pretraining-multigpu:
 
 
 NATURAL_LANGUAGE_INPUT_DIR := $(DATA_DIR)/MEDS_cohort_with_headers/data
-NATURAL_LANGUAGE_TOKENIZED_DATA_DIR := $(DATA_DIR)/natural_language
+NATURAL_LANGUAGE_DATA_DIR := $(DATA_DIR)/natural_language
 NATURAL_LANGUAGE_SFT_MODEL_DIR := $(TRAINING_DIR)/natural_language_sft
 
 .PHONY: download-qwen-06B
@@ -181,33 +181,33 @@ download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
 
-.PHONY: tokenize-natural-language-multitask-sft
-tokenize-natural-language-multitask-sft:
-	uv run tokenize_natural_language_multitask_sft \
+.PHONY: natural_language_create_prompts
+natural_language_create_prompts:
+	uv run natural_language_create_prompts \
 		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
 		aces_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_TOKENIZED_DATA_DIR)
+		output_dir=$(NATURAL_LANGUAGE_DATA_DIR)
 
-.PHONY: train-natural-language-multitask-sft
-train-natural-language-multitask-sft:
+.PHONY: natural_language_sft
+natural_language_sft:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
-	uv run train_natural_language_multitask_sft \
-		dataset_dir=$(NATURAL_LANGUAGE_TOKENIZED_DATA_DIR)/tokenized_dataset \
+	uv run natural_language_sft \
+		dataset_dir=$(NATURAL_LANGUAGE_DATA_DIR)/hf_dataset \
 		output_dir=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)
 
 
-.PHONY: llm-inference-direct
-llm-inference-direct:
-	uv run llm_inference \
-		"dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)" \
-		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)"/direct \
+.PHONY: natural_language_inference_direct
+natural_language_inference_direct:
+	uv run natural_language_inference \
+		"dataset_dir=$(NATURAL_LANGUAGE_DATA_DIR)/hf_dataset" \
+		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)/direct" \
 		"split=tuning"
 
-.PHONY: llm-inference-thinking
-llm-inference-thinking:
-	uv run llm_inference \
-		--config-name llm_inference_thinking.yaml \
-		"dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DIR)" \
-		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)"/thinking \
+.PHONY: natural_language_inference_thinking
+natural_language_inference_thinking:
+	uv run natural_language_inference \
+		--config-name inference_thinking.yaml \
+		"dataset_dir=$(NATURAL_LANGUAGE_DATA_DIR)/hf_dataset" \
+		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)/thinking" \
 		"split=tuning" \
 		"tasks=icu_mortality" \

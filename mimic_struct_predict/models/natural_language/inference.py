@@ -110,9 +110,9 @@ def batch_inference(
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="llm_inference_direct",
+    config_name="inference_direct",
 )
-def run_llm_inference(cfg: DictConfig) -> None:
+def main(cfg: DictConfig) -> None:
     """
     Run zero-shot LLM inference on natural language EHR datasets with shard-sharding.
     Hydra config controls dataset location, model/config selection, and generation parameters.
@@ -195,7 +195,6 @@ def run_llm_inference(cfg: DictConfig) -> None:
             except KeyError:
                 log.error(f"Task description not found for task: {task}")
                 raise ValueError(f"Task description not found for task: {task}")
-            
 
             dataset = dataset.map(
                 lambda ehr_texts: ehr_texts_to_message_tokens(
@@ -264,7 +263,3 @@ def run_llm_inference(cfg: DictConfig) -> None:
             raise
 
     log.info("LLM Inference Complete!")
-
-
-if __name__ == "__main__":
-    run_llm_inference()

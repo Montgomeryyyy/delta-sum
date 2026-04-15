@@ -57,7 +57,7 @@ def train_custom_tokenizer(dataset: datasets.Dataset, cfg: DictConfig, batch_siz
     )
 
 
-@hydra.main(version_base=None, config_path="config", config_name="tokenize")
+@hydra.main(version_base=None, config_path="config", config_name="pretraining_tokenize")
 def main(cfg: DictConfig) -> None:
     """
     Main function to create a pretraining dataset from MEDS, train a custom tokenizer, and tokenize the dataset.

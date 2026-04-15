@@ -39,7 +39,7 @@ class TrackioSystemMetricsCallback(TrainerCallback):
         trackio.log_gpu()
 
 
-@hydra.main(version_base=None, config_path="config", config_name="train")
+@hydra.main(version_base=None, config_path="config", config_name="pretrain")
 def main(cfg: DictConfig) -> None:
     hf_logging.set_verbosity_info()
     hf_logging.enable_propagation()

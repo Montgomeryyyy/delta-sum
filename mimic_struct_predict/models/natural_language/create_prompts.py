@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="tokenize",
+    config_name="create_prompts",
 )
 def main(cfg: DictConfig) -> None:
     meds_dir = Path(cfg.meds_dir)
@@ -128,9 +128,9 @@ def main(cfg: DictConfig) -> None:
     log.info(f"Eval datasets: { {task: len(ds) for task, ds in eval_dict.items()} }")
 
     # --- Save tokenized datasets ---
-    tokenized_output_dir = output_dir / "tokenized_dataset"
-    tokenized_output_dir.mkdir(parents=True, exist_ok=True)
-    train_dataset.save_to_disk(str(tokenized_output_dir / cfg.split_names.train))
+    hf_output_dir = output_dir / "hf_dataset"
+    hf_output_dir.mkdir(parents=True, exist_ok=True)
+    train_dataset.save_to_disk(str(hf_output_dir / cfg.split_names.train))
     for task, eval_ds in eval_dict.items():
-        eval_ds.save_to_disk(str(tokenized_output_dir / cfg.split_names.val / task))
-    log.info(f"Saved tokenized datasets to {tokenized_output_dir}")
+        eval_ds.save_to_disk(str(hf_output_dir / cfg.split_names.val / task))
+    log.info(f"Saved huggingface datasets to {hf_output_dir}")
