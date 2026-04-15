@@ -1,3 +1,0 @@
-imputer_target:
-  _target_: sklearn.impute.SimpleImputer
-  strategy: "most_frequent"

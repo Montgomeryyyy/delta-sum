@@ -1,3 +1,0 @@
-normalizer:
-  _target_: sklearn.preprocessing.StandardScaler
-  with_mean: False # This preserves the sparsity of the input data.
