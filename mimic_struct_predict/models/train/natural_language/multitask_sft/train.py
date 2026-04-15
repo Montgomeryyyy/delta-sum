@@ -6,17 +6,91 @@ from typing import Any, List, Optional
 
 import datasets
 import hydra
+import pandas as pd
+import torch
+import trackio
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from peft import LoraConfig
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 
 from mimic_struct_predict.models.utils.model_loading import load_model_and_tokenizer
 
 log = logging.getLogger(__name__)
 
-DEFAULT_RANDOM_SEED = 42
+
+class TrackioTableCallback(TrainerCallback):
+    def __init__(
+        self,
+        tokenizer: AutoTokenizer,
+        eval_dataset_dict: dict[str, datasets.Dataset],
+        batch_size: int,
+        random_seed: int = 42,
+    ):
+        self.tokenizer = tokenizer
+
+        self.task_data = {}
+        for task_name, dataset in eval_dataset_dict.items():
+            # Shuffle, select the batch, and extract just the list of string prompts
+            sampled_subset = dataset.shuffle(seed=random_seed).select(range(batch_size))
+            self.task_data[task_name] = {
+                "prompts": list(sampled_subset["prompt"]),
+                "ground_truths": list(sampled_subset["completion"]),
+            }
+
+    def on_evaluate(self, args: Any, state: Any, control: Any, model: Any, **kwargs: Any) -> None:
+        model.eval()
+        padding_side = self.tokenizer.padding_side
+        self.tokenizer.padding_side = "left"  # Ensure padding is on the left for generation
+
+        # Prepare lists to act as our table columns
+        all_prompts = []
+        all_predictions = []
+        all_tasks = []
+        all_ground_truths = []
+
+        # Iterate over the pre-saved static prompts, NOT the state object
+        for task_name, data in self.task_data.items():
+            prompts = data["prompts"]
+            ground_truths = data["ground_truths"]
+            # 1. Tokenize the entire batch for this specific task
+            inputs = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(model.device)
+
+            with torch.no_grad():
+                # 2. Generate predictions for the batch
+                generated_ids = model.generate(
+                    **inputs,
+                    max_new_tokens=1,
+                )
+
+            # 3. Decode the batch
+            outputs = self.tokenizer.batch_decode(
+                generated_ids[:, inputs["input_ids"].size(-1) :], skip_special_tokens=True
+            )
+
+            # 4. Append data to our master columns
+            all_prompts.extend(prompts)
+            all_predictions.extend(outputs)
+            # Create a list of the task name repeated for the size of the batch
+            all_tasks.extend([task_name] * len(prompts))
+            all_ground_truths.extend(ground_truths)
+
+        steps = [state.global_step] * len(all_prompts)
+
+        df = pd.DataFrame(
+            {
+                "step": steps,
+                "task": all_tasks,
+                "prompt": all_prompts,
+                "prediction": all_predictions,
+                "ground_truth": all_ground_truths,
+            }
+        )
+
+        trackio.log({"eval_completions": trackio.Table(dataframe=df)})
+
+        self.tokenizer.padding_side = padding_side  # Restore original padding side
 
 
 class MultiTaskSFTTrainer(SFTTrainer):
@@ -97,6 +171,9 @@ def main(cfg: DictConfig) -> None:
         train_dataset=train_dataset,
         eval_dataset=eval_dict,
         peft_config=peft_config,
+        callbacks=[TrackioTableCallback(tokenizer, eval_dict, batch_size=cfg.training.per_device_eval_batch_size)]
+        if cfg.tracking.report_to == "trackio"
+        else None,
     )
 
     # --- Train ---

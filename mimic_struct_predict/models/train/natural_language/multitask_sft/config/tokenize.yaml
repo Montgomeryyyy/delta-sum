@@ -11,7 +11,10 @@ split_names:
   train: train
   val: tuning
 
-code_join_token: "\n"
+preprocessing:
+  code_join_token: "\n"
+  delimiter: "//"
+  numeric_value_sig_figs: 2
 
 model:
   pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B

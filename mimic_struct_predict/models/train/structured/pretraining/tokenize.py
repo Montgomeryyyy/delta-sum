@@ -21,75 +21,6 @@ from mimic_struct_predict.models.utils.meds_to_string_dataset import (
 
 log = logging.getLogger(__name__)
 
-TEXT_COLUMN = "ehr_text"
-
-
-def create_pretraining_dataset(
-    meds_dir: Path, output_dir: Path, splits: set[str], eoc_token: str, overwrite: bool
-) -> None:
-    """Process MEDS shards into an NL dataset without ACES label filtering.
-
-    Iterates directly over MEDS split/shard parquet files and aggregates all
-    event codes per subject into a single string, with no prediction_time filter.
-
-    Bool config argument to split on double slashes (//) for natural language formatting, or keep them for coded format.
-    """
-    # Find all MEDS shards: split/shard.parquet
-    meds_shards = sorted(shard for shard in meds_dir.glob("*/*.parquet") if shard.parent.name in splits)
-
-    if not meds_shards:
-        log.error(f"No MEDS parquet files found under {meds_dir}/*/*.parquet")
-        raise ValueError("No MEDS shards found. Check your directory structure.")
-
-    log.info(f"Found {len(meds_shards)} MEDS shards.")
-
-    for meds_path in meds_shards:
-        split = meds_path.parent.name  # e.g. "train"
-        shard_filename = meds_path.name  # e.g. "0.parquet"
-
-        out_file_path = output_dir / split / shard_filename
-
-        if out_file_path.exists() and not overwrite:
-            log.info(f"Output file {out_file_path} already exists and overwrite is " f"{overwrite}. Skipping.")
-            continue
-
-        out_file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        log.info(f"Processing Split: [{split}] | Shard: {shard_filename}")
-
-        try:
-            result = (
-                pl.scan_parquet(meds_path)
-                .group_by("subject_id")
-                .agg(pl.col("code").str.join(eoc_token).alias(TEXT_COLUMN))
-                .select(TEXT_COLUMN)
-            )
-
-            result.sink_parquet(out_file_path)
-            log.info(f"Saved processed output to {out_file_path}")
-
-        except Exception as e:
-            log.error(f"Error processing {meds_path}: {e}")
-            raise
-
-
-def load_pretraining_dataset(dataset_dir: Path, train_split: str, val_split: str) -> datasets.DatasetDict:
-    # 1. Discovery shards: split/*.parquet
-    datafiles: dict[str, list[str]] = {train_split: [], val_split: []}
-    for shard_path in dataset_dir.glob("*/*.parquet"):
-        split = shard_path.parent.name
-        if split not in {train_split, val_split}:
-            continue
-        datafiles[split].append(str(shard_path))
-
-    if not datafiles[train_split] or not datafiles[val_split]:
-        log.error(f"No shards found in {dataset_dir} for either split '{train_split}' or '{val_split}'. ")
-        raise ValueError(f"No shards found for splits '{train_split}' or '{val_split}' in {dataset_dir}.")
-
-    dataset = datasets.load_dataset("parquet", data_files=datafiles, columns=[TEXT_COLUMN])
-
-    return dataset
-
 
 def train_custom_tokenizer(dataset: datasets.Dataset, cfg: DictConfig, batch_size: int) -> PreTrainedTokenizerFast:
     # 1. Initialize the WordLevel tokenizer (no subword merging)
@@ -112,7 +43,7 @@ def train_custom_tokenizer(dataset: datasets.Dataset, cfg: DictConfig, batch_siz
 
     def batch_iterator() -> Iterable[str]:
         for batch in dataset.iter(batch_size=batch_size):
-            yield batch[TEXT_COLUMN]
+            yield batch["ehr_text"]
 
     log.info("Training tokenizer...")
     tokenizer.train_from_iterator(batch_iterator(), trainer=trainer)
@@ -152,17 +83,21 @@ def main(cfg: DictConfig) -> None:
         output_dir=raw_data_dir,
         splits={train_split, val_split},
         code_join_token=cfg.tokenization.special_tokens.eoc_token,
-        split_on_doubleslash=False,  # We use // as delimiter for tokenizer
+        delimiter=cfg.tokenization.delimiter,
+        split_on_delimiter=False,  # Tokenizer will split to create tokens
+        append_numeric_values=False,  # We are using quantiles instead of raw numeric values
         overwrite=cfg.overwrite,
     )
 
     log.info("Loading raw pretraining dataset as huggingface dataset...")
-    dataset = load_pretraining_dataset(
-        dataset_dir=raw_data_dir,
-        train_split=train_split,
-        val_split=val_split,
-    )
-    log.info(f"Loaded {len(dataset[train_split])} train examples and " f"{len(dataset[val_split])} val examples.")
+    datafiles: dict[str, list[str]] = {train_split: [], val_split: []}
+    for shard_path in raw_data_dir.glob("*/*.parquet"):
+        split = shard_path.parent.name
+        if split not in {train_split, val_split}:
+            continue
+        datafiles[split].append(str(shard_path))
+    dataset = datasets.load_dataset("parquet", data_files=datafiles)
+    log.info(f"Loaded {len(dataset[train_split])} train examples and {len(dataset[val_split])} val examples.")
 
     log.info("Training custom tokenizer on raw pretraining dataset...")
     tokenizer = train_custom_tokenizer(dataset[train_split], cfg.tokenization, cfg.batch_size)
@@ -184,7 +119,7 @@ def main(cfg: DictConfig) -> None:
             ).items()
             if k in ["input_ids", "attention_mask"]
         },
-        input_columns=TEXT_COLUMN,
+        input_columns="ehr_text",
         remove_columns=dataset[train_split].column_names,
         batched=True,
         batch_size=cfg.batch_size,
@@ -200,11 +135,13 @@ def main(cfg: DictConfig) -> None:
     log.info(f"Tokenized dataset saved to {output_dir / 'tokenized_dataset'}")
 
     log.info("Counting total tokens in the tokenized training dataset...")
-    def count_tokens_polars(dataset_split):
-    # Convert the HF dataset split directly to a Polars DataFrame
+
+    def count_tokens_polars(dataset_split: datasets.Dataset) -> int:
+        # Convert the HF dataset split directly to a Polars DataFrame
         df = pl.from_arrow(dataset_split.data.table)
-        
+
         # Calculate the sum of the lengths of the input_ids lists
-        return df.select(pl.col("input_ids").list.len().sum()).item()
+        return int(df.select(pl.col("input_ids").list.len().sum()).item())
+
     total_tokens = count_tokens_polars(tokenized_dataset["train"])
     log.info(f"Total tokens in the tokenized training dataset: {total_tokens}")

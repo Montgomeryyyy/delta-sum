@@ -39,7 +39,7 @@ training:
   # TrainingArguments parameters
   ## Training Duration and Batch Size
   per_device_train_batch_size: 4
-  max_steps : 100
+  max_steps : 10
   ## Learning Rate & Scheduler
   learning_rate: 2e-5
   lr_scheduler_type: cosine
@@ -53,7 +53,7 @@ training:
   fp16: true
   ## Logging & Monitoring Training
   logging_strategy: steps
-  logging_steps: 2
+  logging_steps: 1
   ## Evaluation
   eval_strategy: steps
   eval_steps: 10

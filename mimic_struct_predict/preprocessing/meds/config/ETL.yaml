@@ -24,7 +24,7 @@ shards_map_fp: "${output_dir}/metadata/.shards.json"
 etl_metadata:
   dataset_name: ${oc.env:DATASET_NAME}
   dataset_version: ${oc.env:DATASET_VERSION}
-  pipeline_name: "extract"
+  pipeline_name: "etl"
 
 
 stages:
@@ -80,20 +80,3 @@ stages:
       - "Diagnosis"
       - "Diagnosis Related Group"
       - "Hcpcs Billing Item"
-  ### Insert hierarchical rows to reduce repeated tokens
-  - add_prefix_rows:
-      header: "#### "
-  - add_time_rows:
-      header: "### Time"
-      eod_string: "Unspecified"
-  - add_delta_rows:
-      header: "## Delta"
-  - aggregate_code_metadata:
-      aggregations:
-        - name: "values/quantiles"
-          quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-  - bin_numeric_values: # <- output used for structured data (has quantile bins instead of numeric values)
-      code_with_bin_name: "{code}//Quantile {bin}"
-  - replace_quantile_with_numeric_value: # <- output used for natural language data (has numeric values instead of quantile bins)
-      drop_numeric_values: true
-      sig_figs: 3

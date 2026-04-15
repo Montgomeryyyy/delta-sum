@@ -1,5 +1,4 @@
 import logging
-import shutil
 from collections import defaultdict
 from pathlib import Path
 
@@ -40,11 +39,14 @@ def main(cfg: DictConfig) -> None:
         meds_dir=meds_dir,
         aces_dir=aces_dir,
         output_dir=raw_output_dir,
+        overwrite=cfg.overwrite,
         tasks=selected_tasks,
         splits={cfg.split_names.train, cfg.split_names.val},
-        code_join_token=cfg.code_join_token,
-        split_on_doubleslash=True,
-        overwrite=cfg.overwrite,
+        code_join_token=cfg.preprocessing.code_join_token,
+        split_on_delimiter=True,
+        delimiter=cfg.preprocessing.delimiter,
+        append_numeric_values=True,
+        sig_figs=cfg.preprocessing.numeric_value_sig_figs,
     )
 
     task_to_split_to_shard_path: defaultdict[str, defaultdict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
@@ -53,14 +55,6 @@ def main(cfg: DictConfig) -> None:
         split = shard_path.parent.name
         if split in {cfg.split_names.train, cfg.split_names.val}:
             task_to_split_to_shard_path[task][split].append(str(shard_path))
-
-    if not task_to_split_to_shard_path:
-        log.error(
-            f"No shards created in {raw_output_dir} for "
-            f"splits {{{cfg.split_names.train}, {cfg.split_names.val}}} and "
-            f"tasks {sorted(selected_tasks) if selected_tasks else 'ALL'}"
-        )
-        raise ValueError("No shards created. Check your directory structure and config filters.")
 
     log.info(f"Created {len(task_to_split_to_shard_path)} raw tasks datasets.")
 
@@ -134,10 +128,9 @@ def main(cfg: DictConfig) -> None:
     log.info(f"Eval datasets: { {task: len(ds) for task, ds in eval_dict.items()} }")
 
     # --- Save tokenized datasets ---
-    tokenized_output_dir = output_dir
+    tokenized_output_dir = output_dir / "tokenized_dataset"
     tokenized_output_dir.mkdir(parents=True, exist_ok=True)
     train_dataset.save_to_disk(str(tokenized_output_dir / cfg.split_names.train))
     for task, eval_ds in eval_dict.items():
         eval_ds.save_to_disk(str(tokenized_output_dir / cfg.split_names.val / task))
-    shutil.rmtree(raw_output_dir)  # Clean up intermediate raw data
     log.info(f"Saved tokenized datasets to {tokenized_output_dir}")

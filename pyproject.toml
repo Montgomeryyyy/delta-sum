@@ -39,7 +39,6 @@ add_prefix_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_prefix
 add_time_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_time_rows.add_time_rows:add_time_rows"
 add_delta_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_delta_rows.add_delta_rows:add_delta_rows"
 merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age_column.merge_age_column:merge_age_column"
-replace_quantile_with_numeric_value = "mimic_struct_predict.preprocessing.meds.transforms.replace_quantile_with_numeric_value.replace_quantile_with_numeric_value:replace_quantile_with_numeric_value"
 
 [project.scripts]
 create_text_pretraining_dataset = "mimic_struct_predict.preprocessing.text_dataset.create_pretraining_dataset:main"

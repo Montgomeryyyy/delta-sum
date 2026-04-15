@@ -12,14 +12,13 @@ MIMICIV_RAW_DIR      := data/raw_input
 MIMICIV_PRE_MEDS_DIR := data/pre_MEDS
 MIMICIV_MEDS_COHORT_DIR     := data/MEDS_cohort
 
-MEDS_TAB_INPUT_DIR := data/MEDS_cohort/merge_to_MEDS_cohort
 MEDS_TAB_OUTPUT_DIR := data/MEDS_tab
 
-NATURAL_LANGUAGE_INPUT_DIR := data/MEDS_cohort/data
+NATURAL_LANGUAGE_INPUT_DIR := data/MEDS_cohort_with_headers
 NATURAL_LANGUAGE_OUTPUT_DIR := data/natural_language
 
-STRUCTURED_INPUT_DIR := data/MEDS_cohort/bin_numeric_values
-STRUCTURED_OUTPUT_DIR := data/structured
+DATA_DIR := data
+TRAINING_DIR := outputs/training
 
 MEDS_DIR := mimic_struct_predict/preprocessing/meds
 
@@ -30,12 +29,8 @@ ACES_TASKS := 30_day_readmission
 
 LLM_INFERENCE_OUTPUT_DIR := outputs/llm_inference
 
-TRAINING_DIR := outputs/training
 TRACKIO_DIR := $(TRAINING_DIR)/trackio
 
-STRUCTURED_PRETRAINING_DIR := $(TRAINING_DIR)/structured_pretraining
-STRUCTURED_PRETRAINING_DATA_DIR := data/structured_pretraining
-NL_MULTITASK_SFT_DIR := $(TRAINING_DIR)/natural_language_multitask_sft
 
 .PHONY: show-trackio
 show-trackio:
@@ -77,6 +72,24 @@ meds-dataset:
 	uv run MEDS_transform-pipeline \
 		pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/ETL.yaml\
 
+	@echo "Running add headers pipeline..."
+	rm -rf $(NATURAL_LANGUAGE_INPUT_DIR)
+	INPUT_DIR=$(MIMICIV_MEDS_COHORT_DIR) \
+	OUTPUT_DIR=$(NATURAL_LANGUAGE_INPUT_DIR) \
+	DATASET_NAME=$(DATASET_NAME) \
+	DATASET_VERSION=$(MIMIC_VERSION) \
+	uv run MEDS_transform-pipeline \
+		pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_headers.yaml\
+
+	@echo "Running add quantiles pipeline..."
+	rm -rf $(STRUCTURED_INPUT_DIR)
+	INPUT_DIR=$(NATURAL_LANGUAGE_INPUT_DIR) \
+	OUTPUT_DIR=$(STRUCTURED_INPUT_DIR) \
+	DATASET_NAME=$(DATASET_NAME) \
+	DATASET_VERSION=$(MIMIC_VERSION) \
+	uv run MEDS_transform-pipeline \
+		pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_quantiles.yaml\
+
 
 .PHONY: aces-labels
 aces-labels:
@@ -96,16 +109,16 @@ aces-labels:
 .PHONY: train-meds-tab
 train-meds-tab:
 	uv run meds-tab-describe \
-		"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)"
+		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" "output_dir=$(MEDS_TAB_OUTPUT_DIR)"
 
 	@echo "Tabularizing static data"
 	uv run meds-tab-tabularize-static \
-		"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
+		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
 		do_overwrite=False
 
 	@echo "Tabularizing time series..."
 	uv run meds-tab-tabularize-time-series \
-		"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
+		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
 		tabularization.min_code_inclusion_count=10 \
 		tabularization.window_sizes=[1d,7d,30d,365d] \
 		tabularization.aggs=[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max] \
@@ -117,41 +130,51 @@ train-meds-tab:
 		echo "Running task_specific_caching.py for task: $$task"; \
 		uv run meds-tab-cache-task \
 			hydra/launcher=joblib \
-			"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
+			"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
 			"input_label_dir=$(ACES_OUTPUT_DIR)/$$task/" "task_name=$$task" do_overwrite=False; \
 		echo "Running xgboost for task: $$task"; \
 		uv run meds-tab-xgboost \
-			"input_dir=$(MEDS_TAB_INPUT_DIR)" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
+			"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
 			"output_model_dir=$(MEDS_TAB_OUTPUT_DIR)/models/$$task/" "task_name=$$task" do_overwrite=False \
 			"hydra.sweeper.n_trials=1000" "hydra.sweeper.n_jobs=$(N_WORKERS)"; \
 	done
 
 ### Structured ###
 
+STRUCTURED_INPUT_DIR := $(DATA_DIR)/MEDS_cohort_with_headers_and_quantiles/data
+STRUCTURED_TOKENIZED_DATA_DIR := $(DATA_DIR)/structured_pretraining
+STRUCTURED_PRETRAINING_MODEL_DIR := $(TRAINING_DIR)/structured_pretraining
+
 .PHONY: tokenize-structured-pretraining
 tokenize-structured-pretraining:
 	uv run tokenize_structured_pretraining_dataset \
 		dataset_dir=$(STRUCTURED_INPUT_DIR) \
-		output_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)
+		output_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)
 
 .PHONY: train-structured-pretraining
 train-structured-pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run train_structured_pretraining \
-	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
-		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
-		output_dir=$(STRUCTURED_PRETRAINING_DIR)
+	    dataset_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenized_dataset \
+		tokenizer_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenizer \
+		output_dir=$(STRUCTURED_PRETRAINING_MODEL_DIR)
 
 .PHONY: train-structured-pretraining-multigpu
 train-structured-pretraining-multigpu:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run accelerate launch config_file --config_file=./mimic_struct_predict/models/train/structured/pretraining/config/accelerate_multigpu.yaml \
 		train_structured_pretraining \
-		tokenizer_dir=$(STRUCTURED_PRETRAINING_DIR)/tokenizer \
-		output_dir=$(STRUCTURED_PRETRAINING_DIR)
+		dataset_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenized_dataset \
+		tokenizer_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenizer \
+		output_dir=$(STRUCTURED_PRETRAINING_MODEL_DIR)
 
 
 ### Natural Language ###
+
+
+NATURAL_LANGUAGE_INPUT_DIR := $(DATA_DIR)/MEDS_cohort_with_headers/data
+NATURAL_LANGUAGE_TOKENIZED_DATA_DIR := $(DATA_DIR)/natural_language
+NATURAL_LANGUAGE_SFT_MODEL_DIR := $(TRAINING_DIR)/natural_language_sft
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
@@ -163,14 +186,15 @@ tokenize-natural-language-multitask-sft:
 	uv run tokenize_natural_language_multitask_sft \
 		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
 		aces_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(NL_MULTITASK_SFT_DIR)/tokenized_dataset
+		output_dir=$(NATURAL_LANGUAGE_TOKENIZED_DATA_DIR)
 
 .PHONY: train-natural-language-multitask-sft
 train-natural-language-multitask-sft:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run train_natural_language_multitask_sft \
-		dataset_dir=$(NL_MULTITASK_SFT_DIR)/tokenized_dataset \
-		output_dir=$(NL_MULTITASK_SFT_DIR)
+		dataset_dir=$(NATURAL_LANGUAGE_TOKENIZED_DATA_DIR)/tokenized_dataset \
+		output_dir=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)
+
 
 .PHONY: llm-inference-direct
 llm-inference-direct:
