@@ -1,4 +1,4 @@
-N_WORKERS          := 1
+N_WORKERS          := 6
 
 # DATASET_NAME = mimic_iv
 # MIMIC_VERSION = 3.1
@@ -12,7 +12,6 @@ MIMICIV_RAW_DIR      := data/raw_input
 MIMICIV_PRE_MEDS_DIR := data/pre_MEDS
 MIMICIV_MEDS_COHORT_DIR     := data/MEDS_cohort
 
-MEDS_TAB_OUTPUT_DIR := data/MEDS_tab
 
 NATURAL_LANGUAGE_INPUT_DIR := data/MEDS_cohort_with_headers
 NATURAL_LANGUAGE_OUTPUT_DIR := data/natural_language
@@ -106,37 +105,52 @@ aces-labels:
 			-m; \
 	done
 
+MEDS_TAB_OUTPUT_DATA_DIR := $(DATA_DIR)/MEDS_tab
+MEDS_TAB_OUTPUT_MODEL_DIR := $(TRAINING_DIR)/MEDS_tab
+
 .PHONY: train-meds-tab
 train-meds-tab:
-	uv run meds-tab-describe \
-		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" "output_dir=$(MEDS_TAB_OUTPUT_DIR)"
+# 	@echo "Describing MEDS tabular data..."
+# 	uv run meds-tab-describe \
+# 		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
+# 		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)"
 
-	@echo "Tabularizing static data"
-	uv run meds-tab-tabularize-static \
-		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
-		do_overwrite=False
-
-	@echo "Tabularizing time series..."
-	uv run meds-tab-tabularize-time-series \
-		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
-		tabularization.min_code_inclusion_count=10 \
-		tabularization.window_sizes=[1d,7d,30d,365d] \
-		tabularization.aggs=[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max] \
-		do_overwrite=False
+# 	@echo "Tabularizing time series..."
+# 	uv run meds-tab-tabularize-time-series \
+# 		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
+# 		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)" \
+# 		"tabularization.min_code_inclusion_count=10" \
+# 		"tabularization.window_sizes=[1d,7d,30d,365d]" \
+# 		"tabularization.aggs=[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]" \
+# 		"do_overwrite=False"
 
 	@for task in $(ACES_TASKS); do \
-		mkdir -p "$(MEDS_TAB_OUTPUT_DIR)/$$task"; \
-		rsync -r "$(MEDS_TAB_OUTPUT_DIR)/metadata/" "$(MEDS_TAB_OUTPUT_DIR)/$$task/metadata"; \
-		echo "Running task_specific_caching.py for task: $$task"; \
+		echo "Processing task: $$task"; \
+		mkdir -p "$(MEDS_TAB_OUTPUT_DATA_DIR)/$$task"; \
+		rsync -r "$(MEDS_TAB_OUTPUT_DATA_DIR)/metadata/" "$(MEDS_TAB_OUTPUT_DATA_DIR)/$$task/metadata"; \
+		echo "  -> Running task_specific_caching.py"; \
 		uv run meds-tab-cache-task \
 			hydra/launcher=joblib \
-			"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
-			"input_label_dir=$(ACES_OUTPUT_DIR)/$$task/" "task_name=$$task" do_overwrite=False; \
-		echo "Running xgboost for task: $$task"; \
-		uv run meds-tab-xgboost \
-			"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" "output_dir=$(MEDS_TAB_OUTPUT_DIR)" \
-			"output_model_dir=$(MEDS_TAB_OUTPUT_DIR)/models/$$task/" "task_name=$$task" do_overwrite=False \
-			"hydra.sweeper.n_trials=1000" "hydra.sweeper.n_jobs=$(N_WORKERS)"; \
+			"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
+			"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)" \
+			"input_label_dir=$(ACES_OUTPUT_DIR)/$$task/" \
+			"task_name=$$task" \
+			"do_overwrite=False"; \
+		echo "  -> Running xgboost"; \
+		uv run meds-tab-model \
+			--multirun \
+			model_launcher=xgboost \
+			"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
+			"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)" \
+			"output_model_dir=$(MEDS_TAB_OUTPUT_MODEL_DIR)/$$task/" \
+			"task_name=$$task" \
+			"do_overwrite=False" \
+			"hydra.sweeper.n_trials=15" \
+			"hydra.sweeper.n_jobs=$(N_WORKERS)" \
+			"tabularization.min_code_inclusion_count=10" \
+			"tabularization.window_sizes=$(shell uv run generate-subsets "[1d,30d,365d]")" \
+    		"tabularization.aggs=$(shell uv run generate-subsets "[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]")" \
+			"delete_below_top_k=3"; \
 	done
 
 ### Structured ###
