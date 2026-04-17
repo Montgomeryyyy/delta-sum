@@ -20,6 +20,7 @@ windows:
     end: trigger + 24h
     start_inclusive: True
     end_inclusive: True
+    index_timestamp: end
   gap:
     # Drop events where patient dies or is discharged within 24 hrs of ICU admission
     start: trigger

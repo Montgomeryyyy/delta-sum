@@ -118,7 +118,7 @@ def meds_and_aces_to_string_dataset(
     tasks: set[str] | None,
     splits: set[str],
     code_join_token: str,
-    delimiter: None | str,
+    delimiter: None | str = None,
     split_on_delimiter: bool = False,
     append_numeric_values: bool = False,
     sig_figs: int = 2,

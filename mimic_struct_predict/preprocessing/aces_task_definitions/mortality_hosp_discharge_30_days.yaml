@@ -18,6 +18,7 @@ windows:
     end: trigger
     start_inclusive: True
     end_inclusive: True
+    index_timestamp: end
   gap:
     # Drop events where patient dies before hospital discharge
     start: NULL

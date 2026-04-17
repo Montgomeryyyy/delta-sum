@@ -81,9 +81,9 @@ meds-dataset:
 		pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_headers.yaml\
 
 	@echo "Running add quantiles pipeline..."
-	rm -rf $(STRUCTURED_INPUT_DIR)
+	rm -rf $(STRUCTURED_INPUT_DATA_DIR)
 	INPUT_DIR=$(NATURAL_LANGUAGE_INPUT_DIR) \
-	OUTPUT_DIR=$(STRUCTURED_INPUT_DIR) \
+	OUTPUT_DIR=$(STRUCTURED_INPUT_DATA_DIR) \
 	DATASET_NAME=$(DATASET_NAME) \
 	DATASET_VERSION=$(MIMIC_VERSION) \
 	uv run MEDS_transform-pipeline \
@@ -155,32 +155,40 @@ train-meds-tab:
 
 ### Structured ###
 
-STRUCTURED_INPUT_DIR := $(DATA_DIR)/MEDS_cohort_with_headers_and_quantiles/data
-STRUCTURED_TOKENIZED_DATA_DIR := $(DATA_DIR)/structured_pretraining
-STRUCTURED_PRETRAINING_MODEL_DIR := $(TRAINING_DIR)/structured_pretraining
+STRUCTURED_INPUT_DATA_DIR := $(DATA_DIR)/MEDS_cohort_with_headers_and_quantiles/data
+STRUCTURED_OUTPUT_DATA_DIR := $(DATA_DIR)/structured
+STRUCTURED_PRETRAINING_DATA_DIR := $(STRUCTURED_OUTPUT_DATA_DIR)/pretraining
+STRUCTURED_MODEL_DIR := $(TRAINING_DIR)/structured
 
 .PHONY: structured_pretraining_tokenize
 structured_pretraining_tokenize:
 	uv run structured_pretraining_tokenize \
-		dataset_dir=$(STRUCTURED_INPUT_DIR) \
-		output_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)
+		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR) \
+		output_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)
 
 .PHONY: train-structured-pretraining
 structured_pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run structured_pretraining \
-	    dataset_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenized_dataset \
-		tokenizer_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenizer \
-		output_dir=$(STRUCTURED_PRETRAINING_MODEL_DIR)
+	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
+		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
 
 .PHONY: train-structured-pretraining-multigpu
 train-structured-pretraining-multigpu:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run accelerate launch config_file --config_file=./mimic_struct_predict/models/train/structured/pretraining/config/accelerate_multigpu.yaml \
 		structured_pretraining \
-		dataset_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenized_dataset \
-		tokenizer_dir=$(STRUCTURED_TOKENIZED_DATA_DIR)/tokenizer \
-		output_dir=$(STRUCTURED_PRETRAINING_MODEL_DIR)
+		dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
+		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
+
+.PHONY: structured_create_task_prompts
+structured_create_task_prompts:
+	uv run structured_create_task_prompts \
+		meds_dir=$(STRUCTURED_INPUT_DATA_DIR) \
+		aces_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts
 
 
 ### Natural Language ###

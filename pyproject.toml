@@ -43,6 +43,7 @@ merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 structured_pretraining_tokenize = "mimic_struct_predict.models.structured.pretraining_tokenize:main"
 structured_pretraining = "mimic_struct_predict.models.structured.pretrain:main"
+structured_create_task_prompts = "mimic_struct_predict.models.structured.create_task_prompts:main"
 natural_language_create_prompts = "mimic_struct_predict.models.natural_language.create_prompts:main"
 natural_language_sft = "mimic_struct_predict.models.natural_language.sft:main"
 natural_language_inference = "mimic_struct_predict.models.natural_language.inference:main"
