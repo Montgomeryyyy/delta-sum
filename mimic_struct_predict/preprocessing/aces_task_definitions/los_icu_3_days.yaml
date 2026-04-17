@@ -1,0 +1,39 @@
+metadata:
+  description: >-
+    True if patient is discharged from the icu within 2-3 days of icu admission, false otherwise.
+    Prediction is made at 24 hrs after icu admission,
+    and only includes patients who are alive and have not been discharged from the icu within 24 hrs of icu admission.
+
+predicates:
+  icu_admission:
+    code: {regex: "Icu Admission//.*"}
+  icu_discharge:
+    code: {regex: "Icu Discharge//.*"}
+  death:
+    code: "Death//Died"
+
+trigger: icu_admission
+
+windows:
+  input:
+    # All of patients history up until icu admission + 24hrs
+    start: NULL
+    end: trigger + 24h
+    start_inclusive: True
+    end_inclusive: True
+  gap:
+    # Drop events where patient dies or is discharged between icu admission and admission + 24hrs
+    start: trigger
+    end: start + 24h
+    start_inclusive: False
+    end_inclusive: True
+    has:
+      death: (None, 0)
+      icu_discharge: (None, 0)
+  target:
+    # True if patient is discharged from the icu within 2-3 days of icu admission, false otherwise
+    start: gap.end
+    end: start + 3 days
+    start_inclusive: False
+    end_inclusive: True
+    label: icu_discharge

@@ -1,0 +1,39 @@
+metadata:
+  description: >-
+    True if patient dies during hospital stay, false otherwise. Prediction is made at 24 hrs after hospital admission,
+    and only includes patients who survive and have not been discharged from the hospital within 24 hrs of hospital admission.
+
+predicates:
+  hospital_admission:
+    code: {regex: "Hospital Admission//.*"}
+  hospital_discharge:
+    code: {regex: "Hospital Discharge//.*"}
+  death:
+    code: "Death//Died"
+
+trigger: hospital_admission
+
+windows:
+  input:
+    # All of patients history up until 24 hrs after hospital admission
+    start: NULL
+    end: trigger + 24h
+    start_inclusive: True
+    end_inclusive: True
+  gap:
+    # Drop events where patient dies or is discharged within 24 hrs of hospital admission
+    start: trigger
+    end: start + 24h
+    start_inclusive: False
+    end_inclusive: True
+    has:
+      hospital_discharge: (None, 0)
+      death: (None, 0)
+  target:
+    # True if patient dies during this hospital stay, false otherwise
+    start: gap.end
+    # Assumes hospital discharge event occurs even if patient dies (true for MIMIC-IV)
+    end: start -> hospital_discharge
+    start_inclusive: False
+    end_inclusive: True
+    label: death

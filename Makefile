@@ -23,8 +23,8 @@ MEDS_DIR := mimic_struct_predict/preprocessing/meds
 
 ACES_OUTPUT_DIR := data/aces_labels
 ACES_DEFINITIONS_DIR := mimic_struct_predict/preprocessing/aces_task_definitions
-# ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
-ACES_TASKS := 30_day_readmission
+ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
+# ACES_TASKS := 30_day_readmission
 
 LLM_INFERENCE_OUTPUT_DIR := outputs/llm_inference
 
@@ -98,8 +98,8 @@ aces-labels:
 			config_path=$(ACES_DEFINITIONS_DIR)/$$task.yaml \
 			data.standard=meds \
 			data=sharded \
-			data.root=$(MIMICIV_MEDS_COHORT_DIR)/order_by_code_prefix \
-			"data.shard=$$(uv run expand_shards $(MIMICIV_MEDS_COHORT_DIR)/order_by_code_prefix)" \
+			data.root=$(MIMICIV_MEDS_COHORT_DIR)/data \
+			"data.shard=$$(uv run expand_shards $(MIMICIV_MEDS_COHORT_DIR)/data)" \
 			cohort_dir=$(ACES_OUTPUT_DIR) \
 			cohort_name="$$task" \
 			-m; \

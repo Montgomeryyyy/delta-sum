@@ -1,0 +1,38 @@
+metadata:
+  description: >-
+    True if patient dies during ICU stay, false otherwise. Prediction is made at 24 hrs after ICU admission,
+    and only includes patients who survive and have not been discharged from the icu within 24 hrs of icu admission.
+
+predicates:
+  icu_admission:
+    code: {regex: "Icu Admission//.*"}
+  icu_discharge:
+    code: {regex: "Icu Discharge//.*"}
+  death:
+    code: "Death//Died"
+
+trigger: icu_admission
+
+windows:
+  input:
+    # All of patients history up until 24 hrs after ICU admission
+    start: NULL
+    end: trigger + 24h
+    start_inclusive: True
+    end_inclusive: True
+  gap:
+    # Drop events where patient dies or is discharged within 24 hrs of ICU admission
+    start: trigger
+    end: start + 24h
+    start_inclusive: False
+    end_inclusive: True
+    has:
+      icu_discharge: (None, 0)
+      death: (None, 0)
+  target:
+    # True if patient dies during this ICU stay, false otherwise
+    start: gap.end
+    end: start -> icu_discharge
+    start_inclusive: False
+    end_inclusive: True
+    label: death
