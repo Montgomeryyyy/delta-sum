@@ -9,7 +9,7 @@ split: ???
 tasks: null # If null or empty, will run on all tasks in the dataset
 
 num_workers: 4
-batch_size: 8
+batch_size: 2
 
 tokenization:
   prefixes:
@@ -26,7 +26,7 @@ generation:
   max_new_tokens: 64
   use_cache: false
   # Note effective batch size is num_return_sequences * batch_size
-  num_return_sequences : 1
+  num_return_sequences : 4
 
 end_conditions:
   los_hosp_3_days:

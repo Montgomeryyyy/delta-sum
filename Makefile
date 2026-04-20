@@ -199,7 +199,7 @@ structured_inference_generative_rollout:
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(INFERENCE_DIR)/structured/generative_rollout \
 		split=tuning \
-		tasks=los_hosp_3_days
+		tasks="[los_hosp_3_days, mortality_in_hosp]"
 
 ### Natural Language ###
 

@@ -3,9 +3,10 @@
 import logging
 import re
 import time
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Type, cast
+from typing import Any, Type, cast
 
 import datasets
 import hydra
@@ -146,7 +147,7 @@ def batch_inference(
     inputs = tokenizer(
         ehr_texts,
         truncation=True,
-        max_length=448,
+        max_length=tokenizer.model_max_length - generation_config.max_new_tokens,
         padding=True,
         return_tensors="pt",
     )
@@ -155,40 +156,47 @@ def batch_inference(
     # Forward pass to get logits for the next token (pass tensors explicitly)
     with torch.inference_mode():
         outputs = model.generate(
+            tokenizer=tokenizer,
             **inputs,
             **generation_config,
         )
 
-    # Ensure correct tensor typing for slicing
+    # Extract generated tokens from outputs, reshape to separate sequences, and convert to list for post-processing
     start_idx = int(inputs["input_ids"].shape[1])
-    batch_new_tokens = outputs[:, start_idx:].cpu().tolist()
+    batch_new_tokens = outputs[:, start_idx:]
+    batch_new_tokens = batch_new_tokens.view(len(ehr_texts), generation_config.get("num_return_sequences", 1), -1)
+    batch_new_tokens = batch_new_tokens.cpu().tolist()
 
     # Post-process outputs to extract generated tokens, compute probabilities, and check format adherence
-    results: dict[str, list] = {
-        "completion": [],
-        "timestamps": [],
-        "codes": [],
-        "probability": [],
-        "format_adherence": [],
-    }
-    for ehr_text, new_tokens, prediction_time in zip(ehr_texts, batch_new_tokens, prediction_times):
+    results: dict[str, list[Any]] = defaultdict(list)
+    for ehr_text, ehr_new_tokens, prediction_time in zip(ehr_texts, batch_new_tokens, prediction_times):
+        ehr_results = defaultdict(list)
         prediction_header = extract_last_category_content(
             ehr_text, tokenization_cfg.prefixes.category, tokenization_cfg.delimiter
         )
-        completion = tokenization_cfg.delimiter.join(tokenizer.convert_ids_to_tokens(new_tokens))
+        for new_tokens in ehr_new_tokens:
+            completion = tokenization_cfg.delimiter.join(tokenizer.convert_ids_to_tokens(new_tokens))
+            timestamps, codes, found, finished = parse_completion(
+                completion, prediction_time, prediction_header, end_time_delta, end_codes, tokenization_cfg
+            )
 
-        timestamps, codes, found, finished = parse_completion(
-            completion, prediction_time, prediction_header, end_time_delta, end_codes, tokenization_cfg
+            ehr_results["completion"].append(completion)
+            ehr_results["timestamps"].append(timestamps)
+            ehr_results["codes"].append(codes)
+            ehr_results["probability"].append(int(found))
+            ehr_results["format_adherence"].append(int(finished))
+
+        for key, values in ehr_results.items():
+            results[key].append(values)
+
+        results["mean_probability"].append(sum(ehr_results["probability"]) / len(ehr_results["probability"]))
+        results["mean_format_adherence"].append(
+            sum(ehr_results["format_adherence"]) / len(ehr_results["format_adherence"])
         )
-        results["completion"].append(completion)
-        results["timestamps"].append(timestamps)
-        results["codes"].append(codes)
-        results["probability"].append(int(found))
-        results["format_adherence"].append(int(finished))
 
     end_time = time.perf_counter()
     sample_latency = (end_time - start_time) / len(ehr_texts)
-    results["sample_latency"] = [sample_latency] * len(ehr_texts)
+    results["sample_latency"] = [sample_latency] * len(ehr_texts)  # noqa: mypy
 
     return results
 
