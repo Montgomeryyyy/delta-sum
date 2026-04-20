@@ -9,7 +9,7 @@ import polars as pl
 from omegaconf import DictConfig
 from tokenizers import Regex, Tokenizer
 from tokenizers.models import WordLevel
-from tokenizers.pre_tokenizers import Split
+from tokenizers.pre_tokenizers import Sequence, Split
 from tokenizers.trainers import WordLevelTrainer
 from transformers import (
     PreTrainedTokenizerFast,
@@ -25,20 +25,22 @@ log = logging.getLogger(__name__)
 def train_custom_tokenizer(dataset: datasets.Dataset, cfg: DictConfig, batch_size: int) -> PreTrainedTokenizerFast:
     # 1. Initialize the WordLevel tokenizer (no subword merging)
     tokenizer = Tokenizer(WordLevel(unk_token=cfg.special_tokens.unk_token))
-    # Add special tokens directly to tokenizer rather than in trainer to avoid "Vocab holes"
-    # when special tokens occur in training data.
-    # Also ensures eoc_token is an individual token
-    tokenizer.add_special_tokens(
-        [cfg.special_tokens.pad_token, cfg.special_tokens.unk_token, cfg.special_tokens.eoc_token]
-    )
 
     # 2. Set the Pre-Tokenizer to ONLY split on the delimited strings
     # We removed the Sequence and Whitespace() from the previous example.
-    tokenizer.pre_tokenizer = Split(Regex(re.escape(cfg.delimiter)), behavior="removed")
+    tokenizer.pre_tokenizer = Sequence(
+        [
+            Split(Regex(re.escape(cfg.special_tokens.eoc_token)), behavior="isolated"),
+            Split(Regex(re.escape(cfg.delimiter)), behavior="removed"),
+        ]
+    )
 
     # 3. Set up the Trainer
     trainer = WordLevelTrainer(
         min_frequency=cfg.min_frequency,
+        # Assume that unk and eoc are already in text so not added as special token to allow for
+        # simpler decoding
+        special_tokens=[cfg.special_tokens.pad_token],
     )
 
     def batch_iterator() -> Iterable[str]:
@@ -82,7 +84,11 @@ def main(cfg: DictConfig) -> None:
         meds_dir=meds_data_dir,
         output_dir=raw_data_dir,
         splits={train_split, val_split},
-        code_join_token=cfg.tokenization.special_tokens.eoc_token,
+        # Add delimiter around eoc token to ensure it is always a separate token
+        # and to allow for easier decoding back to text
+        code_join_token=cfg.tokenization.delimiter
+        + cfg.tokenization.special_tokens.eoc_token
+        + cfg.tokenization.delimiter,
         delimiter=cfg.tokenization.delimiter,
         split_on_delimiter=False,  # Tokenizer will split to create tokens
         append_numeric_values=False,  # We are using quantiles instead of raw numeric values
@@ -102,7 +108,7 @@ def main(cfg: DictConfig) -> None:
     log.info("Training custom tokenizer on raw pretraining dataset...")
     tokenizer = train_custom_tokenizer(dataset[train_split], cfg.tokenization, cfg.batch_size)
     tokenizer.save_pretrained(str(output_dir / "tokenizer"))
-    log.info(f"Tokenizer of vocab size {len(tokenizer)} trained")
+    log.info(f"Tokenizer of vocab size {len(tokenizer)} trained and saved to {output_dir / 'tokenizer'}")
 
     log.info("Tokenizing and chunking raw pretraining dataset with the trained tokenizer...")
     tokenized_dataset = dataset.map(

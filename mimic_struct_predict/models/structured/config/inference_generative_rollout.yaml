@@ -1,0 +1,66 @@
+model:
+  pretrained_model_name_or_path: ???
+  dtype: float32
+
+
+dataset_dir: ???  # Required: directory of pre-built prompt datasets
+output_dir: ???          # Required: directory to save outputs
+split: ???
+tasks: null # If null or empty, will run on all tasks in the dataset
+
+num_workers: 4
+batch_size: 8
+
+tokenization:
+  prefixes:
+    category: "#### "
+    time: "### Time//"
+    delta: "## Delta//"
+  time_unspecified: "Unspecified"
+  delimiter: "//"
+  eoc_token: "\n"
+  line_delimiter: ${tokenization.delimiter}${tokenization.eoc_token}${tokenization.delimiter}
+
+generation:
+  do_sample: true
+  max_new_tokens: 64
+  use_cache: false
+  # Note effective batch size is num_return_sequences * batch_size
+  num_return_sequences : 1
+
+end_conditions:
+  los_hosp_3_days:
+    codes:
+      - "Hospital Discharge//"
+    time:
+      days: 2 # Prediction made after 24hrs
+  mortality_hosp_discharge_30_days:
+    codes:
+      - "Hospital Discharge//"
+    time:
+      days: 30
+  mortality_in_hosp:
+    codes:
+      - "Death//Died"
+  readmission_hosp_30_days:
+    codes:
+      - "Hospital Discharge//"
+    time:
+      days: 30
+  los_icu_3_days:
+    codes:
+      - "Hospital Admission//"
+    time:
+      days: 2 # Prediction made after 24hrs
+  mortality_hosp_discharge_365_days:
+    codes:
+      - "Death//Died"
+    time:
+      days: 365
+  mortality_in_icu:
+    codes:
+      - "Death//Died"
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

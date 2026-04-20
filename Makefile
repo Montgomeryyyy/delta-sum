@@ -18,6 +18,7 @@ NATURAL_LANGUAGE_OUTPUT_DIR := data/natural_language
 
 DATA_DIR := data
 TRAINING_DIR := outputs/training
+INFERENCE_DIR := outputs/inference
 
 MEDS_DIR := mimic_struct_predict/preprocessing/meds
 
@@ -27,6 +28,8 @@ ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
 # ACES_TASKS := 30_day_readmission
 
 LLM_INFERENCE_OUTPUT_DIR := outputs/llm_inference
+STRUCTURED_INPUT_DATA_DIR := $(DATA_DIR)/MEDS_cohort_with_headers_and_quantiles
+
 
 TRACKIO_DIR := $(TRAINING_DIR)/trackio
 
@@ -155,7 +158,6 @@ train-meds-tab:
 
 ### Structured ###
 
-STRUCTURED_INPUT_DATA_DIR := $(DATA_DIR)/MEDS_cohort_with_headers_and_quantiles/data
 STRUCTURED_OUTPUT_DATA_DIR := $(DATA_DIR)/structured
 STRUCTURED_PRETRAINING_DATA_DIR := $(STRUCTURED_OUTPUT_DATA_DIR)/pretraining
 STRUCTURED_MODEL_DIR := $(TRAINING_DIR)/structured
@@ -163,7 +165,7 @@ STRUCTURED_MODEL_DIR := $(TRAINING_DIR)/structured
 .PHONY: structured_pretraining_tokenize
 structured_pretraining_tokenize:
 	uv run structured_pretraining_tokenize \
-		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR) \
+		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
 		output_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)
 
 .PHONY: train-structured-pretraining
@@ -186,15 +188,22 @@ train-structured-pretraining-multigpu:
 .PHONY: structured_create_task_prompts
 structured_create_task_prompts:
 	uv run structured_create_task_prompts \
-		meds_dir=$(STRUCTURED_INPUT_DATA_DIR) \
+		meds_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
 		output_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts
 
+.PHONY: structured_inference_generative_rollout
+structured_inference_generative_rollout:
+	uv run structured_inference_generative_rollout \
+		model.pretrained_model_name_or_path=outputs/training/structured/pretraining/20260420_173311/final_model \
+		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
+		output_dir=$(INFERENCE_DIR)/structured/generative_rollout \
+		split=tuning \
+		tasks=los_hosp_3_days
 
 ### Natural Language ###
 
 
-NATURAL_LANGUAGE_INPUT_DIR := $(DATA_DIR)/MEDS_cohort_with_headers/data
 NATURAL_LANGUAGE_DIRECT_DATA_DIR := $(DATA_DIR)/natural_language_direct
 NATURAL_LANGUAGE_THINKING_DATA_DIR := $(DATA_DIR)/natural_language_thinking
 NATURAL_LANGUAGE_SFT_MODEL_DIR := $(TRAINING_DIR)/natural_language_sft
@@ -207,7 +216,7 @@ download-qwen-06B:
 .PHONY: natural_language_create_prompts_direct
 natural_language_create_prompts_direct:
 	uv run natural_language_create_prompts \
-		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
+		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)
 
@@ -215,7 +224,7 @@ natural_language_create_prompts_direct:
 natural_language_create_prompts_thinking:
 	uv run natural_language_create_prompts \
 		--config-name create_prompts_thinking.yaml \
-		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR) \
+		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)
 
