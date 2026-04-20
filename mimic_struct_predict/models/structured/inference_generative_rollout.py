@@ -13,12 +13,9 @@ import hydra
 import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
-from transformers import (
-    AutoModelForCausalLM,
-    PreTrainedModel,
-    PreTrainedTokenizerBase,
-)
+from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizerBase, StoppingCriteriaList
 
+from mimic_struct_predict.models.structured.stopping_criteria import WordLevelStopCriteria
 from mimic_struct_predict.models.utils import (
     load_model_and_tokenizer,
 )
@@ -131,6 +128,7 @@ def batch_inference(
     end_time_delta: timedelta | None,
     end_codes: list[str] | None,
     generation_config: DictConfig,
+    stopping_criteria: StoppingCriteriaList | None,
 ) -> dict[str, list]:
     """Run inference on a batch of EHR texts by
     - Tokenizing the input texts with appropriate padding and truncation
@@ -156,7 +154,7 @@ def batch_inference(
     # Forward pass to get logits for the next token (pass tensors explicitly)
     with torch.inference_mode():
         outputs = model.generate(
-            tokenizer=tokenizer,
+            stopping_criteria=stopping_criteria,
             **inputs,
             **generation_config,
         )
@@ -266,6 +264,19 @@ def main(cfg: DictConfig) -> None:
                 days=end_time.get("days", 0), hours=end_time.get("hours", 0), minutes=end_time.get("minutes", 0)
             )
 
+        stopping_criteria = stopping_criteria = (
+            StoppingCriteriaList(
+                [
+                    WordLevelStopCriteria(
+                        stop_strings=end_codes,
+                        tokenizer=tokenizer,
+                    )
+                ]
+            )
+            if end_codes
+            else None
+        )
+
         # Sort to minimize padding within batches
         dataset = dataset.map(
             lambda ehr_text: {"length": len(ehr_text)},
@@ -287,6 +298,7 @@ def main(cfg: DictConfig) -> None:
                     generation_config=cfg.generation,
                     end_codes=end_codes,
                     end_time_delta=end_time_delta,
+                    stopping_criteria=stopping_criteria,
                 ),
                 input_columns=["ehr_text", "prediction_time"],
                 batched=True,

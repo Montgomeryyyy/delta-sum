@@ -71,6 +71,8 @@ warn_return_any = true
 warn_unused_ignores = true
 # Ignore missing stubs for third-party packages
 ignore_missing_imports = true
+# Specify the directory to type check (TOML uses arrays for multiple paths)
+files = ["mimic_struct_predict"]
 
 [tool.pytest.ini_options]
 norecursedirs = ["MEDS_Tabular_AutoML"]

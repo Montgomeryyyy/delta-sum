@@ -25,9 +25,7 @@ repos:
     rev: v1.14.1
     hooks:
       - id: mypy
-        additional_dependencies: [types-PyYAML]
-        args: [--ignore-missing-imports]
-        files: ^mimic_struct_predict/
+        pass_filenames: false
 
   - repo: https://github.com/kynan/nbstripout
     rev: 0.8.1
