@@ -36,7 +36,9 @@ class WordLevelStopCriteria(StoppingCriteria):
         # or might just be a wrapper. You can also check the class name of the tokenizer.
         return "WordLevel" in type(tokenizer).__name__
 
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor | None = None, **kwargs: Any) -> bool:
+    def __call__(
+        self, input_ids: torch.LongTensor, scores: torch.FloatTensor | None = None, **kwargs: Any
+    ) -> torch.BoolTensor:
         # Move tensors to device once to save bandwidth
         if not self.device_synced:
             self.stop_sequences = [s.to(input_ids.device) for s in self.stop_sequences]
@@ -56,9 +58,11 @@ class WordLevelStopCriteria(StoppingCriteria):
             self.finished_mask |= matches
 
         if self.finished_mask is None:
-            return False
+            # return a (batch_size, 1) tensor of False
+            return torch.zeros(batch_size, 1, dtype=torch.bool, device=input_ids.device)
 
-        return bool(self.finished_mask.all().item())
+        # Transformers expects a torch.BoolTensor with shape (batch_size, 1)
+        return self.finished_mask.view(batch_size, 1)
 
 
 class TimeDeltaStoppingCriteria(StoppingCriteria):
@@ -113,7 +117,9 @@ class TimeDeltaStoppingCriteria(StoppingCriteria):
             if match:
                 self.delta_lookup[token_id] = int(match.group(1))
 
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor | None = None, **kwargs: Any) -> bool:
+    def __call__(
+        self, input_ids: torch.LongTensor, scores: torch.FloatTensor | None = None, **kwargs: Any
+    ) -> torch.BoolTensor:
         """
         Evaluates whether the generation should stop based on the cumulative
         time deltas of the generated portion of the sequence.
@@ -145,5 +151,5 @@ class TimeDeltaStoppingCriteria(StoppingCriteria):
         # 4. Evaluate which sequences in the batch have exceeded the threshold.
         is_done = generated_deltas > self.max_time_delta
 
-        # Stop generation ONLY when all active sequences in the batch are finished.
-        return bool(is_done.all().item())
+        # Return a torch.BoolTensor of shape (batch_size, 1) per docs
+        return is_done.view(-1, 1)

@@ -47,15 +47,22 @@ def test_single_token_stop():
 
     # no sequences have stop token yet
     inp = _pad_seqs([[1], [2], [3]])
-    assert crit(inp) is False
+    out = crit(inp)
+    assert isinstance(out, torch.Tensor) and out.dtype == torch.bool and out.shape == (3, 1)
+    assert not out.all().item()
 
     # one sequence ends with STOP -> still False (not all finished)
     inp = _pad_seqs([[1, 9], [2], [3]])
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.shape == (3, 1)
+    assert out.squeeze(1).tolist() == [True, False, False]
+    assert not out.all().item()
 
     # now all sequences end with STOP -> True
     inp = _pad_seqs([[1, 9], [2, 9], [3, 9]])
-    assert crit(inp) is True
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, True, True]
+    assert out.all().item()
 
 
 def test_multi_token_stop():
@@ -64,26 +71,35 @@ def test_multi_token_stop():
 
     # none have end sequence
     inp = _pad_seqs([[1], [1]])
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.shape == (2, 1) and not out.all().item()
 
     # partial tokens present but not full match
     inp = _pad_seqs([[1, 5], [1]])
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [False, False]
+    assert not out.all().item()
 
     # first sequence has full END match (but second hasn't) -> still False
     inp = _pad_seqs([[5, 6], [1]])
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, False]
+    assert not out.all().item()
 
     # now second obtains END -> True
     inp = _pad_seqs([[5, 6], [9, 5, 6]])
-    assert crit(inp) is True
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, True]
+    assert out.all().item()
 
 
 def test_empty_stop_list_returns_false():
     tok = DummyTokenizer()
     crit = WordLevelStopCriteria([], tok)
     inp = _pad_seqs([[1]])
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.shape == (1, 1) and out.dtype == torch.bool
+    assert not out.all().item()
 
 
 def test_multiple_stop_words():
@@ -92,15 +108,20 @@ def test_multiple_stop_words():
 
     # none have stop tokens
     inp = _pad_seqs([[1], [2]])
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.shape == (2, 1) and not out.all().item()
 
     # one has full STOP, other has partial END -> still False
     inp = _pad_seqs([[1, 9], [2, 5]])
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, False]
+    assert not out.all().item()
 
     # now second has full END -> True (each sequence hit at least one stop word)
     inp = _pad_seqs([[1, 9], [2, 5, 6]])
-    assert crit(inp) is True
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, True]
+    assert out.all().item()
 
 
 def test_non_word_level_tokenizer_raises():
@@ -116,11 +137,15 @@ def test_time_delta_ignores_prompt_and_counts_generated_tokens_only():
 
     # Prompt contains large delta tokens, but prompt portion must be ignored.
     inp = torch.tensor([[10, 10, 2], [10, 10, 2]], dtype=torch.long)
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.shape == (2, 1) and out.dtype == torch.bool
+    assert not out.all().item()
 
     # Newly generated tokens exceed the threshold for all sequences.
     inp = torch.tensor([[10, 10, 2, 2], [10, 10, 2, 2]], dtype=torch.long)
-    assert crit(inp) is True
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, True]
+    assert out.all().item()
 
 
 def test_time_delta_requires_all_sequences_to_exceed_limit():
@@ -129,11 +154,15 @@ def test_time_delta_requires_all_sequences_to_exceed_limit():
 
     # First sequence exceeds threshold (4), second does not (2).
     inp = torch.tensor([[0, 2, 2], [0, 2, 1]], dtype=torch.long)
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, False]
+    assert not out.all().item()
 
     # Now both sequences exceed threshold.
     inp = torch.tensor([[0, 2, 2], [0, 2, 2]], dtype=torch.long)
-    assert crit(inp) is True
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, True]
+    assert out.all().item()
 
 
 def test_time_delta_uses_strict_greater_than_for_stop_condition():
@@ -142,10 +171,14 @@ def test_time_delta_uses_strict_greater_than_for_stop_condition():
 
     # Equal to threshold should not stop because criterion uses `>`.
     inp = torch.tensor([[0, 3], [0, 3]], dtype=torch.long)
-    assert crit(inp) is False
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [False, False]
+    assert not out.all().item()
 
     inp = torch.tensor([[0, 3, 3], [0, 3, 3]], dtype=torch.long)
-    assert crit(inp) is True
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, True]
+    assert out.all().item()
 
 
 def test_time_delta_regex_extracts_day_tokens_and_ignores_others():
@@ -154,4 +187,6 @@ def test_time_delta_regex_extracts_day_tokens_and_ignores_others():
 
     # Only day/day tokens should contribute: 1 + 2 = 3 (> 2).
     inp = torch.tensor([[1, 2, 5, 7], [1, 2, 5, 7]], dtype=torch.long)
-    assert crit(inp) is True
+    out = crit(inp)
+    assert out.squeeze(1).tolist() == [True, True]
+    assert out.all().item()
