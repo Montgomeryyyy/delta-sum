@@ -13,12 +13,17 @@ etl_metadata:
   dataset_version: ${oc.env:DATASET_VERSION}
   pipeline_name: "add_headers"
 
+delimiter: "//"
+
 ### Insert hierarchical rows to reduce repeated tokens
 stages:
   - add_prefix_rows:
-      header: "#### "
+      header: "#### Category"
+      delimiter: ${delimiter}
   - add_time_rows:
-      header: "### Time//"
+      header: "### Time"
+      delimiter: ${delimiter}
       eod_string: "Unspecified"
   - add_delta_rows:
-      header: "## Delta//"
+      header: "## Delta"
+      delimiter: ${delimiter}

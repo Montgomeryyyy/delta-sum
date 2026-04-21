@@ -56,7 +56,7 @@ def test_add_time_rows_multiple_subjects():
 
     # Assert
     # Even if time is same, subject changed so new parent row
-    expected_codes = ["Time//10h//00m", "A", "Time//10h//00m", "B"]
+    expected_codes = ["10h//00m", "A", "10h//00m", "B"]
     assert result["code"].to_list() == expected_codes
     assert result["subject_id"].to_list() == [1, 1, 2, 2]
 

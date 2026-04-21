@@ -52,6 +52,8 @@ def create_prefix_column(
     """
 
     header = stage_cfg.get("header", "")
+    delimiter = stage_cfg.get("delimiter", "//")
+    header_with_delimiter = f"{header}{delimiter}" if header else header
 
     def create_prefix_column_fn(df: pl.LazyFrame) -> pl.LazyFrame:
         """Process codes and insert prefix rows on changes."""
@@ -61,7 +63,7 @@ def create_prefix_column(
 
         # 1. Extract prefix and cleaned code
         df = df.with_columns(
-            prefix=pl.when(suffix.is_not_null()).then(pl.lit(header) + prefix).otherwise(None),
+            prefix=pl.when(suffix.is_not_null()).then(pl.lit(header_with_delimiter) + prefix).otherwise(None),
             code=suffix.fill_null(pl.col("code")),
         )
 

@@ -56,7 +56,9 @@ def add_delta_rows(
         └────────────┴─────────────────────┴───────────────────┘
     """
 
-    header = stage_cfg.get("header", "Delta")
+    header = stage_cfg.get("header", "")
+    delimiter = stage_cfg.get("delimiter", "//")
+    header_with_delimiter = f"{header}{delimiter}" if header else header
     max_delta_days = int(stage_cfg.get("max_delta_days", 364))
 
     if max_delta_days <= 0:
@@ -118,7 +120,9 @@ def add_delta_rows(
         parent_row_exprs = []
         for col_name, col_dtype in original_schema.items():
             if col_name == "code":
-                parent_row_exprs.append(pl.format("{} +{} days", pl.lit(header), pl.col("__delta_chunk")).alias("code"))
+                parent_row_exprs.append(
+                    pl.format("{}+{} days", pl.lit(header_with_delimiter), pl.col("__delta_chunk")).alias("code")
+                )
             elif col_name in ["subject_id", "time"]:
                 parent_row_exprs.append(pl.col(col_name))
             else:

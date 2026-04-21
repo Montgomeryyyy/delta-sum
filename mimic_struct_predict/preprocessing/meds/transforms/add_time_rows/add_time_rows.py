@@ -56,7 +56,10 @@ def add_time_rows(
         └────────────┴─────────────────────┴────────────┘
     """
 
-    header = stage_cfg.get("header", "Time") + "//"
+    header = stage_cfg.get("header", "")
+    delimiter = stage_cfg.get("delimiter", "//")
+    header_with_delimiter = f"{header}{delimiter}" if header else header
+
     eod_string = stage_cfg.get("eod_string", None)
 
     def add_time_rows_fn(df: pl.LazyFrame) -> pl.LazyFrame:
@@ -72,10 +75,10 @@ def add_time_rows(
         change_cond = _changed("subject_id") | _changed(time_hour) | _changed(time_min)
 
         # Build the new code column expression
-        code_expr = pl.lit(header) + time_hh_mm
+        code_expr = pl.lit(header_with_delimiter) + time_hh_mm
         if eod_string is not None:
             is_eod = pl.col("time").dt.time() == END_OF_DAY
-            code_expr = pl.when(is_eod).then(pl.lit(header + eod_string)).otherwise(code_expr)
+            code_expr = pl.when(is_eod).then(pl.lit(header_with_delimiter + eod_string)).otherwise(code_expr)
             # Differentiates between 23:59 and 23:59:59.999999
             change_cond = change_cond | _changed(is_eod)
 

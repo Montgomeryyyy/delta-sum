@@ -43,9 +43,9 @@ def test_add_delta_rows_inserts_delta_rows_on_subject_or_date_change():
             "code": [
                 "A",
                 "B",
-                "Delta +2 days",
+                "Delta//+2 days",
                 "C",
-                "Delta +1 days",
+                "Delta//+1 days",
                 "D",
             ],
             "numeric_value": [
@@ -80,7 +80,7 @@ def test_add_delta_rows_splits_large_gap_by_max_delta_days():
     result = fn(df).collect()
 
     # Assert
-    expected_codes = ["A", "Delta +364 days", "Delta +6 days", "B"]
+    expected_codes = ["A", "Delta//+364 days", "Delta//+6 days", "B"]
     assert result["code"].to_list() == expected_codes
 
 
@@ -107,10 +107,10 @@ def test_add_delta_rows_resets_delta_per_subject():
     # Assert
     expected_codes = [
         "A",
-        "Delta +9 days",
+        "Delta//+9 days",
         "B",
         "C",
-        "Delta +2 days",
+        "Delta//+2 days",
         "D",
     ]
     assert result["code"].to_list() == expected_codes
@@ -132,5 +132,32 @@ def test_add_delta_rows_uses_custom_max_delta_days():
     result = fn(df).collect()
 
     # Assert
-    expected_codes = ["A", "Delta +3 days", "Delta +3 days", "Delta +3 days", "Delta +1 days", "B"]
+    expected_codes = [
+        "A",
+        "Delta//+3 days",
+        "Delta//+3 days",
+        "Delta//+3 days",
+        "Delta//+1 days",
+        "B",
+    ]
+    assert result["code"].to_list() == expected_codes
+
+
+def test_add_delta_rows_custom_delimiter():
+    # Arrange
+    df = pl.DataFrame(
+        {
+            "subject_id": [1, 1],
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 3)],  # 2 day gap
+            "code": ["A", "B"],
+        }
+    ).lazy()
+    cfg = DictConfig({"header": "Delta", "delimiter": "||", "max_delta_days": 364})
+    fn = add_delta_rows(cfg)
+
+    # Act
+    result = fn(df).collect()
+
+    # Assert
+    expected_codes = ["A", "Delta||+2 days", "B"]
     assert result["code"].to_list() == expected_codes

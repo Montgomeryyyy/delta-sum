@@ -10,7 +10,7 @@ def test_create_prefix_column_inserts_rows():
     df = pl.DataFrame(
         {"subject_id": [1, 1, 2], "time": [1, 1, 3], "code": ["LAB//glucose", "LAB//sodium", "MEDICATION//aspirin"]}
     ).lazy()
-    cfg = DictConfig({"header": "PREFIX//"})
+    cfg = DictConfig({"header": "PREFIX", "delimiter": "//"})
     fn = create_prefix_column(cfg)
 
     # Act
