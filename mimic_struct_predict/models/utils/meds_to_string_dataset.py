@@ -85,7 +85,7 @@ def meds_to_string_dataset(
     meds_dir: Path,
     output_dir: Path,
     overwrite: bool,
-    splits: set[str],
+    splits: set[str] | None,
     code_join_token: str,
     delimiter: None | str,
     split_on_delimiter: bool = False,
@@ -93,7 +93,7 @@ def meds_to_string_dataset(
     sig_figs: int = 2,
 ) -> None:
     # Format shards: split/shard.parquet
-    shards = sorted(shard for shard in meds_dir.glob("*/*.parquet") if shard.parent.name in splits)
+    shards = sorted(shard for shard in meds_dir.glob("*/*.parquet") if (splits is None or shard.parent.name in splits))
     agg_expr = get_agg_expr(code_join_token, split_on_delimiter, delimiter)
 
     def pretrain_loader(p: Path) -> tuple[pl.LazyFrame, Path, str]:
@@ -116,7 +116,7 @@ def meds_and_aces_to_string_dataset(
     output_dir: Path,
     overwrite: bool,
     tasks: set[str] | None,
-    splits: set[str],
+    splits: set[str] | None,
     code_join_token: str,
     delimiter: None | str = None,
     split_on_delimiter: bool = False,
@@ -127,7 +127,7 @@ def meds_and_aces_to_string_dataset(
     shards = sorted(
         shard
         for shard in aces_dir.glob("*/*/*.parquet")
-        if shard.parent.name in splits and (tasks is None or shard.parent.parent.name in tasks)
+        if (splits is None or shard.parent.name in splits) and (tasks is None or shard.parent.parent.name in tasks)
     )
     agg_expr = get_agg_expr(
         code_join_token,

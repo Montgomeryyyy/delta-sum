@@ -19,7 +19,7 @@ def main(cfg: DictConfig) -> None:
     aces_dir = Path(cfg.aces_dir)
     output_dir = Path(cfg.output_dir)
 
-    valid_splits = set(cfg.splits_to_process)
+    valid_splits = set(cfg.splits_to_process) if cfg.splits_to_process else None
     valid_tasks = set(cfg.get("tasks") or [])
 
     # --- Build datasets ---

@@ -40,8 +40,8 @@ show-trackio:
 	uv run trackio show
 
 define check_credentials
-	@test -n "$(MIMIC_USER)" || (echo "Error: MIMIC_USER required" && exit 1)
-	@test -n "$(MIMIC_PASSWORD)" || (echo "Error: MIMIC_PASSWORD required" && exit 1)
+	@test -n "$(MIMIC_USER)" || (echo "Error: MIMIC_USER required (use 'export MIMIC_USER=your_username')" && exit 1)
+	@test -n "$(MIMIC_PASSWORD)" || (echo "Error: MIMIC_PASSWORD required (use 'export MIMIC_PASSWORD=your_password')" && exit 1)
 endef
 
 .PHONY: download-mimic-demo
@@ -185,6 +185,12 @@ train-structured-pretraining-multigpu:
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
 
+structured_train_embedding_logistic_regression:
+	uv run structured_train_embedding_logistic_regression \
+		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
+		model.pretrained_model_name_or_path=outputs/training/structured/pretraining/20260420_173311/final_model \
+		output_dir=$(STRUCTURED_MODEL_DIR)/embedding_logistic_regression
+
 .PHONY: structured_create_task_prompts
 structured_create_task_prompts:
 	uv run structured_create_task_prompts \
@@ -199,7 +205,7 @@ structured_inference_generative_rollout:
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(INFERENCE_DIR)/structured/generative_rollout \
 		split=tuning \
-		tasks="[los_hosp_3_days, mortality_in_hosp]"
+		tasks="[los_hosp_3_days]"
 
 ### Natural Language ###
 

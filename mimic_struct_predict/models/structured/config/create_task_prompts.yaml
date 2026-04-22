@@ -4,11 +4,11 @@ output_dir: ???          # Required: directory to save outputs
 tasks: null # If null or empty, will run on all tasks in the dataset
 overwrite: false
 
-splits_to_process: ["tuning", "held_out"]
+splits_to_process: null
 
 preprocessing:
   code_join_token: "\n"
 
 hydra:
   run:
-    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+    dir: ${output_dir}/.logs/${now:%Y%m%d}/${now:%H%M%S}

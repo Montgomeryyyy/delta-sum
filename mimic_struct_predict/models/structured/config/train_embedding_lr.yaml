@@ -1,0 +1,24 @@
+model:
+  pretrained_model_name_or_path: ???
+  dtype: float32
+
+random_seed: 42
+
+dataset_dir: ???  # Required: directory of pre-built prompt datasets
+output_dir: ???          # Required: directory to save outputs
+split: ???
+tasks: null # If null or empty, will run on all tasks in the dataset
+
+split_names:
+  train: train
+  val: tuning
+  held_out: held_out
+
+
+num_workers: 4
+batch_size: 64
+
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
