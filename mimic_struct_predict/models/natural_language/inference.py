@@ -10,18 +10,17 @@ Usage:
 import logging
 import time
 from pathlib import Path
-from typing import Any
 
 import datasets
 import hydra
+import pyarrow as pa
+import pyarrow.parquet as pq
 import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,
-    DataCollatorWithPadding,
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
@@ -36,24 +35,30 @@ log = logging.getLogger(__name__)
 
 
 def batch_inference(
-    inputs: dict[str, torch.Tensor],
+    batch_texts: list[str],
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     yes_token_id: int,
     no_token_id: int,
     generation_config: DictConfig,
 ) -> dict[str, list]:
-    """Run a single batch of inference and extract answers/probabilities.
-
-    - Runs and times generations
-    - Decodes completions
-    - Extracts final token logits to compute Yes/No probabilities
-    - Computes failure rate based on whether final token is Yes/No
+    """Run inference on a batch of texts by
+    - Tokenizing the input texts with appropriate padding and truncation
+    - Generating continuations using the model's generate method
+    - Post-processing the generated tokens to extract compute probabilities,
+    and check format adherence
+    - Measuring latency for the batch and computing average latency per sample
     """
-
     start_time = time.perf_counter()
 
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    inputs = tokenizer(
+        batch_texts,
+        truncation=True,
+        max_length=tokenizer.model_max_length - generation_config.max_new_tokens,
+        padding=True,
+        return_tensors="pt",
+    ).to(model.device)
+
     # Forward pass to get logits for the next token
     with torch.inference_mode():
         outputs = model.generate(
@@ -63,9 +68,6 @@ def batch_inference(
             tokenizer=tokenizer,  # Pass tokenizer for handling of stopping criteria
             **generation_config,
         )
-
-    end_time = time.perf_counter()
-    sample_latency = (end_time - start_time) / inputs["input_ids"].shape[0]
 
     # Extract sequences and logits
     new_tokens = outputs.sequences[:, inputs["input_ids"].shape[1] :]
@@ -87,19 +89,23 @@ def batch_inference(
     final_step_logits = stacked_logits[batch_indices, last_token_indices]  # (B, V)
 
     # Compute probability of Yes vs No at the final step
-    probabilities = compute_yes_probs(final_step_logits, yes_token_id, no_token_id).cpu().numpy()
+    probabilities = compute_yes_probs(final_step_logits, yes_token_id, no_token_id).cpu().tolist()
 
     # Check if the last token is actually Yes or No for failure rate
     last_token_ids = new_tokens[batch_indices, last_token_indices]
-    is_yes = (last_token_ids == yes_token_id).cpu().numpy()
-    is_no = (last_token_ids == no_token_id).cpu().numpy()
-    format_adherence = is_yes | is_no
+    format_adherence = (last_token_ids == yes_token_id) | (last_token_ids == no_token_id)
+    format_adherence = format_adherence.cpu().tolist()
+
+    end_time = time.perf_counter()
+    sample_latency = (end_time - start_time) / len(batch_texts)
+
+    del outputs, stacked_logits, final_step_logits, last_token_ids, new_tokens_mask
 
     return {
         "completion": completions,
-        "probability": [float(p) for p in probabilities],
-        "sample_latency": [sample_latency] * inputs["input_ids"].shape[0],
-        "format_adherence": format_adherence.tolist(),
+        "probability": probabilities,
+        "sample_latency": [sample_latency] * len(batch_texts),
+        "format_adherence": format_adherence,
     }
 
 
@@ -132,32 +138,15 @@ def main(cfg: DictConfig) -> None:
         - completion: The model's generated completion.
         - probability: The computed probability of "Yes" at the final token.
         - sample_latency: Time taken for generation per sample.
-        - format_adherence: Whether the model's final token was not "Yes" or "No".
+        - format_adherence: Whether the model's final token was is expected yes or no token.
     """
 
     log.info("Starting LLM Inference")
     hydra_cfg = HydraConfig.get()
     dataset_dir = Path(cfg.dataset_dir) / cfg.split
+    selected_tasks = cfg.get("tasks", None)
     out_dir = Path(hydra_cfg.run.dir)
     log.info(f"Output directory: {out_dir}")
-
-    # 1. Discovery shards: task/split/*.parquet
-    # We follow the structure of dataset_dir / task / split / shard.parquet
-    selected_tasks = cfg.get("tasks", None)
-    task_dirs = sorted(
-        task_dir
-        for task_dir in dataset_dir.iterdir()
-        if task_dir.is_dir() and (selected_tasks is None or task_dir.name in selected_tasks)
-    )
-
-    # TODO: Update NL dataset file structure/naming
-    if not task_dirs:
-        log.error(
-            f"No task directories found in {dataset_dir} for "
-            f"split {cfg.split} and tasks {selected_tasks if selected_tasks else 'ALL'}"
-        )
-        return
-    log.info(f"Found {len(task_dirs)} task directories to process.")
 
     # 2. Load model and tokenizer once
     log.info("Loading model and tokenizer...")
@@ -171,77 +160,60 @@ def main(cfg: DictConfig) -> None:
     no_token_id = get_token_id(tokenizer, cfg.tokenization.no_token)
     log.info(f"Yes token ID: {yes_token_id}, No token ID: {no_token_id}")
 
-    for task_dir in task_dirs:
-        # Find all shard files within the current task directory
-        log.info(f"Processing Task: [{task_dir.name}]")
+    for task_dir in dataset_dir.iterdir():
+        if not task_dir.is_dir():
+            continue
+        task_name = task_dir.name
+        if selected_tasks is not None and task_name not in selected_tasks:
+            log.info(f"Skipping task {task_name} as it is not in the selected tasks list.")
+            continue
+
+        log.info(f"Processing Task: [{task_name}]")
         dataset = datasets.load_from_disk(str(task_dir))
         log.info(f"Loaded {len(dataset)} examples from task directory.")
 
+        # Sort to minimize padding within batches
+        dataset = dataset.map(
+            lambda batch: {"length": [len(prompt) for prompt in batch]},
+            input_columns=["prompt"],
+            batched=True,
+            num_proc=cfg.num_workers,
+        )
+        dataset = dataset.sort("length", reverse=True)
+        dataset = dataset.remove_columns("length")
+
+        # Batch wise inference and streaming results to Parquet to avoid memory issues with large datasets
+        # and allow for partial results to be saved even if the process is interrupted.
+        writer = None
+        out_file_path = out_dir / cfg.split / task_dir.name / "results.parquet"
+        out_file_path.parent.mkdir(parents=True, exist_ok=True)
+        log.info(f"Running inference and streaming to {out_file_path}")
         try:
-            dataset = dataset.map(
-                lambda prompts: tokenizer(
-                    prompts,
-                    # Handled in create_prompts
-                    truncation=False,
-                    # Will do at batching stage for more efficient dynamic padding
-                    padding=False,
-                    return_length=True,
-                ),
-                input_columns=["prompt"],
-                batched=True,
-                batch_size=cfg.tokenization.batch_size,
-            )
-            # Sort to minimize padding within batches
-            dataset = dataset.sort("length")
-
-            inference_dataset = dataset.with_format("torch", columns=["input_ids", "attention_mask"])
-            collator = DataCollatorWithPadding(
-                tokenizer=tokenizer,
-                padding="longest",
-                pad_to_multiple_of=8,  # For efficient tensor cores if using CUDA
-            )
-            dataloader = DataLoader(
-                inference_dataset,
-                batch_size=cfg.batch_size,
-                shuffle=False,
-                collate_fn=collator,
-            )
-
-            # 3d. Batch Inference via DataLoader
-            log.info(f"Running inference on {len(dataset)} examples...")
-            results: dict[str, list[Any]] = {
-                "completion": [],
-                "probability": [],
-                "sample_latency": [],
-                "format_adherence": [],
-            }
-            for batch in tqdm(dataloader, desc="Inference"):
-                batch_results = batch_inference(
-                    inputs=batch,
+            for i in tqdm(range(0, len(dataset), cfg.batch_size)):
+                batch = dataset[i : i + cfg.batch_size]
+                results = batch_inference(
+                    batch_texts=batch["prompt"],
                     model=model,
                     tokenizer=tokenizer,
                     yes_token_id=yes_token_id,
                     no_token_id=no_token_id,
                     generation_config=cfg.generation,
                 )
+                for key, values in results.items():
+                    batch[key] = values
 
-                for key in results:
-                    results[key].extend(batch_results[key])
-
-            # 5. Combine results and save to output directory
-            for key, values in results.items():
-                dataset = dataset.add_column(key, values)
-
-            # Remove internal columns
-            cols_to_drop = ["length", "input_ids", "attention_mask"]
-            dataset = dataset.remove_columns(cols_to_drop)
-
-            out_file_path = out_dir / cfg.split / task_dir.name
-            dataset.save_to_disk(out_file_path)
-            log.info(f"Saved results to {out_file_path}")
+                table = pa.Table.from_pydict(batch)
+                if writer is None:
+                    writer = pq.ParquetWriter(out_file_path, table.schema)
+                writer.write_table(table)
 
         except Exception as e:
-            log.error(f"Error processing task {task_dir.name}: {e}")
-            raise
+            log.error(f"Error processing task {task_dir.name} at batch index {i}: {e}", exc_info=True)
 
-    log.info("LLM Inference Complete!")
+        finally:
+            # Ensure the Parquet file is properly finalized and closed,
+            # even if an exception was raised during the loop.
+            if writer is not None:
+                writer.close()
+
+    log.info("Inference Complete!")

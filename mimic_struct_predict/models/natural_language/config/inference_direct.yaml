@@ -9,6 +9,7 @@ split: ???
 tasks: null # If null or empty, will run on all tasks in the dataset
 
 batch_size: 8
+num_workers: 1
 
 tokenization:
   max_prompt_length: 256

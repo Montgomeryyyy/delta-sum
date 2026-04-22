@@ -7,6 +7,7 @@ import torch
 from omegaconf import DictConfig
 from peft import PeftModel
 from transformers import (
+    AutoModel,
     AutoTokenizer,
     BitsAndBytesConfig,
     PreTrainedModel,
@@ -88,7 +89,7 @@ def load_tokenizer(tokenizer_dir: str, padding_side: str = "left") -> PreTrained
 
 
 def load_model_and_tokenizer(
-    model_class: Type[PreTrainedModel],
+    model_class: Type[AutoModel],
     model_config: DictConfig,
     eval_mode: bool = False,
     padding_side: str = "left",

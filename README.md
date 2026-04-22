@@ -29,6 +29,16 @@ Create ACES labels
 
 
 
+Using `uv` to run Python commands
+
+Run tests, linters, and Python CLI tools from the project root using `uv` so the project's locked environment is used. Example:
+
+```sh
+uv run pytest -q
+```
+
+Prefer `uv run <command>` for all Python commands (tests, CLI tools, downloads, etc.).
+
 uv run meds-tab-describe "MEDS_cohort_dir=data/MEDS_cohort" "input_dir=data/MEDS_cohort/merge_to_MEDS_cohort/train"
 
 

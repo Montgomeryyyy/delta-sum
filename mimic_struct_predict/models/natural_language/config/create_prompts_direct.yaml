@@ -29,8 +29,13 @@ tokenization:
   max_new_tokens: 1
 
 task_description:
-  30_day_readmission: "'Yes' if the patient will be hospitalised within 30 days of discharge, 'No' otherwise"
-  icu_mortality: "'Yes' if the patient will die before being discharged from the ICU, 'No' otherwise"
+  los_hosp_3_days: "'Yes' if the patient will be discharged from hospital within the next 2 days, 'No' otherwise"
+  los_icu_3_days: "'Yes' if the patient will be discharged from ICU within the next 2 days, 'No' otherwise"
+  mortality_hosp_discharge_30_days: "'Yes' if the patient will die within 30 days of hospital discharge, 'No' otherwise"
+  mortality_hosp_discharge_365_days: "'Yes' if the patient will die within 365 days of hospital discharge, 'No' otherwise"
+  mortality_in_hosp: "'Yes' if the patient will die during this hospital stay, 'No' otherwise"
+  mortality_in_icu: "'Yes' if the patient will die during this ICU stay, 'No' otherwise"
+  readmission_hosp_30_days: "'Yes' if the patient will be readmitted to the hospital within 30 days of discharge, 'No' otherwise"
 
 hydra:
   run:

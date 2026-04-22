@@ -27,7 +27,7 @@ ACES_DEFINITIONS_DIR := mimic_struct_predict/preprocessing/aces_task_definitions
 ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
 # ACES_TASKS := 30_day_readmission
 
-LLM_INFERENCE_OUTPUT_DIR := outputs/llm_inference
+NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR := $(INFERENCE_DIR)/natural_language
 STRUCTURED_INPUT_DATA_DIR := $(DATA_DIR)/MEDS_cohort_with_headers_and_quantiles
 
 
@@ -218,7 +218,8 @@ natural_language_create_prompts_direct:
 	uv run natural_language_create_prompts \
 		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)
+		output_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR) \
+
 
 .PHONY: natural_language_create_prompts_thinking
 natural_language_create_prompts_thinking:
@@ -240,14 +241,15 @@ natural_language_sft:
 natural_language_inference_direct:
 	uv run natural_language_inference \
 		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)/hf_dataset" \
-		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)/direct" \
-		"split=tuning"
+		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/direct" \
+		"split=tuning" \
+		tasks="[los_hosp_3_days, mortality_in_hosp]"
 
 .PHONY: natural_language_inference_thinking
 natural_language_inference_thinking:
 	uv run natural_language_inference \
 		--config-name inference_thinking.yaml \
 		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)/hf_dataset" \
-		"output_dir=$(LLM_INFERENCE_OUTPUT_DIR)/thinking" \
+		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking" \
 		"split=tuning" \
 		"tasks=icu_mortality" \
