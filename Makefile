@@ -161,6 +161,7 @@ train-meds-tab:
 STRUCTURED_OUTPUT_DATA_DIR := $(DATA_DIR)/structured
 STRUCTURED_PRETRAINING_DATA_DIR := $(STRUCTURED_OUTPUT_DATA_DIR)/pretraining
 STRUCTURED_MODEL_DIR := $(TRAINING_DIR)/structured
+STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/20260420_173311/final_model
 
 .PHONY: structured_pretraining_tokenize
 structured_pretraining_tokenize:
@@ -185,11 +186,23 @@ train-structured-pretraining-multigpu:
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
 
-structured_train_embedding_logistic_regression:
-	uv run structured_train_embedding_logistic_regression \
+.PHONY: structured_inference_embedding
+structured_training_inference_embedding:
+	uv run structured_inference_embedding \
+		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
-		model.pretrained_model_name_or_path=outputs/training/structured/pretraining/20260420_173311/final_model \
-		output_dir=$(STRUCTURED_MODEL_DIR)/embedding_logistic_regression
+		output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/embeddings \
+		splits="[train,tuning]" \
+		tasks="[los_hosp_3_days]"
+
+structured_train_embedding_logistic_regression:
+	for task in $(ACES_TASKS); do \
+		echo "Training embedding logistic regression for task: $$task"; \
+		uv run structured_train_embedding_logistic_regression --multirun \
+			task_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts/$$task \
+			model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
+			output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/models/$$task; \
+	done
 
 .PHONY: structured_create_task_prompts
 structured_create_task_prompts:
@@ -201,7 +214,7 @@ structured_create_task_prompts:
 .PHONY: structured_inference_generative_rollout
 structured_inference_generative_rollout:
 	uv run structured_inference_generative_rollout \
-		model.pretrained_model_name_or_path=outputs/training/structured/pretraining/20260420_173311/final_model \
+		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(INFERENCE_DIR)/structured/generative_rollout \
 		split=tuning \
