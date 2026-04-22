@@ -57,12 +57,8 @@ class WordLevelStopCriteria(StoppingCriteria):
             matches = (input_ids[:, -seq_len:] == stop_seq).all(dim=-1)
             self.finished_mask |= matches
 
-        if self.finished_mask is None:
-            # return a (batch_size, 1) tensor of False
-            return torch.zeros(batch_size, 1, dtype=torch.bool, device=input_ids.device)
-
-        # Transformers expects a torch.BoolTensor with shape (batch_size, 1)
-        return self.finished_mask.view(batch_size, 1)
+        # Transformers expects a torch.BoolTensor with shape (batch_size)
+        return self.finished_mask
 
 
 class TimeDeltaStoppingCriteria(StoppingCriteria):
@@ -151,5 +147,5 @@ class TimeDeltaStoppingCriteria(StoppingCriteria):
         # 4. Evaluate which sequences in the batch have exceeded the threshold.
         is_done = generated_deltas > self.max_time_delta
 
-        # Return a torch.BoolTensor of shape (batch_size, 1) per docs
-        return is_done.view(-1, 1)
+        # Return a torch.BoolTensor of shape (batch_size) per docs
+        return is_done

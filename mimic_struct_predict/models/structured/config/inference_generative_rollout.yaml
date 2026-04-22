@@ -9,24 +9,24 @@ split: ???
 tasks: null # If null or empty, will run on all tasks in the dataset
 
 num_workers: 4
-batch_size: 2
+batch_size: 4
 
 tokenization:
-  prefixes:
-    category: "#### "
-    time: "### Time//"
-    delta: "## Delta//"
   time_unspecified: "Unspecified"
   delimiter: "//"
   eoc_token: "\n"
   line_delimiter: ${tokenization.delimiter}${tokenization.eoc_token}${tokenization.delimiter}
+  prefixes:
+    category: "#### Category${tokenization.delimiter}"
+    time: "### Time${tokenization.delimiter}"
+    delta: "## Delta${tokenization.delimiter}"
 
 generation:
   do_sample: true
   max_new_tokens: 64
   use_cache: false
   # Note effective batch size is num_return_sequences * batch_size
-  num_return_sequences : 4
+  num_return_sequences : 2
 
 end_conditions:
   los_hosp_3_days:

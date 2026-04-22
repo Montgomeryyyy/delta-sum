@@ -1,4 +1,4 @@
-"""Inference script for structured generative rollout evaluation."""
+"""Inference script for structured generative rollout."""
 
 import logging
 import re
@@ -6,13 +6,16 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Type, cast
+from typing import Any
 
 import datasets
 import hydra
+import pyarrow as pa
+import pyarrow.parquet as pq
 import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizerBase, StoppingCriteriaList
 
 from mimic_struct_predict.models.structured.stopping_criteria import TimeDeltaStoppingCriteria, WordLevelStopCriteria
@@ -24,49 +27,64 @@ log = logging.getLogger(__name__)
 
 
 def extract_last_category_content(text: str, category_prefix: str, delimiter: str) -> str:
-    pattern = rf"{category_prefix}(.*?){delimiter}"
-    matches = re.findall(pattern, text)
-    if matches:
-        return str(matches[-1])  # Return the last extracted bit
+    """Extracts the content of the last category header in the text.
+    Expected format is '[CATEGORY PREFIX][content][DELIMITER]'."""
+    # 1. Search backwards from the end of the text for the last prefix
+    start_idx = text.rfind(category_prefix)
+    if start_idx != -1:
+        # Move our index forward past the prefix itself
+        content_start = start_idx + len(category_prefix)
+        # 2. Search forwards from that exact spot to find the closing delimiter
+        end_idx = text.find(delimiter, content_start)
+
+        if end_idx != -1:
+            return text[content_start:end_idx]
+
     log.warning("No category header found in the text. This may indicate a formatting issue.")
     return "Unknown"
 
 
 def parse_category_code(line: str, category_prefix: str) -> str:
     """Extracts the category code from a header line. Expected format is '[CATEGORY PREFIX][code]'."""
-    return line[len(category_prefix) :]
+    return line.removeprefix(category_prefix)
 
 
 def parse_time_line(line: str, time_prefix: str, time_unspecified: str, delimiter: str) -> tuple[int, int] | None:
     """Extracts hours and minutes from a time line.
-    Expected format is '[TIME PREFIX][HH]h//[MM]m' or '[TIME PREFIX]Unspecified'.
+    Expected format is '[TIME PREFIX][HH]h[delimiter][MM]m' or '[TIME PREFIX]Unspecified'.
     Returns a tuple of (hours, minutes) or None if the format is invalid.
     """
-    time_content = line[len(time_prefix) :]
+    time_content = line.removeprefix(time_prefix)
+
     if time_content == time_unspecified:
         return 23, 59  # Default to end of day if time is unspecified
-    try:
-        parts = time_content.split(delimiter)
-        hours = int(parts[0].lower().replace("h", ""))
-        minutes = int(parts[1].lower().replace("m", ""))
-        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
-            log.warning(f"Invalid time range: {time_content}. Keeping current time unchanged.")
+
+    # Matches patterns like "12h//30m", "12 h // 30 m", or "09h//05m" safely
+    escaped_delim = re.escape(delimiter)
+    pattern = rf"^(\d+)\s*h\s*{escaped_delim}\s*(\d+)\s*m$"
+    match = re.match(pattern, time_content, re.IGNORECASE)
+    if match:
+        hours, minutes = int(match.group(1)), int(match.group(2))
+        # Strict bound checking
+        if 0 <= hours <= 23 and 0 <= minutes <= 59:
+            return hours, minutes
+        else:
+            log.warning(f"Time out of bounds (HH:MM): {line}. Keeping current time unchanged.")
             return None
-        return hours, minutes
-    except (ValueError, IndexError):
-        log.warning(f"Invalid time format: {time_content}. Keeping current time unchanged.")
-        return None
+
+    log.warning(f"Invalid time format: {line}. Keeping current time unchanged.")
+    return None
 
 
 def parse_delta_line(line: str, delta_prefix: str) -> int:
     """Extracts the number of days from a delta line. Expected format is '[DELTA PREFIX][+][N] days'."""
-    delta_content = line[len(delta_prefix) :]
+    delta_content = line.removeprefix(delta_prefix)
     try:
         days_str = delta_content.split(" ")[0]
         delta_days = int(days_str.lstrip("+"))
         return delta_days
     except (ValueError, IndexError):
-        log.warning(f"Invalid delta format: {delta_content}. No time delta will be applied.")
+        log.warning(f"Invalid delta format: {line}. No time delta will be applied.")
         return 0
 
 
@@ -147,8 +165,7 @@ def batch_inference(
         max_length=tokenizer.model_max_length - generation_config.max_new_tokens,
         padding=True,
         return_tensors="pt",
-    )
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    ).to(model.device)
 
     stopping_criteria = []
     if end_codes is not None:
@@ -180,23 +197,31 @@ def batch_inference(
             ehr_text, tokenization_cfg.prefixes.category, tokenization_cfg.delimiter
         )
         for new_tokens in ehr_new_tokens:
-            completion = tokenization_cfg.delimiter.join(tokenizer.convert_ids_to_tokens(new_tokens))
+            # Assuming use of word-level tokenizer where each token corresponds to a complete event token,
+            # so we can directly convert tokens to strings and join them with the delimiter for parsing.
+            tokens = tokenizer.convert_ids_to_tokens(new_tokens, skip_special_tokens=True)
+            completion = tokenization_cfg.delimiter.join(
+                tokenizer.convert_ids_to_tokens(new_tokens, skip_special_tokens=True)
+            )
             timestamps, codes, found, finished = parse_completion(
                 completion, prediction_time, prediction_header, end_time_delta, end_codes, tokenization_cfg
             )
 
+            ehr_results["tokens"].append(tokens)
             ehr_results["completion"].append(completion)
             ehr_results["timestamps"].append(timestamps)
             ehr_results["codes"].append(codes)
-            ehr_results["probability"].append(int(found))
-            ehr_results["format_adherence"].append(int(finished))
+            ehr_results["sample_probabilities"].append(int(found))
+            ehr_results["sample_format_adherences"].append(int(finished))
 
         for key, values in ehr_results.items():
             results[key].append(values)
 
-        results["mean_probability"].append(sum(ehr_results["probability"]) / len(ehr_results["probability"]))
-        results["mean_format_adherence"].append(
-            sum(ehr_results["format_adherence"]) / len(ehr_results["format_adherence"])
+        results["probability"].append(
+            sum(ehr_results["sample_probabilities"]) / len(ehr_results["sample_probabilities"])
+        )
+        results["format_adherence"].append(
+            sum(ehr_results["sample_format_adherences"]) / len(ehr_results["sample_format_adherences"])
         )
 
     end_time = time.perf_counter()
@@ -233,7 +258,7 @@ def main(cfg: DictConfig) -> None:
     # 2. Load model and tokenizer once
     log.info("Loading model and tokenizer...")
     model, tokenizer = load_model_and_tokenizer(
-        model_class=cast(Type[PreTrainedModel], AutoModelForCausalLM),
+        model_class=AutoModelForCausalLM,
         model_config=cfg.model,
         eval_mode=True,
         padding_side="left",
@@ -249,12 +274,18 @@ def main(cfg: DictConfig) -> None:
             continue
 
         log.info(f"Processing Task: [{task_name}]")
-        shards = list((task_dir / cfg.split).glob("*.parquet"))
+        shards = (task_dir / cfg.split).glob("*.parquet")
         if not shards:
             log.warning(f"No shard files found for task {task_name} in split {cfg.split}. Skipping.")
             continue
         dataset = datasets.Dataset.from_parquet([str(p) for p in shards])
         log.info(f"Loaded {len(dataset)} examples from task directory.")
+
+        if not dataset.features["prediction_time"].dtype.startswith("timestamp"):
+            raise ValueError(
+                "Dataset 'prediction_time' column is in timestamp format."
+                "Please convert it to ISO string or datetime before inference."
+            )
 
         # Get task end conditions for parsing completions and determining prediction windows
         end_conditions = cfg.end_conditions.get(task_name, {})
@@ -280,31 +311,38 @@ def main(cfg: DictConfig) -> None:
         dataset = dataset.sort("length", reverse=True)
         dataset = dataset.remove_columns("length")
 
+        writer = None
+        out_file_path = out_dir / cfg.split / task_dir.name / "results.parquet"
+        out_file_path.parent.mkdir(parents=True, exist_ok=True)
+        log.info(f"Running inference and streaming to {out_file_path}")
         try:
-            # Run batched inference
-            dataset = dataset.map(
-                lambda ehr_texts, prediction_times: batch_inference(
-                    ehr_texts,
-                    prediction_times=prediction_times,
+            for i in tqdm(range(0, len(dataset), cfg.batch_size)):
+                batch = dataset[i : i + cfg.batch_size]
+                results = batch_inference(
+                    ehr_texts=batch["ehr_text"],
+                    prediction_times=batch["prediction_time"],
                     model=model,
                     tokenizer=tokenizer,
                     tokenization_cfg=cfg.tokenization,
                     generation_config=cfg.generation,
                     end_codes=end_codes,
                     end_time_delta=end_time_delta,
-                ),
-                input_columns=["ehr_text", "prediction_time"],
-                batched=True,
-                batch_size=cfg.batch_size,
-            )
+                )
+                for key, values in results.items():
+                    batch[key] = values
 
-            # Save outputs
-            out_file_path = out_dir / cfg.split / task_dir.name
-            dataset.save_to_disk(out_file_path)
-            log.info(f"Saved results to {out_file_path}")
+                table = pa.Table.from_pydict(batch)
+                if writer is None:
+                    writer = pq.ParquetWriter(out_file_path, table.schema)
+                writer.write_table(table)
 
         except Exception as e:
-            log.error(f"Error processing task {task_dir.name}: {e}")
-            raise
+            log.error(f"Error processing task {task_dir.name} at batch index {i}: {e}", exc_info=True)
+
+        finally:
+            # Ensure the Parquet file is properly finalized and closed,
+            # even if an exception was raised during the loop.
+            if writer is not None:
+                writer.close()
 
     log.info("Inference Complete!")
