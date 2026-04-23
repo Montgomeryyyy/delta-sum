@@ -49,6 +49,7 @@ structured_create_task_prompts = "mimic_struct_predict.models.structured.create_
 structured_inference_generative_rollout = "mimic_struct_predict.models.structured.inference_generative_rollout:main"
 structured_inference_embedding = "mimic_struct_predict.models.structured.inference_embedding:main"
 structured_train_embedding_logistic_regression = "mimic_struct_predict.models.structured.train_embedding_lr:main"
+structured_inference_embedding_and_lr = "mimic_struct_predict.models.structured.inference_embedding_and_lr:main"
 
 natural_language_create_prompts = "mimic_struct_predict.models.natural_language.create_prompts:main"
 natural_language_sft = "mimic_struct_predict.models.natural_language.sft:main"

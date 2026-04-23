@@ -203,6 +203,14 @@ structured_train_embedding_logistic_regression:
 			output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/models/$$task; \
 	done
 
+structured_inference_embedding_and_lr:
+	uv run structured_inference_embedding_and_lr \
+		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
+		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
+		output_dir=$(INFERENCE_DIR)/structured/embedding_and_lr \
+		lr_model_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/models \
+		split=tuning
+
 .PHONY: structured_create_task_prompts
 structured_create_task_prompts:
 	uv run structured_create_task_prompts \
