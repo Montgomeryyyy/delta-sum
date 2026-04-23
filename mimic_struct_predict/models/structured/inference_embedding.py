@@ -50,10 +50,6 @@ def batch_embedding_inference(
     return {"embedding": list(last_hidden_states.cpu().float().numpy())}
 
 
-def get_embedding_path(out_dir: Path, task_dir: Path, split: str) -> Path:
-    return out_dir / task_dir.name / split / "embeddings.parquet"
-
-
 @hydra.main(
     version_base=None,
     config_path="config",
@@ -93,7 +89,7 @@ def main(cfg: DictConfig) -> None:
         log.info(f"Processing Task: [{task_name}]")
 
         for split in cfg.splits:
-            embeddings_path = get_embedding_path(out_dir, task_dir, split)
+            embeddings_path = out_dir / task_name / split / "embeddings.parquet"
             if embeddings_path.exists():
                 log.info(
                     f"Embeddings file {embeddings_path} exist for task {task_name} in split {split}."
@@ -103,13 +99,13 @@ def main(cfg: DictConfig) -> None:
 
             shards = list((task_dir / split).glob("*.parquet"))
             if not shards:
-                log.warning(f"No shard files found for task {task_dir.name} in split {split}. Skipping.")
+                log.warning(f"No shard files found for task {task_name} in split {split}. Skipping.")
                 continue
 
             dataset = datasets.Dataset.from_parquet([str(p) for p in shards])
             log.info(f"Loaded {len(dataset)} examples from task directory.")
             if len(dataset) == 0:
-                raise ValueError(f"Dataset for task {task_dir.name} in split {split} is empty.")
+                raise ValueError(f"Dataset for task {task_name} in split {split} is empty.")
 
             # Sort to minimize padding within batches
             dataset = dataset.map(
@@ -138,8 +134,11 @@ def main(cfg: DictConfig) -> None:
                         writer = pq.ParquetWriter(embeddings_path, table.schema)
                     writer.write_table(table)
 
+                    if (idx + 1) % cfg.log_interval == 0:
+                        log.info(f"Processed {idx + 1} batches for task {task_name} in split {split}.")
+
             except Exception as e:
-                log.error(f"Error processing task {task_dir.name} at batch index {idx}: {e}", exc_info=True)
+                log.error(f"Error processing task {task_name} at batch index {idx}: {e}", exc_info=True)
                 raise e
 
             finally:

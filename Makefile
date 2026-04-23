@@ -193,14 +193,13 @@ structured_training_inference_embedding:
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/embeddings \
 		splits="[train,tuning]" \
-		tasks="[los_hosp_3_days]"
 
 structured_train_embedding_logistic_regression:
-	for task in $(ACES_TASKS); do \
+	for task_dir in $(STRUCTURED_MODEL_DIR)/embedding_lr/embeddings/*/; do \
+		task=$$(basename $$task_dir); \
 		echo "Training embedding logistic regression for task: $$task"; \
 		uv run structured_train_embedding_logistic_regression --multirun \
-			task_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts/$$task \
-			model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
+			task_dir=$$task_dir \
 			output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/models/$$task; \
 	done
 

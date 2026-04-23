@@ -1,24 +1,39 @@
-model:
-  pretrained_model_name_or_path: ???
-  dtype: float32
+defaults:
+  - override hydra/sweeper: optuna
 
 random_seed: 42
 
-dataset_dir: ???  # Required: directory of pre-built prompt datasets
-output_dir: ???          # Required: directory to save outputs
-split: ???
-tasks: null # If null or empty, will run on all tasks in the dataset
+task_dir: ???  # Required: directory of pre-built task prompt datasets
+output_dir: ??? # Required: directory to save outputs
 
 split_names:
   train: train
   val: tuning
-  held_out: held_out
 
+num_workers: 10
 
-num_workers: 4
-batch_size: 64
-
+lr:
+  C: 1.0
+  solver: lbfgs
+  class_weight: balanced
+  max_iter: 5000
 
 hydra:
+  sweeper:
+    sampler:
+      _target_: optuna.samplers.TPESampler
+      seed: ${random_seed}
+    direction: maximize
+    n_trials: 100
+    n_jobs: ${num_workers}
+    params:
+      lr.C: tag(log, interval(1e-4, 1e2))
+      lr.class_weight: choice("balanced", null)
+
+  sweep:
+    dir: ${output_dir}/multirun_${now:%Y%m%d_%H%M%S}
   run:
     dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+  callbacks:
+    cleanup:
+       _target_: mimic_struct_predict.models.structured.train_embedding_lr.CleanupCallback
