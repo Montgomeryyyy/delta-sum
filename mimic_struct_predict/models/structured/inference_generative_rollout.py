@@ -265,7 +265,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     for task_dir in dataset_dir.iterdir():
-        if not task_dir.is_dir():
+        if not task_dir.is_dir() or task_dir.name == ".logs":
             continue
 
         task_name = task_dir.name

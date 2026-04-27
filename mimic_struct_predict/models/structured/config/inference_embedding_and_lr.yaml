@@ -14,4 +14,4 @@ log_interval: 1
 
 hydra:
   run:
-    dir: ${output_dir}/.logs/${now:%Y%m%d}/${now:%H%M%S}
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

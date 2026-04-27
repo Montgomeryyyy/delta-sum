@@ -60,6 +60,18 @@ def main(cfg: DictConfig) -> float:
         f"Loaded embeddings dataset for task {task_name} with {len(train_X)} training examples and "
         f"{len(val_X)} validation examples."
     )
+
+    pos_percent_train = (train_y.sum() / len(train_y)) * 100
+    pos_percent_val = (val_y.sum() / len(val_y)) * 100
+
+    if train_y.sum() == 0 or val_y.sum() == 0:
+        log.warning(
+            f"Warning: One of the splits for task {task_name} has 0 positive examples. This will cause AUC to be "
+            f"undefined and likely lead to errors during training. Percentage of positive labels in training set: "
+            f"{pos_percent_train:.2f}%. Percentage of positive labels in validation set: {pos_percent_val:.2f}%."
+        )
+        return 0.0
+
     log.info(f"Percentage of positive labels in training set: {train_y.mean() * 100:.2f}%")
     log.info(f"Percentage of positive labels in validation set: {val_y.mean() * 100:.2f}%")
 

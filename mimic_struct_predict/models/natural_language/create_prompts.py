@@ -97,20 +97,18 @@ def main(cfg: DictConfig) -> None:
             batch_size=cfg.tokenization.batch_size,
         )
 
-        if cfg.train_split_name in dataset:
-            # Train dataset needs to have "Yes"/"No" completions for supervised fine-tuning instead of boolean labels
-            dataset[cfg.train_split_name] = dataset[cfg.train_split_name].map(
-                lambda boolean_values: {
-                    "completion": [
-                        cfg.tokenization.yes_token if boolean_value else cfg.tokenization.no_token
-                        for boolean_value in boolean_values
-                    ]
-                },
-                batched=True,
-                batch_size=cfg.tokenization.batch_size,
-                input_columns=["boolean_value"],
-                remove_columns=["boolean_value"],
-            )
+        # Needs to "Yes"/"No" completions for supervised fine-tuning instead of boolean labels
+        dataset = dataset.map(
+            lambda boolean_values: {
+                "completion": [
+                    cfg.tokenization.yes_token if boolean_value else cfg.tokenization.no_token
+                    for boolean_value in boolean_values
+                ]
+            },
+            batched=True,
+            batch_size=cfg.tokenization.batch_size,
+            input_columns=["boolean_value"],
+        )
 
         task_to_datasets[task] = dataset
 

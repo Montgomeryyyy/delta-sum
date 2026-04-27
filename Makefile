@@ -169,7 +169,7 @@ meds_tab_inference:
 STRUCTURED_OUTPUT_DATA_DIR := $(DATA_DIR)/structured
 STRUCTURED_PRETRAINING_DATA_DIR := $(STRUCTURED_OUTPUT_DATA_DIR)/pretraining
 STRUCTURED_MODEL_DIR := $(TRAINING_DIR)/structured
-STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/20260420_173311/final_model
+STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/20260427_141044/final_model
 
 .PHONY: structured_pretraining_tokenize
 structured_pretraining_tokenize:
@@ -194,15 +194,21 @@ train-structured-pretraining-multigpu:
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
 
-.PHONY: structured_inference_embedding
-structured_training_inference_embedding:
+.PHONY: structured_create_task_prompts
+structured_create_task_prompts:
+	uv run structured_create_task_prompts \
+		meds_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
+		aces_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts
+
+.PHONY: structured_train_embedding_logistic_regression
+structured_train_embedding_logistic_regression:
 	uv run structured_inference_embedding \
 		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/embeddings \
 		splits="[train,tuning]" \
 
-structured_train_embedding_logistic_regression:
 	for task_dir in $(STRUCTURED_MODEL_DIR)/embedding_lr/embeddings/*/; do \
 		task=$$(basename $$task_dir); \
 		echo "Training embedding logistic regression for task: $$task"; \
@@ -219,13 +225,6 @@ structured_inference_embedding_and_lr:
 		lr_model_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/models \
 		split=tuning
 
-.PHONY: structured_create_task_prompts
-structured_create_task_prompts:
-	uv run structured_create_task_prompts \
-		meds_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
-		aces_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts
-
 .PHONY: structured_inference_generative_rollout
 structured_inference_generative_rollout:
 	uv run structured_inference_generative_rollout \
@@ -233,14 +232,13 @@ structured_inference_generative_rollout:
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(INFERENCE_DIR)/structured/generative_rollout \
 		split=tuning \
-		tasks="[los_hosp_3_days]"
 
 ### Natural Language ###
 
 
-NATURAL_LANGUAGE_DIRECT_DATA_DIR := $(DATA_DIR)/natural_language_direct
-NATURAL_LANGUAGE_THINKING_DATA_DIR := $(DATA_DIR)/natural_language_thinking
-NATURAL_LANGUAGE_SFT_MODEL_DIR := $(TRAINING_DIR)/natural_language_sft
+NATURAL_LANGUAGE_DIRECT_DATA_DIR := $(DATA_DIR)/natural_language/direct
+NATURAL_LANGUAGE_THINKING_DATA_DIR := $(DATA_DIR)/natural_language/thinking
+NATURAL_LANGUAGE_SFT_MODEL_DIR := $(TRAINING_DIR)/natural_language/direct/sft
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
@@ -271,13 +269,20 @@ natural_language_sft:
 		output_dir=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)
 
 
+.PHONY: natural_language_inference_direct_sft
+natural_language_inference_direct_sft:
+	uv run natural_language_inference \
+		"model.pretrained_model_name_or_path=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)/20260427_152027/final_model" \
+		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)/hf_dataset" \
+		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/direct_sft" \
+		"split=tuning"
+
 .PHONY: natural_language_inference_direct
 natural_language_inference_direct:
 	uv run natural_language_inference \
 		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)/hf_dataset" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/direct" \
-		"split=tuning" \
-		tasks="[los_hosp_3_days, mortality_in_hosp]"
+		"split=tuning"
 
 .PHONY: natural_language_inference_thinking
 natural_language_inference_thinking:
@@ -285,5 +290,4 @@ natural_language_inference_thinking:
 		--config-name inference_thinking.yaml \
 		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)/hf_dataset" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking" \
-		"split=tuning" \
-		"tasks=icu_mortality" \
+		"split=tuning"

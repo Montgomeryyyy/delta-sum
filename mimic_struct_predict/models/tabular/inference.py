@@ -5,6 +5,7 @@ from pathlib import Path
 import hydra
 import polars as pl
 import xgboost as xgb
+from hydra.core.hydra_config import HydraConfig
 from MEDS_tabular_automl.xgboost_model import XGBIterator, XGBoostModel
 from omegaconf import DictConfig, OmegaConf
 
@@ -28,7 +29,7 @@ def main(cfg: DictConfig) -> None:
     """
 
     split = cfg.split
-    output_dir = Path(cfg.output_dir)
+    output_dir = Path(HydraConfig.get().run.dir)
     model_dir = Path(cfg.model_dir)
 
     for task_dir in model_dir.iterdir():
@@ -47,7 +48,7 @@ def main(cfg: DictConfig) -> None:
         trained_config_fp = best_trial_dir / "config.log"
         model_weights_fp = best_trial_dir / "xgboost.json"
 
-        output_fp = output_dir / task_name / split / "results.parquet"
+        output_fp = output_dir / split / task_name / "results.parquet"
         output_fp.parent.mkdir(parents=True, exist_ok=True)
 
         # Reload model and dataset
@@ -75,6 +76,7 @@ def main(cfg: DictConfig) -> None:
                 "boolean_value": y_true,
                 "probability": y_pred,
                 "sample_latency": [sample_latency] * len(y_true),
+                "format_adherence": [1] * len(y_true),
             },
         )
 

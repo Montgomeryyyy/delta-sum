@@ -4,4 +4,4 @@ split: "held_out"
 
 hydra:
   run:
-    dir: ${output_dir}/${now:%Y%m%d}/${now:%H%M%S}
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

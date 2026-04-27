@@ -36,7 +36,7 @@ class TrackioTableCallback(TrainerCallback):
             sampled_subset = dataset.shuffle(seed=random_seed).select(range(batch_size))
             self.task_data[task_name] = {
                 "prompts": list(sampled_subset["prompt"]),
-                "ground_truths": list(sampled_subset["completion"]),
+                "ground_truths": list(sampled_subset["boolean_value"]),
             }
 
     def on_evaluate(self, args: Any, state: Any, control: Any, model: Any, **kwargs: Any) -> None:
@@ -143,12 +143,15 @@ def main(cfg: DictConfig) -> None:
 
     # --- Load datasets ---
     train_dataset = datasets.load_from_disk(str(dataset_dir / cfg.split_names.train))
-    log.info(f"Combined train dataset has {len(train_dataset)} examples.")
+    log.info(
+        f"Combined train dataset has {len(train_dataset)} examples and the following columns:"
+        f" {train_dataset.column_names}"
+    )
     eval_dict = {
         eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir))
         for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir()
     }
-    log.info(f"Eval datasets: { {task: len(ds) for task, ds in eval_dict.items()} }")
+    log.info(f"Eval datasets: { {task: (len(ds), ds.column_names) for task, ds in eval_dict.items()} }")
 
     # --- SFT config ---
     sft_config = SFTConfig(

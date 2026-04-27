@@ -49,7 +49,7 @@ def batch_embedding_and_lr_inference(
 
     # Can't do straight to numpy as get 'pyarrow.lib.ArrowInvalid: only handle 1-dimensional arrays'
     return {
-        "probabilities": lr_predictions,
+        "probability": lr_predictions,
         "sample_latency": [sample_latency] * len(ehr_texts),
         # Can't have incorrect format output for embeddings (if inference completes)
         "format_adherence": [1] * len(ehr_texts),

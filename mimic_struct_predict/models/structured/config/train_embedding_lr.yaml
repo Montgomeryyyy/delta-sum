@@ -24,11 +24,11 @@ hydra:
       _target_: optuna.samplers.TPESampler
       seed: ${random_seed}
     direction: maximize
-    n_trials: 100
+    n_trials: 10
     n_jobs: ${num_workers}
     params:
       lr.C: tag(log, interval(1e-4, 1e2))
-      lr.class_weight: choice("balanced", null)
+      lr.class_weight: choice("balanced", "null")
 
   sweep:
     dir: ${output_dir}/multirun_${now:%Y%m%d_%H%M%S}
