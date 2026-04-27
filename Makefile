@@ -113,19 +113,19 @@ MEDS_TAB_OUTPUT_MODEL_DIR := $(TRAINING_DIR)/MEDS_tab
 
 .PHONY: train-meds-tab
 train-meds-tab:
-# 	@echo "Describing MEDS tabular data..."
-# 	uv run meds-tab-describe \
-# 		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
-# 		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)"
+	@echo "Describing MEDS tabular data..."
+	uv run meds-tab-describe \
+		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
+		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)"
 
-# 	@echo "Tabularizing time series..."
-# 	uv run meds-tab-tabularize-time-series \
-# 		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
-# 		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)" \
-# 		"tabularization.min_code_inclusion_count=10" \
-# 		"tabularization.window_sizes=[1d,7d,30d,365d]" \
-# 		"tabularization.aggs=[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]" \
-# 		"do_overwrite=False"
+	@echo "Tabularizing time series..."
+	uv run meds-tab-tabularize-time-series \
+		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
+		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)" \
+		"tabularization.min_code_inclusion_count=10" \
+		"tabularization.window_sizes=[1d,7d,30d,365d]" \
+		"tabularization.aggs=[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]" \
+		"do_overwrite=False"
 
 	@for task in $(ACES_TASKS); do \
 		echo "Processing task: $$task"; \
@@ -148,13 +148,20 @@ train-meds-tab:
 			"output_model_dir=$(MEDS_TAB_OUTPUT_MODEL_DIR)/$$task/" \
 			"task_name=$$task" \
 			"do_overwrite=False" \
-			"hydra.sweeper.n_trials=15" \
-			"hydra.sweeper.n_jobs=$(N_WORKERS)" \
+			"hydra.sweeper.n_trials=3" \
+			"hydra.sweeper.n_jobs=1" \
 			"tabularization.min_code_inclusion_count=10" \
 			"tabularization.window_sizes=$(shell uv run generate-subsets "[1d,30d,365d]")" \
     		"tabularization.aggs=$(shell uv run generate-subsets "[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]")" \
-			"delete_below_top_k=3"; \
+			"delete_below_top_k=1"; \
 	done
+
+sandbox:
+	uv run python mimic_struct_predict/models/tabular/inference.py \
+		"model_fg=outputs/training/MEDS_tab/los_hosp_3_days/2026-04-24_13-21-24/best_trial" \`
+		"output_dir=$(INFERENCE_DIR)/tabular/task" \
+		"split=tuning"
+
 
 ### Structured ###
 
