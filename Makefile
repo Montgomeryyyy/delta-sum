@@ -111,8 +111,8 @@ aces-labels:
 MEDS_TAB_OUTPUT_DATA_DIR := $(DATA_DIR)/MEDS_tab
 MEDS_TAB_OUTPUT_MODEL_DIR := $(TRAINING_DIR)/MEDS_tab
 
-.PHONY: train-meds-tab
-train-meds-tab:
+.PHONY: meds_tab_train
+meds_tab_train:
 	@echo "Describing MEDS tabular data..."
 	uv run meds-tab-describe \
 		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
@@ -156,10 +156,11 @@ train-meds-tab:
 			"delete_below_top_k=1"; \
 	done
 
-sandbox:
-	uv run python mimic_struct_predict/models/tabular/inference.py \
-		"model_fg=outputs/training/MEDS_tab/los_hosp_3_days/2026-04-24_13-21-24/best_trial" \`
-		"output_dir=$(INFERENCE_DIR)/tabular/task" \
+.PHONY: meds_tab_inference
+meds_tab_inference:
+	uv run meds_tab_inference \
+		"model_dir=outputs/training/MEDS_tab" \
+		"output_dir=$(INFERENCE_DIR)/tabular" \
 		"split=tuning"
 
 
