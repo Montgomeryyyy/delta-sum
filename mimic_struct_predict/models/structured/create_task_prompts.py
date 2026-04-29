@@ -4,7 +4,7 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig
 
-from mimic_struct_predict.models.utils.meds_to_string_dataset import meds_and_aces_to_string_dataset
+from mimic_struct_predict.models.utils.preprocessing import meds_and_aces_to_string_dataset
 
 log = logging.getLogger(__name__)
 

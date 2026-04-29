@@ -235,7 +235,7 @@ structured_inference_generative_rollout:
 
 ### Natural Language ###
 
-
+NATURAL_LANGUAGE_RAW_DATA_DIR := $(DATA_DIR)/natural_language/raw
 NATURAL_LANGUAGE_DIRECT_DATA_DIR := $(DATA_DIR)/natural_language/direct
 NATURAL_LANGUAGE_THINKING_DATA_DIR := $(DATA_DIR)/natural_language/thinking
 NATURAL_LANGUAGE_SFT_MODEL_DIR := $(TRAINING_DIR)/natural_language/direct/sft
@@ -245,11 +245,17 @@ download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
 
+
+natural_language_create_ehr_texts:
+	uv run natural_language_create_ehr_texts \
+		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
+		aces_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
+
 .PHONY: natural_language_create_prompts_direct
 natural_language_create_prompts_direct:
 	uv run natural_language_create_prompts \
-		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
-		aces_dir=$(ACES_OUTPUT_DIR) \
+		data_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR) \
 
 
@@ -257,8 +263,7 @@ natural_language_create_prompts_direct:
 natural_language_create_prompts_thinking:
 	uv run natural_language_create_prompts \
 		--config-name create_prompts_thinking.yaml \
-		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
-		aces_dir=$(ACES_OUTPUT_DIR) \
+		data_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)
 
 .PHONY: natural_language_sft
@@ -290,4 +295,11 @@ natural_language_inference_thinking:
 		--config-name inference_thinking.yaml \
 		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)/hf_dataset" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking" \
+		"split=tuning"
+
+.PHONY: natural_language_inference_gemini
+natural_language_inference_gemini:
+	uv run natural_language_inference_gemini \
+		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)/hf_dataset" \
+		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/gemini" \
 		"split=tuning"

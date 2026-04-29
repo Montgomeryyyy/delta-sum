@@ -1,0 +1,18 @@
+
+meds_dir: ???  # Required: directory of pre-built meds datasets
+aces_dir: ???  # Required: directory of pre-built aces datasets
+output_dir: ???          # Required: directory to save outputs
+tasks: null # If null or empty, will run on all tasks in the dataset
+
+overwrite: false
+
+splits_to_process: ["train", "tuning", "held_out"]
+
+preprocessing:
+  code_join_token: "\n"
+  delimiter: "//"
+  numeric_value_sig_figs: 2
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

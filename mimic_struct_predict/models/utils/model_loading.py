@@ -11,7 +11,7 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     PreTrainedModel,
-    PreTrainedTokenizerBase,
+    PreTrainedTokenizer,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def resolve_dtype(dtype_str: str | None) -> torch.dtype | None:
     raise ValueError(f"Unrecognised dtype '{dtype_str}'. Expected one of {list(_DTYPE_MAP)} or null.")
 
 
-def get_token_id(tokenizer: PreTrainedTokenizerBase, string: str) -> int:
+def get_token_id(tokenizer: PreTrainedTokenizer, string: str) -> int:
     """Get the token ID for a given string, validating it is known and encodes to one token."""
     token_ids = tokenizer.encode(string, add_special_tokens=False)
     # 1. Check for multi-token decomposition
@@ -72,14 +72,14 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def load_tokenizer(tokenizer_dir: str, padding_side: str = "left") -> PreTrainedTokenizerBase:
+def load_tokenizer(tokenizer_dir: str, padding_side: str = "left") -> PreTrainedTokenizer:
     """Load a HuggingFace tokenizer from a directory.
 
     Args:
         tokenizer_dir: Path to the directory containing the tokenizer files.
         padding_side: Side on which to pad sequences.
     Returns:
-        PreTrainedTokenizerBase: The loaded tokenizer.
+        PreTrainedTokenizer: The loaded tokenizer.
     """
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
     tokenizer.padding_side = padding_side
@@ -93,7 +93,7 @@ def load_model_and_tokenizer(
     model_config: DictConfig,
     eval_mode: bool = False,
     padding_side: str = "left",
-) -> tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+) -> tuple[PreTrainedModel, PreTrainedTokenizer]:
     """Load model and tokeniser from a Hydra model config.
 
     Args:

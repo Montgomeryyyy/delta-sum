@@ -15,7 +15,7 @@ from transformers import (
     PreTrainedTokenizerFast,
 )
 
-from mimic_struct_predict.models.utils.meds_to_string_dataset import (
+from mimic_struct_predict.models.utils.preprocessing import (
     meds_to_string_dataset,
 )
 

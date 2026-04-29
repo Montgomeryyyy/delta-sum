@@ -23,12 +23,14 @@ dependencies = [
     "peft>=0.18.1",
     "polars~=1.27.1",
     "pytest-mock>=3.15.1",
+    "sentencepiece>=0.2.1",
     "setuptools>=82.0.1",
     "tabulate>=0.10.0",
     "torch>=2.10.0",
     "trackio>=0.21.1",
     "transformers>=5.5.0",
     "trl>=0.29.1",
+    "vertexai>=1.71.1",
 ]
 
 [build-system]
@@ -57,9 +59,11 @@ structured_inference_embedding = "mimic_struct_predict.models.structured.inferen
 structured_train_embedding_logistic_regression = "mimic_struct_predict.models.structured.train_embedding_lr:main"
 structured_inference_embedding_and_lr = "mimic_struct_predict.models.structured.inference_embedding_and_lr:main"
 
+natural_language_create_ehr_texts = "mimic_struct_predict.models.natural_language.create_ehr_texts:main"
 natural_language_create_prompts = "mimic_struct_predict.models.natural_language.create_prompts:main"
 natural_language_sft = "mimic_struct_predict.models.natural_language.sft:main"
 natural_language_inference = "mimic_struct_predict.models.natural_language.inference:main"
+natural_language_inference_gemini = "mimic_struct_predict.models.natural_language.inference_gemini:main"
 
 [tool.ruff]
 line-length = 120
