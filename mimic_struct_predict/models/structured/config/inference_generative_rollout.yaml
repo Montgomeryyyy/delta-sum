@@ -36,7 +36,7 @@ end_conditions:
       days: 2 # Prediction made after 24hrs
   mortality_hosp_discharge_30_days:
     codes:
-      - "Hospital Discharge//"
+      - "Death//Died"
     time:
       days: 30
   mortality_in_hosp:
@@ -44,12 +44,12 @@ end_conditions:
       - "Death//Died"
   readmission_hosp_30_days:
     codes:
-      - "Hospital Discharge//"
+      - "Hospital Admission//"
     time:
       days: 30
   los_icu_3_days:
     codes:
-      - "Hospital Admission//"
+      - "Icu Discharge//"
     time:
       days: 2 # Prediction made after 24hrs
   mortality_hosp_discharge_365_days:

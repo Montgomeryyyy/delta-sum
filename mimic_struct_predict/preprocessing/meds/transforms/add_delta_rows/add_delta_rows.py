@@ -22,7 +22,7 @@ def add_delta_rows(
     Args:
         stage_cfg: Configuration for the stage containing:
             - header: Prefix for generated code rows (default: "Delta")
-            - max_delta_days: Maximum days per generated row (default: 364)
+            - max_delta_days: Maximum days per generated row (default: 365)
 
     Returns:
         Function that transforms a LazyFrame by inserting age rows
@@ -38,7 +38,7 @@ def add_delta_rows(
         ...     ],
         ...     "code": ["A", "B", "C"],
         ... }).lazy()
-        >>> fn = add_delta_rows(DictConfig({"max_delta_days": 364}))
+        >>> fn = add_delta_rows(DictConfig({"max_delta_days": 365}))
         >>> result = fn(df).collect()
         >>> result.select("subject_id", "time", "code")
         shape: (7, 3)
@@ -48,7 +48,7 @@ def add_delta_rows(
         │ i64        ┆ datetime[μs]        ┆ str               │
         ╞════════════╪═════════════════════╪═══════════════════╡
         │ 1          ┆ 2020-01-01 00:00:00 ┆ A                 │
-        │ 1          ┆ 2021-01-05 00:00:00 ┆ Delta +364 days   │
+        │ 1          ┆ 2021-01-05 00:00:00 ┆ Delta +365 days   │
         │ 1          ┆ 2021-01-05 00:00:00 ┆ Delta +6 days     │
         │ 1          ┆ 2021-01-05 00:00:00 ┆ B                 │
         │ 1          ┆ 2021-01-06 00:00:00 ┆ Delta +1 days     │
@@ -59,7 +59,7 @@ def add_delta_rows(
     header = stage_cfg.get("header", "")
     delimiter = stage_cfg.get("delimiter", "//")
     header_with_delimiter = f"{header}{delimiter}" if header else header
-    max_delta_days = int(stage_cfg.get("max_delta_days", 364))
+    max_delta_days = int(stage_cfg.get("max_delta_days", 365))
 
     if max_delta_days <= 0:
         msg = "max_delta_days must be a positive integer"
@@ -95,7 +95,7 @@ def add_delta_rows(
             # > 0 ignores 'null' (first row of subject) and '0' (same-day events).
             .filter(pl.col("__delta_days") > 0)
             # Calculate how many "chunks" of max_delta_days fit into the total delta.
-            # Example: if delta is 400 and max is 364, we need 2 rows (364 + 36).
+            # Example: if delta is 400 and max is 365, we need 2 rows (365 + 36).
             .with_columns(
                 __n_chunks=((pl.col("__delta_days") / max_delta_days).ceil().cast(pl.Int64).clip(lower_bound=1))
             )

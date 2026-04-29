@@ -33,11 +33,11 @@ Your response must start with "Answer: " followed by either "Yes" or "No".
 
 ## Output Format
 Answer: Yes/No
-```"""  # noqa: E501
+"""  # noqa: E501
 
 THINKING_INSTRUCTIONS = """Based on the patient's electronic health record above, predict if the outcome will occur.
 
-First, write out your step-by-step clinical reasoning inside <think> and </think> tags. 
+First, write out your step-by-step clinical reasoning inside <think> and </think> tags.
 After you have finished thinking, you must provide your final answer.
 
 ## Constraints

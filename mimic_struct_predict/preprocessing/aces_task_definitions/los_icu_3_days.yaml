@@ -1,6 +1,6 @@
 metadata:
   description: >-
-    True if patient is discharged from the icu within 2-3 days of icu admission, false otherwise.
+    True if patient is discharged from the icu within 3 days of icu admission, false otherwise.
     Prediction is made at 24 hrs after icu admission,
     and only includes patients who are alive and have not been discharged from the icu within 24 hrs of icu admission.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Custom MAP stage that adds a row with HH:MM when time or subject changes."""
+"""Custom MAP stage that adds a row with HH:MM when subject or minute-level time changes."""
 
 from collections.abc import Callable
 
@@ -16,7 +16,8 @@ END_OF_DAY = pl.time(23, 59, 59, 999999)
 def add_time_rows(
     stage_cfg: DictConfig,
 ) -> Callable[[pl.LazyFrame], pl.LazyFrame]:
-    """Returns a function that inserts a row with HHh MMm whenever the time or subject_id changes.
+    """Returns a function that inserts a row with HHh MMm whenever the subject_id changes,
+    or the timestamp changes at minute precision.
 
     Args:
         stage_cfg: Configuration for the stage containing:
@@ -63,16 +64,16 @@ def add_time_rows(
     eod_string = stage_cfg.get("eod_string", None)
 
     def add_time_rows_fn(df: pl.LazyFrame) -> pl.LazyFrame:
-        """Insert HHh MMm rows on subject or time changes."""
+        """Insert HHh MMm rows on subject changes or minute-level time changes."""
 
         # 1. Expressions for HHh MMm parsing and checking
         time_hh_mm = pl.col("time").dt.strftime("%Hh//%Mm")
-        time_hour = pl.col("time").dt.hour()
-        time_min = pl.col("time").dt.minute()
+        time_minute = pl.col("time").dt.truncate("1m")
 
-        # 2. Detect when hour/minute or subject changes
-        # "not date though" is handled by only checking the HH:MM part
-        change_cond = _changed("subject_id") | _changed(time_hour) | _changed(time_min)
+        # 2. Detect when subject changes or the timestamp changes at minute precision.
+        # This treats any change in (date, hour, minute) as a new time block, while
+        # ignoring changes below the minute (seconds, microseconds).
+        change_cond = _changed("subject_id") | _changed(time_minute)
 
         # Build the new code column expression
         code_expr = pl.lit(header_with_delimiter) + time_hh_mm

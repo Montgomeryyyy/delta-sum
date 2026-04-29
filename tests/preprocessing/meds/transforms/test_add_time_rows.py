@@ -36,6 +36,31 @@ def test_add_time_rows_inserts_correctly():
     assert result.shape[0] == 5
 
 
+def test_add_time_rows_ignores_seconds_and_micros_within_minute():
+    # Arrange
+    df = pl.DataFrame(
+        {
+            "subject_id": [1, 1, 1],
+            "time": [
+                datetime(2024, 1, 1, 10, 0, 0, 0),
+                datetime(2024, 1, 1, 10, 0, 59, 999999),  # Same minute, different seconds/micros
+                datetime(2024, 1, 1, 10, 1, 0, 0),
+            ],
+            "code": ["A", "B", "C"],
+        }
+    ).lazy()
+    cfg = DictConfig({"header": "T"})
+    fn = add_time_rows(cfg)
+
+    # Act
+    result = fn(df).collect()
+
+    # Assert
+    expected_codes = ["T//10h//00m", "A", "B", "T//10h//01m", "C"]
+    assert result["code"].to_list() == expected_codes
+    assert result.shape[0] == 5
+
+
 def test_add_time_rows_multiple_subjects():
     # Arrange
     df = pl.DataFrame(
@@ -59,6 +84,32 @@ def test_add_time_rows_multiple_subjects():
     expected_codes = ["10h//00m", "A", "10h//00m", "B"]
     assert result["code"].to_list() == expected_codes
     assert result["subject_id"].to_list() == [1, 1, 2, 2]
+
+
+def test_add_time_rows_date_change_same_minute_inserts():
+    # Arrange
+    df = pl.DataFrame(
+        {
+            "subject_id": [1, 1],
+            "time": [
+                datetime(2024, 1, 1, 10, 0, 30),
+                datetime(2024, 1, 2, 10, 0, 0),  # Different day, same HH:MM
+            ],
+            "code": ["A", "B"],
+        }
+    ).lazy()
+    cfg = DictConfig({"header": "T"})
+    fn = add_time_rows(cfg)
+
+    # Act
+    result = fn(df).collect()
+
+    # Assert
+    # A new parent row should be inserted when the timestamp changes at minute precision,
+    # even if the HH:MM string is identical.
+    expected_codes = ["T//10h//00m", "A", "T//10h//00m", "B"]
+    assert result["code"].to_list() == expected_codes
+    assert result.shape[0] == 4
 
 
 def test_add_time_rows_eod():
