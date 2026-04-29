@@ -1,7 +1,7 @@
 # Custom
 
 data/
-notebooks/
+notebooks/tests/
 pre_trained_models/
 outputs/
 
