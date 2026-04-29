@@ -34,7 +34,84 @@ We evaluate
     - Inference Demand: Throughput, cost
     - Reliability: Format Adherence
 
+## Open Questions
+
+The following are intentionally out of scope but could be made in scope, depending on importance, timelines, capacity. If not done will move to discussion/future work section in write up!
+- OMOP instead of MIMIC specific descriptions?
+- Temporal split: ~possible but messy due to MIMIC's random shift
+- Additional tasks: e.g. labs
+    - Beyond binary prediction?
+- Recent Nature comment piece (Shah et al.) points out 5 common areas missed in evaluation (could be v nice framing)
+    - Event frequency (could add)
+    - Assessment of calibration (done)
+    - Timeline completion rates (done)
+    - Assessment of reliance on shortcuts
+        - Not retraining without admin codes
+        - But explicit about tokenization
+    - External validation
+        - Big lift (eICU?)
+- GRPO to finetune reasoning model
+- Post hoc calibration
+
+General unknowns
+- Context window
+    - How long?
+    - How to make fair? context_window  = max_model_length - max_new_tokens
+- Using "all the data we have"
+    - Lots of ICU observations
+    - Not using MIMIC-ED
+
+## TODOs
+
+Coding
+- Config
+    - Inheritance
+    - Structure
+- QOL
+    - Docstrings
+    - Logs consitent
+- Flash attention
+- Preprocessing numbers
+    - Token length types etc...
+    - Generative rollout -> ground truth how tokens to complete
+- Weighted losses?
+- Gemini implementation
+- Add calibration, ROC and PRC graphs per task
+
+Move to HPC
+- Confirm full run configs
+- Run mimic demo through HPC
+- Run "full" mimic through HPC
+
+## Discussion
+- Long context window -> truncation is suboptimal
+    - Summarisation/selection -> agentic approaches
+    - Tabular approaches do not have this issue
+- Other natural language presentation formats e.g. json, xml
+- Markers of time
+    - Chosen due to constraints placed by MIMIC random shift
+    - Raw time means something (e.g. year 2150)
+    - Days +- from prediction point does not work for general pretraining
+    - Using age is coarse estimate as only have year not date of birth
+    - Use delta between days. As time of day is informative and not shifted keep time of day rather than hour and minute delta
+        - Cons
+            - Lose day of week and seasonality effects
+            - Time of day not guaranteed to move forward during generative rollout
+- Natural language
+    - Using logits
+    - Could output probability as raw number 0-1
+        - Tokenized brier loss
+        - Simpler integration with frontier models
+- Scaling instruction tuning via MEDS/ACES and this framework
+
+
 ## Methods
+
+The following is the current methods in excruciating detail, was mainly an exercise for me to write out what is happening and check this is true... (and start of paper's method section)
+
+No one should feel obliged to read this! But in case of interest, this code is implemented and running on MIMIC-demo on my laptop currently.
+
+Still some experimental decisions for the full data run are flagged by TBC/TBD (e.g. model sizes etc...) but the data flow is all there.
 
 ### Pre-processing
 
@@ -127,7 +204,7 @@ Takes MIMIC data and converts to a format of ("subject_id", "timestamp", "code",
 
 Then apply the following transformations
 
-- Split into train/test/val (80%/10%/10%) on subject_ids
+- Split into train/tuning/held_out (80%/10%/10%) on subject_ids
 - Regex replacement
     - Clean up repeated // or // at end of code
     - Replace UNK with UNKNOWN
@@ -342,7 +419,7 @@ Answer: Yes/No
 ```
 - Truncation of EHR to last TBD tokens to fit into template (breaking on newlines)
     - Max length = max_model_length - max_new_tokens
-- Direct answers append start of generation message so only 1 token has to be generated (" Yes" or " No").
+- Direct answers append start of generation message and "Answer: " so only 1 token has to be generated (" Yes" or " No").
 - Output format chosen to be token efficent whilst ensuring only 2 valid outputs (no degeneracy due to merging with punctuation etc)
 
 **SFT Training**
@@ -385,16 +462,39 @@ For each model we take
 
 If format adherence is 0 then probability is set to default value of 0.5
 
-And calc the following metrics. These results are all on demo data locally so placeholders more than anything else, and gemini results are missing currently.
+And calc the following metrics.
+
+These results are all on demo data locally so placeholders more than anything else, and gemini results are missing currently.
+
+TODO: Add calibration, ROC and PR graphs per task
 
 ### Format Adherence
 
 
+| data             | method             |   format_adherence |   ci_lower |   ci_upper |
+|:-----------------|:-------------------|-------------------:|-----------:|-----------:|
+| Tabular          | MEDS-Tab           |           1        |  1         |   1        |
+| Structured       | Generative Rollout |           0        |  0         |   0        |
+| Structured       | Embedding + LR     |           1        |  1         |   1        |
+| Natural Language | Qwen 0.6B Thinking |           0.150943 |  0.0849057 |   0.216981 |
+| Natural Language | Qwen 0.6B Direct   |           1        |  1         |   1        |
+| Natural Language | Qwen 0.6B SFT      |           1        |  1         |   1        |
+
+*Note that due to v low max new tokens generative rollout and thinking are failing to complete.
 
 ### Latency
 
 ![latency_graph](notebooks/results/outputs/latency.png)
 
+
+| data             | method             |     median |    ci_lower |    ci_upper |
+|:-----------------|:-------------------|-----------:|------------:|------------:|
+| Tabular          | MEDS-Tab           | 0.00025505 | 0.000231225 | 0.000266914 |
+| Structured       | Embedding + LR     | 0.128581   | 0.128581    | 0.163542    |
+| Structured       | Generative Rollout | 2.47751    | 2.46002     | 2.53897     |
+| Natural Language | Qwen 0.6B Direct   | 0.0470985  | 0.0470826   | 0.0473876   |
+| Natural Language | Qwen 0.6B SFT      | 0.0499768  | 0.0498709   | 0.0500249   |
+| Natural Language | Qwen 0.6B Thinking | 1.96869    | 1.92932     | 2.09495     |
 
 ### Cost
 
@@ -404,81 +504,54 @@ Compute cost x inference time
 
 ### AUC ROC
 
+| data             | method             | Los Hosp 3 Days    | Los Icu 3 Days       | Mortality Hosp Discharge 30 Days   | Mortality Hosp Discharge 365 Days   | Mortality In Hosp    | Mortality In Icu     |   Readmission Hosp 30 Days | MACRO                |
+|:-----------------|:-------------------|:-------------------|:---------------------|:-----------------------------------|:------------------------------------|:---------------------|:---------------------|---------------------------:|:---------------------|
+| Tabular          | MEDS-Tab           | 0.5 [0.5, 0.5]     | 0.5 [0.5, 0.5]       | 0.5 [0.5, 0.5]                     | 0.5 [0.5, 0.5]                      | 0.5 [0.5, 0.5]       | 0.5 [0.5, 0.5]       |                        nan | 0.5 [0.5, 0.5]       |
+| Structured       | Embedding + LR     |                    | 0.375 [0.0, 0.75]    | 1.0 [1.0, 1.0]                     | 0.667 [0.071, 1.0]                  | 0.0 [0.0, 0.0]       | 1.0 [1.0, 1.0]       |                            | 0.608 [0.267, 0.853] |
+| Structured       | Generative Rollout | 0.5 [0.5, 0.5]     | 0.5 [0.5, 0.5]       | 0.5 [0.5, 0.5]                     | 0.5 [0.5, 0.5]                      |                      | 0.5 [0.5, 0.5]       |                        nan | 0.5 [0.5, 0.5]       |
+| Natural Language | Qwen 0.6B Direct   | 0.182 [0.0, 0.465] | 0.3 [0.022, 0.625]   | 0.667 [0.4, 0.929]                 | 0.462 [0.214, 0.733]                | 0.214 [0.071, 0.429] | 0.462 [0.167, 0.769] |                        nan | 0.381 [0.221, 0.523] |
+| Natural Language | Qwen 0.6B SFT      | 0.182 [0.0, 0.455] | 0.325 [0.061, 0.651] | 0.667 [0.4, 0.867]                 | 0.487 [0.218, 0.75]                 | 0.286 [0.071, 0.548] | 0.462 [0.231, 0.75]  |                        nan | 0.401 [0.24, 0.521]  |
+| Natural Language | Qwen 0.6B Thinking | 0.341 [0.0, 0.786] | 0.4 [0.0, 0.909]     | 0.6 [0.339, 0.825]                 | 0.949 [0.786, 1.0]                  | 1.0 [1.0, 1.0]       | 0.615 [0.333, 0.846] |                        nan | 0.651 [0.448, 0.787] |
+
+![macro_roc_auc](notebooks/results/outputs/macro_roc_auc.png)
+
 
 ### AUC PRC
 
-### ECE
+| data             | method             | Los Hosp 3 Days      | Los Icu 3 Days       | Mortality Hosp Discharge 30 Days   | Mortality Hosp Discharge 365 Days   | Mortality In Hosp    | Mortality In Icu     |   Readmission Hosp 30 Days | MACRO                |
+|:-----------------|:-------------------|:---------------------|:---------------------|:-----------------------------------|:------------------------------------|:---------------------|:---------------------|---------------------------:|:---------------------|
+| Tabular          | MEDS-Tab           | 0.267 [0.067, 0.533] | 0.714 [0.429, 0.929] | 0.063 [0.063, 0.188]               | 0.188 [0.063, 0.375]                | 0.067 [0.067, 0.2]   | 0.071 [0.071, 0.214] |                        nan | 0.228 [0.188, 0.408] |
+| Structured       | Embedding + LR     |                      | 0.7 [0.447, 0.961]   | 1.0 [1.0, 1.0]                     | 0.571 [0.071, 1.0]                  | 0.067 [0.067, 0.2]   | 1.0 [1.0, 1.0]       |                            | 0.668 [0.403, 0.92]  |
+| Structured       | Generative Rollout | 0.267 [0.067, 0.49]  | 0.714 [0.429, 0.929] | 0.063 [0.063, 0.25]                | 0.188 [0.063, 0.375]                |                      | 0.071 [0.071, 0.245] |                        nan | 0.26 [0.203, 0.455]  |
+| Natural Language | Qwen 0.6B Direct   | 0.207 [0.083, 0.458] | 0.684 [0.429, 0.943] | 0.167 [0.108, 0.635]               | 0.216 [0.091, 0.518]                | 0.083 [0.071, 0.308] | 0.125 [0.091, 0.443] |                        nan | 0.247 [0.221, 0.474] |
+| Natural Language | Qwen 0.6B SFT      | 0.207 [0.077, 0.442] | 0.717 [0.453, 0.946] | 0.167 [0.111, 0.6]                 | 0.222 [0.091, 0.533]                | 0.091 [0.071, 0.333] | 0.125 [0.091, 0.454] |                        nan | 0.255 [0.232, 0.471] |
+| Natural Language | Qwen 0.6B Thinking | 0.268 [0.091, 0.667] | 0.655 [0.431, 0.988] | 0.143 [0.1, 0.5]                   | 0.867 [0.333, 1.0]                  | 1.0 [1.0, 1.0]       | 0.167 [0.111, 0.571] |                        nan | 0.517 [0.399, 0.762] |
+
+![macro_auprc](notebooks/results/outputs/macro_auprc.png)
+
 
 ### Brier Score
 
-## Discussion Points
-- Long context window -> truncation is suboptimal
-    - Summarisation/selection -> agentic approaches
-    - Tabular approaches do not have this issue
-- Other natural language presentation formats e.g. json, xml
-- Markers of time
-    - Chosen due to constraints placed by MIMIC random shift
-    - Raw time means something (e.g. year 2150)
-    - Days +- from prediction point does not work for general pretraining
-    - Using age is coarse estimate as only have year not date of birth
-    - Use delta between days. As time of day is informative and not shifted keep time of day rather than hour and minute delta
-        - Cons
-            - Lose day of week and seasonality effects
-            - Time of day not guaranteed to move forward during generative rollout
-- Natural language
-    - Using logits
-    - Could output probability as raw number 0-1
-        - Tokenized brier loss
-        - Simpler integration with frontier models
-- Scaling instruction tuning via MEDS/ACES and this framework
+| data             | method             | Los Hosp 3 Days      | Los Icu 3 Days       | Mortality Hosp Discharge 30 Days   | Mortality Hosp Discharge 365 Days   | Mortality In Hosp    | Mortality In Icu     | Readmission Hosp 30 Days   | MACRO                |
+|:-----------------|:-------------------|:---------------------|:---------------------|:-----------------------------------|:------------------------------------|:---------------------|:---------------------|:---------------------------|:---------------------|
+| Tabular          | MEDS-Tab           | 0.2 [0.132, 0.29]    | 0.214 [0.163, 0.28]  | 0.059 [0.002, 0.172]               | 0.154 [0.052, 0.256]                | 0.063 [0.002, 0.185] | 0.067 [0.009, 0.182] | 0.046 [0.046, 0.046]       | 0.114 [0.084, 0.151] |
+| Structured       | Embedding + LR     |                      | 0.263 [0.245, 0.285] | 0.25 [0.249, 0.251]                | 0.246 [0.216, 0.278]                | 0.249 [0.246, 0.253] | 0.21 [0.164, 0.252]  |                            | 0.244 [0.231, 0.255] |
+| Structured       | Generative Rollout | 0.267 [0.067, 0.468] | 0.714 [0.429, 0.929] | 0.063 [0.0, 0.188]                 | 0.188 [0.0, 0.375]                  |                      | 0.071 [0.0, 0.214]   | 0.0 [0.0, 0.0]             | 0.217 [0.144, 0.294] |
+| Natural Language | Qwen 0.6B Direct   | 0.455 [0.332, 0.575] | 0.252 [0.148, 0.366] | 0.093 [0.052, 0.164]               | 0.162 [0.063, 0.267]                | 0.091 [0.033, 0.188] | 0.091 [0.046, 0.167] | 0.3 [0.272, 0.328]         | 0.206 [0.173, 0.242] |
+| Natural Language | Qwen 0.6B SFT      | 0.304 [0.213, 0.39]  | 0.355 [0.266, 0.453] | 0.059 [0.007, 0.162]               | 0.165 [0.008, 0.322]                | 0.065 [0.004, 0.185] | 0.067 [0.006, 0.187] | 0.062 [0.053, 0.072]       | 0.154 [0.115, 0.196] |
+| Natural Language | Qwen 0.6B Thinking | 0.499 [0.308, 0.711] | 0.462 [0.232, 0.696] | 0.403 [0.226, 0.596]               | 0.141 [0.023, 0.296]                | 0.029 [0.007, 0.057] | 0.332 [0.158, 0.527] | 0.345 [0.156, 0.564]       | 0.316 [0.246, 0.387] |
 
+![macro_brier](notebooks/results/outputs/macro_brier.png)
 
-## Open Questions
+### ECE
 
-The following are intentionally out of scope but could be made in scope, depending on importance, timelines, capacity. If not done will move to discussion/future work section in write up!
-- OMOP instead of MIMIC specific descriptions?
-- Temporal split: ~possible but messy due to MIMIC's random shift
-- Additional tasks: e.g. labs
-    - Beyond binary prediction?
-- Recent Nature comment piece (Shah et al.) points out 5 common areas missed in evaluation (could be v nice framing)
-    - Event frequency (could add)
-    - Assessment of calibration (done)
-    - Timeline completion rates (done)
-    - Assessment of reliance on shortcuts
-        - Not retraining without admin codes
-        - But explicit about tokenization
-    - External validation
-        - Big lift (eICU?)
-- GRPO to finetune reasoning model
+| data             | method             | Los Hosp 3 Days      | Los Icu 3 Days       | Mortality Hosp Discharge 30 Days   | Mortality Hosp Discharge 365 Days   | Mortality In Hosp    | Mortality In Icu     | Readmission Hosp 30 Days   | MACRO                |
+|:-----------------|:-------------------|:---------------------|:---------------------|:-----------------------------------|:------------------------------------|:---------------------|:---------------------|:---------------------------|:---------------------|
+| Tabular          | MEDS-Tab           | 0.421 [0.353, 0.511] | 0.45 [0.4, 0.517]    | 0.105 [0.048, 0.218]               | 0.329 [0.227, 0.432]                | 0.103 [0.042, 0.225] | 0.153 [0.096, 0.269] | 0.214 [0.214, 0.214]       | 0.254 [0.224, 0.29]  |
+| Structured       | Embedding + LR     |                      | 0.714 [0.5, 0.929]   | 0.063 [0.0, 0.188]                 | 0.188 [0.063, 0.375]                | 0.067 [0.0, 0.2]     | 0.071 [0.0, 0.214]   |                            | 0.22 [0.145, 0.296]  |
+| Structured       | Generative Rollout | 0.267 [0.067, 0.468] | 0.714 [0.429, 0.929] | 0.063 [0.0, 0.188]                 | 0.188 [0.0, 0.375]                  |                      | 0.071 [0.0, 0.214]   | 0.0 [0.0, 0.0]             | 0.217 [0.144, 0.294] |
+| Natural Language | Qwen 0.6B Direct   | 0.267 [0.067, 0.533] | 0.714 [0.429, 0.929] | 0.063 [0.0, 0.188]                 | 0.188 [0.0, 0.375]                  | 0.067 [0.0, 0.2]     | 0.071 [0.0, 0.214]   | 0.0 [0.0, 0.0]             | 0.196 [0.13, 0.261]  |
+| Natural Language | Qwen 0.6B SFT      | 0.267 [0.067, 0.467] | 0.714 [0.429, 0.929] | 0.063 [0.0, 0.188]                 | 0.188 [0.0, 0.375]                  | 0.067 [0.0, 0.2]     | 0.071 [0.0, 0.214]   | 0.0 [0.0, 0.0]             | 0.196 [0.13, 0.261]  |
+| Natural Language | Qwen 0.6B Thinking | 0.267 [0.067, 0.533] | 0.714 [0.5, 0.929]   | 0.063 [0.0, 0.188]                 | 0.188 [0.0, 0.375]                  | 0.067 [0.0, 0.2]     | 0.071 [0.0, 0.214]   | 0.0 [0.0, 0.0]             | 0.196 [0.135, 0.261] |
 
-General unknowns
-- Context window
-    - How long?
-    - How to make fair? context_window  = max_model_length - max_new_tokens
-- Using "all the data we have"
-    - Lots of ICU observations
-    - Not using MIMIC-ED
--
-
-
-## TODOs
-
-Coding
-- Config
-    - Inheritance
-    - Structure
-- QOL
-    - Docstrings
-    - Logs consitent
-- Flash attention
-- Preprocessing numbers
-    - Token length types etc...
-    - Generative rollout -> ground truth how tokens to complete
-- Weighted losses?
-- Gemini implementation
-- All eval graphs
-
-Move to HPC
-- Confirm full run configs
-- Run mimic demo through HPC
-- Run "full" mimic through HPC
+![macro_ece](notebooks/results/outputs/macro_ece.png)
