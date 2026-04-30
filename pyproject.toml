@@ -66,8 +66,16 @@ natural_language_inference = "mimic_struct_predict.models.natural_language.infer
 natural_language_inference_gemini = "mimic_struct_predict.models.natural_language.inference_gemini:main"
 
 [tool.ruff]
+exclude = [
+    "data",
+    "output",
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+]
 line-length = 120
-target-version = "py313"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
@@ -81,10 +89,10 @@ disallow_incomplete_defs = true
 # Error on functions that return Any implicitly
 warn_return_any = true
 warn_unused_ignores = true
-# Ignore missing stubs for third-party packages
 ignore_missing_imports = true
-# Specify the directory to type check (TOML uses arrays for multiple paths)
 files = ["mimic_struct_predict"]
-
-[tool.pytest.ini_options]
-norecursedirs = ["MEDS_Tabular_AutoML"]
+exclude = [
+    "^tests/",
+    "^data/",
+    "^output/"
+]
