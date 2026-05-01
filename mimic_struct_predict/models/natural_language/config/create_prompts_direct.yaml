@@ -15,24 +15,21 @@ model:
 
 tokenization:
   max_prompt_length: 256
-  # Note space
-  yes_token: " Yes"
-  no_token: " No"
   batch_size: null
   # Direct output "Yes"/"No" without "Thinking..." intermediate step
   enable_thinking: false
-  max_new_tokens: 1
+  max_new_tokens: null
   token_buffer: 16
   character_per_token_heuristic: 6
 
 task_description:
-  los_hosp_3_days: "'Yes' if the patient will be discharged from hospital within the next 2 days, 'No' otherwise"
-  los_icu_3_days: "'Yes' if the patient will be discharged from ICU within the next 2 days, 'No' otherwise"
-  mortality_hosp_discharge_30_days: "'Yes' if the patient will die within 30 days of hospital discharge, 'No' otherwise"
-  mortality_hosp_discharge_365_days: "'Yes' if the patient will die within 365 days of hospital discharge, 'No' otherwise"
-  mortality_in_hosp: "'Yes' if the patient will die during this hospital stay, 'No' otherwise"
-  mortality_in_icu: "'Yes' if the patient will die during this ICU stay, 'No' otherwise"
-  readmission_hosp_30_days: "'Yes' if the patient will be readmitted to the hospital within 30 days of discharge, 'No' otherwise"
+  los_hosp_3_days: "True if the patient will be discharged from hospital within the next 2 days, False otherwise"
+  los_icu_3_days: "True if the patient will be discharged from ICU within the next 2 days, False otherwise"
+  mortality_hosp_discharge_30_days: "True if the patient will die within 30 days of hospital discharge, False otherwise"
+  mortality_hosp_discharge_365_days: "True if the patient will die within 365 days of hospital discharge, False otherwise"
+  mortality_in_hosp: "True if the patient will die during this hospital stay, False otherwise"
+  mortality_in_icu: "True if the patient will die during this ICU stay, False otherwise"
+  readmission_hosp_30_days: "True if the patient will be readmitted to the hospital within 30 days of discharge, False otherwise"
 
 hydra:
   run:

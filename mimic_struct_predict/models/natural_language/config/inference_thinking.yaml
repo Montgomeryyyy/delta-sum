@@ -8,12 +8,12 @@ tokenization:
   enable_thinking: true
 
 generation:
-  do_sample: true
   max_new_tokens: 256
-  stop_strings:
-    - "Answer: Yes"
-    - "Answer: No"
   temperature: 0.6
   top_p: 0.95
   top_k: 20
   min_p: 0.0
+
+post_processing:
+  # Update regex to include initial answer tag (as not included in prompt for thinking)
+  regex_pattern: '(?<=<answer>)([\s\S]*?)(?=</answer>)'

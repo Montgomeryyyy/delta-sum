@@ -8,6 +8,7 @@ Usage:
 """
 
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -27,7 +28,6 @@ from transformers import (
 )
 
 from mimic_struct_predict.models.utils import (
-    get_token_id,
     load_model_and_tokenizer,
 )
 
@@ -58,13 +58,29 @@ def compute_yes_probs(logits: torch.Tensor, yes_token_id: int, no_token_id: int)
     return probs[:, 0]
 
 
+def extract_answer(text: str, regex_pattern: re.Pattern, default_prob: float) -> tuple[float, bool]:
+    # Matches the content between the tags
+    match = re.search(regex_pattern, text)
+
+    if match:
+        try:
+            # Strip whitespace and convert to float
+            return float(match.group(1).strip()), True
+        except ValueError:
+            # Found text, but it wasn't a valid number
+            return default_prob, False
+
+    # Tag not found at all
+    return default_prob, False
+
+
 def batch_inference(
     batch_texts: list[str],
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
-    yes_token_id: int,
-    no_token_id: int,
     generation_config: DictConfig,
+    regex_pattern: re.Pattern,
+    default_prob: float,
 ) -> dict[str, list]:
     """Run inference on a batch of texts by
     - Tokenizing the input texts with appropriate padding and truncation
@@ -87,49 +103,26 @@ def batch_inference(
     with torch.inference_mode():
         outputs = model.generate(
             **inputs,
-            output_logits=True,
-            return_dict_in_generate=True,
             tokenizer=tokenizer,  # Pass tokenizer for handling of stopping criteria
             **generation_config,
         )
 
     # Extract sequences and logits
-    new_tokens = outputs.sequences[:, inputs["input_ids"].shape[1] :]
+    new_tokens = outputs[:, inputs["input_ids"].shape[1] :]
     completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
 
-    # Completions can be differing lengths, so need to handle extracting the final token logits carefully
-    # Create mask for non-padded tokens in new_tokens
-    new_tokens_mask = new_tokens != tokenizer.pad_token_id
-
-    # Indices of last non-padded tokens per row
-    last_token_indices = new_tokens_mask.int().sum(dim=1) - 1
-    last_token_indices = last_token_indices.clamp(min=0)
-
-    # stacked_logits: (B, T_generated, V)
-    stacked_logits = torch.stack(outputs.logits, dim=1)
-
-    # Extract logits for the last token of each sample in the batch
-    batch_indices = torch.arange(inputs["input_ids"].shape[0], device=model.device)
-    final_step_logits = stacked_logits[batch_indices, last_token_indices]  # (B, V)
-
-    # Compute probability of Yes vs No at the final step
-    probabilities = compute_yes_probs(final_step_logits, yes_token_id, no_token_id).cpu().tolist()
-
-    # Check if the last token is actually Yes or No for failure rate
-    last_token_ids = new_tokens[batch_indices, last_token_indices]
-    format_adherence = (last_token_ids == yes_token_id) | (last_token_ids == no_token_id)
-    format_adherence = format_adherence.cpu().tolist()
+    probabilities, format_adherence = zip(
+        *map(lambda completion: extract_answer(completion, regex_pattern, default_prob), completions)
+    )
 
     end_time = time.perf_counter()
     sample_latency = (end_time - start_time) / len(batch_texts)
 
-    del outputs, stacked_logits, final_step_logits, last_token_ids, new_tokens_mask
-
     return {
         "completion": completions,
-        "probability": probabilities,
+        "probability": list(probabilities),
         "sample_latency": [sample_latency] * len(batch_texts),
-        "format_adherence": format_adherence,
+        "format_adherence": list(format_adherence),
     }
 
 
@@ -180,9 +173,8 @@ def main(cfg: DictConfig) -> None:
         eval_mode=True,
         padding_side="left",
     )
-    yes_token_id = get_token_id(tokenizer, cfg.tokenization.yes_token)
-    no_token_id = get_token_id(tokenizer, cfg.tokenization.no_token)
-    log.info(f"Yes token ID: {yes_token_id}, No token ID: {no_token_id}")
+
+    regex_pattern = re.compile(cfg.post_processing.regex_pattern)
 
     for task_dir in dataset_dir.iterdir():
         if not task_dir.is_dir():
@@ -219,9 +211,9 @@ def main(cfg: DictConfig) -> None:
                     batch_texts=batch["prompt"],
                     model=model,
                     tokenizer=tokenizer,
-                    yes_token_id=yes_token_id,
-                    no_token_id=no_token_id,
                     generation_config=cfg.generation,
+                    regex_pattern=regex_pattern,
+                    default_prob=cfg.post_processing.default_prob,
                 )
                 for key, values in results.items():
                     batch[key] = values

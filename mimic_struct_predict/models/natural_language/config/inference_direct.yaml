@@ -6,7 +6,8 @@ model:
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
 output_dir: ???          # Required: directory to save outputs
 split: ???
-tasks: null # If null or empty, will run on all tasks in the dataset
+tasks:
+  - mortality_hosp_discharge_30_days # If null or empty, will run on all tasks in the dataset
 
 batch_size: 8
 num_workers: 1
@@ -14,18 +15,23 @@ num_workers: 1
 tokenization:
   max_prompt_length: 256
   enable_thinking: false
-  # Note space
-  yes_token: " Yes"
-  no_token: " No"
   batch_size: 50
 
 generation:
-  do_sample: false
-  max_new_tokens: 1
+  temperature: 0.7
+  top_p: 0.8
+  top_k: 20
+  min_p: 0.0
+  max_new_tokens: 64
+  do_sample: true
+  stop_strings:
+    -"</answer>"
 
-task_description:
-  30_day_readmission: "'Yes' if the patient will be hospitalised within 30 days of discharge, 'No' otherwise"
-  icu_mortality: "'Yes' if the patient will die before being discharged from the ICU, 'No' otherwise"
+post_processing:
+  # Match with content between <answer> and </answer> tags, non-greedy match to get the first occurrence
+  # Includes newlines and other whitespace characters
+  regex_pattern: '([\s\S]*?)(?=</answer>)'
+  default_prob: 0.5
 
 hydra:
   run:

@@ -14,7 +14,7 @@ from mimic_struct_predict.models.utils import load_tokenizer
 log = logging.getLogger(__name__)
 
 
-PROMPT_TEMPLATE = """Analyze the following patient Electronic Health Record (EHR) and predict if the following outcome will occur.
+PROMPT_TEMPLATE = """Analyze the following patient Electronic Health Record (EHR) and predict the probability that the following outcome will occur.
 
 # Outcome to Predict
 {task_description}
@@ -26,24 +26,25 @@ PROMPT_TEMPLATE = """Analyze the following patient Electronic Health Record (EHR
 {instructions}
 """  # noqa: E501
 
-DIRECT_INSTRUCTIONS = """Based on the patient's electronic health record above, predict if the outcome will occur.
+DIRECT_INSTRUCTIONS = """Based on the patient's electronic health record above, predict the probability that the outcome will occur.
 
 ## Constraints
-Do not explain your reasoning.
-Your response must start with "Answer: " followed by either "Yes" or "No".
+Do not explain your reasoning, just provide the final answer.
+Your final answer must be exactly between <answer> and </answer> tags and only be a probability float between 0.0 and 1.0.
 
 ## Output Format
-Answer: Yes/No
+<answer>0.0-1.0</answer>
 """  # noqa: E501
 
-THINKING_INSTRUCTIONS = """Based on the patient's electronic health record above, predict if the outcome will occur.
+THINKING_INSTRUCTIONS = """Based on the patient's electronic health record above, predict the probability that the outcome will occur.
 
 ## Constraints
-Your final answer must start with "Answer: " followed by either "Yes" or "No".
-Your entire response, including thinking, must be less than {max_tokens} tokens.
+Think step by step before giving your final answer.
+Your final answer must be exactly between <answer> and </answer> tags and only be a probability float between 0.0 and 1.0.
+Your entire response, including thinking, must be less than {max_new_words} words.
 
 ## Output Format
-Answer: Yes/No
+<answer>0.0-1.0</answer>
 """  # noqa: E501
 
 
@@ -146,7 +147,9 @@ def create_prompts_from_ehr_texts(
             raise ValueError(
                 "max_new_tokens must be specified when thinking is enabled (as is part of prompt instructions)."
             )
-        instructions = instructions.format(max_tokens=max_new_tokens)
+        # Heuristic: 1 word = 0.75 tokens then round down to the nearest 10
+        max_new_words = int(((max_new_tokens * 0.75) // 10) * 10)
+        instructions = instructions.format(max_new_words=max_new_words)
 
     batch_messages = []
     for ehr in ehr_texts:
@@ -158,7 +161,7 @@ def create_prompts_from_ehr_texts(
 
         messages = [{"role": "user", "content": formatted_content}]
         if not enable_thinking:
-            messages.append({"role": "assistant", "content": "Answer:"})
+            messages.append({"role": "assistant", "content": "<answer>"})
 
         batch_messages.append(messages)
 
@@ -175,12 +178,11 @@ def create_prompts_from_ehr_texts(
 
 def ehr_text_and_boolean_to_prompts_and_completions(
     ehr_texts: list[str],
-    boolean_values: list[bool],
     task_description: str,
     tokenizer: PreTrainedTokenizer,
     empty_prompt_length: int,
     tokenization_cfg: DictConfig,
-) -> dict[str, list[str]]:
+) -> list[str]:
     """
     Convert a list of EHR texts and boolean values to a list of prompts and completions.
 
@@ -204,11 +206,7 @@ def ehr_text_and_boolean_to_prompts_and_completions(
         max_new_tokens=tokenization_cfg.max_new_tokens,
     )
 
-    completions = [
-        tokenization_cfg.yes_token if boolean_value else tokenization_cfg.no_token for boolean_value in boolean_values
-    ]
-
-    return {"prompt": prompts, "completion": completions}
+    return prompts
 
 
 @hydra.main(
@@ -275,15 +273,16 @@ def main(cfg: DictConfig) -> None:
         empty_prompt_length = len(tokenizer([empty_prompt], add_special_tokens=False)["input_ids"][0])
 
         dataset = dataset.map(
-            lambda ehr_texts, boolean_values: ehr_text_and_boolean_to_prompts_and_completions(
-                ehr_texts=ehr_texts,
-                boolean_values=boolean_values,
-                task_description=task_description,
-                tokenizer=tokenizer,
-                empty_prompt_length=empty_prompt_length,
-                tokenization_cfg=cfg.tokenization,
-            ),
-            input_columns=["ehr_text", "boolean_value"],
+            lambda ehr_texts: {
+                "prompt": ehr_text_and_boolean_to_prompts_and_completions(
+                    ehr_texts=ehr_texts,
+                    task_description=task_description,
+                    tokenizer=tokenizer,
+                    empty_prompt_length=empty_prompt_length,
+                    tokenization_cfg=cfg.tokenization,
+                )
+            },
+            input_columns=["ehr_text"],
             remove_columns=["ehr_text"],
             batched=True,
             batch_size=cfg.tokenization.batch_size,

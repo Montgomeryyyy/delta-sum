@@ -278,7 +278,7 @@ natural_language_create_prompts_gemini:
 natural_language_sft:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run natural_language_sft \
-		dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)/hf_dataset \
+		dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)
 
 
@@ -286,14 +286,14 @@ natural_language_sft:
 natural_language_inference_direct_sft:
 	uv run natural_language_inference \
 		"model.pretrained_model_name_or_path=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)/20260427_152027/final_model" \
-		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)/hf_dataset" \
+		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/direct_sft" \
 		"split=tuning"
 
 .PHONY: natural_language_inference_direct
 natural_language_inference_direct:
 	uv run natural_language_inference \
-		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)/hf_dataset" \
+		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/direct" \
 		"split=tuning"
 
@@ -301,13 +301,13 @@ natural_language_inference_direct:
 natural_language_inference_thinking:
 	uv run natural_language_inference \
 		--config-name inference_thinking.yaml \
-		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)/hf_dataset" \
+		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking" \
 		"split=tuning"
 
 .PHONY: natural_language_inference_gemini
 natural_language_inference_gemini:
 	uv run natural_language_inference_gemini \
-		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)/hf_dataset" \
+		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/gemini" \
 		"split=tuning"
