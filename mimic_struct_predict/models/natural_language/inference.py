@@ -17,7 +17,6 @@ import hydra
 import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
-import torch.nn.functional as F
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tqdm import tqdm
@@ -32,30 +31,6 @@ from mimic_struct_predict.models.utils import (
 )
 
 log = logging.getLogger(__name__)
-
-
-def compute_yes_probs(logits: torch.Tensor, yes_token_id: int, no_token_id: int) -> torch.Tensor:
-    """Compute the probability of the 'Yes' token relative to 'No'.
-
-    Extracts the logits for the Yes and No tokens, applies softmax across just
-    those two options, and returns the probability of Yes.
-
-    Args:
-        logits: Tensor of shape (batch, vocab_size).
-        yes_token_id: Token ID for Yes.
-        no_token_id: Token ID for No.
-
-    Returns:
-        Tensor of shape (batch,) with values in [0, 1].
-    """
-    # Extract logits for Yes (idx 0 in selection) and No (idx 1 in selection)
-    target_logits = logits[:, [yes_token_id, no_token_id]]
-
-    # Softmax over just these two options
-    probs = F.softmax(target_logits, dim=-1)
-
-    # Return probability of Yes (index 0)
-    return probs[:, 0]
 
 
 def extract_answer(text: str, regex_pattern: re.Pattern, default_prob: float) -> tuple[float, bool]:

@@ -1,0 +1,37 @@
+model:
+  name: gemini-2.5-flash
+
+client:
+  location: global
+
+dataset_dir: ???  # Required: directory of pre-built prompt datasets
+output_dir: ???          # Required: directory to save outputs
+split: ???
+tasks:
+  - mortality_hosp_discharge_30_days # If null or empty, will run on all tasks in the dataset
+
+batch_size: 8
+
+generation:
+  seed: 42
+  max_output_tokens: 2048
+  stop_sequences:
+    - "</answer>"
+
+thinking:
+  thinking_budget: 1024
+  include_thoughts: true
+
+quotas:
+  rpm_limit: 30_000
+  tpm_limit: 10_000_000_000
+
+post_processing:
+  # Stop sequence is not returned so match first tag and everything after it to end of string (non-greedy match)
+  regex_pattern: '(?<=<answer>)([\s\S]*)'
+  default_prob: 0.5
+  save_every: 10
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
