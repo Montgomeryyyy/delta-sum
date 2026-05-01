@@ -1,9 +1,11 @@
 import logging
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import datasets
 import hydra
+from google.genai.local_tokenizer import LocalTokenizer
 from omegaconf import DictConfig
 from transformers import PreTrainedTokenizer
 
@@ -17,10 +19,10 @@ PROMPT_TEMPLATE = """Analyze the following patient Electronic Health Record (EHR
 # Outcome to Predict
 {task_description}
 
-# Patient's EHR"
+# Patient's EHR
 {ehr}
 
-"# Instructions"
+# Instructions
 {instructions}
 """  # noqa: E501
 
@@ -36,9 +38,6 @@ Answer: Yes/No
 
 THINKING_INSTRUCTIONS = """Based on the patient's electronic health record above, predict if the outcome will occur.
 
-First, write out your step-by-step clinical reasoning inside <think> and </think> tags.
-After you have finished thinking, you must provide your final answer.
-
 ## Constraints
 Your final answer must start with "Answer: " followed by either "Yes" or "No".
 Your entire response, including thinking, must be less than {max_tokens} tokens.
@@ -48,24 +47,47 @@ Answer: Yes/No
 """  # noqa: E501
 
 
+class GeminiTokenizerWrapper:
+    """HACK: A simple wrapper around the LocalTokenizer to mimic the HuggingFace PreTrainedTokenizer
+    interface purposes."""
+
+    def __init__(self, model: str):
+        self.tokenizer = LocalTokenizer(model)
+
+    def __call__(self, contents: list[str], **kwargs: Any) -> dict[str, list[bytes]]:
+        # HACK: The LocalTokenizer doesn't have a decode method so use the tokens instead of token ids here.
+        return {"input_ids": [token_info.tokens for token_info in self.tokenizer.compute_tokens(contents).tokens_info]}
+
+    def batch_decode(self, batch_token_ids: list[list[bytes]], skip_special_tokens: bool = True) -> list[str]:
+        """Rough but gemini tokenizer handles newlines and spaces within tokens, so we can just join the token strings
+        together."""
+        return [b"".join(token_ids).decode("utf-8") for token_ids in batch_token_ids]
+
+    def apply_chat_template(
+        self,
+        batch_messages: list[list[dict[str, str]]],
+        **kwargs: Any,
+    ) -> list[str]:
+        if any(len(messages) > 1 for messages in batch_messages):
+            raise NotImplementedError(
+                "This wrapper only supports simple cases without generation prompts or multi-turn conversations."
+            )
+        return [messages[0]["content"] for messages in batch_messages]
+
+
 def truncate_ehr_texts(
     ehr_texts: list[str],
     tokenizer: PreTrainedTokenizer,
-    max_prompt_length: int,
-    empty_prompt_length: int,
-    buffer: int,
+    max_ehr_tokens: int,
+    character_per_token_heuristic: int,
 ) -> list[str]:
     """Truncate a list of EHR texts to fit within the max token limit of the model when
     combined with the prompt instructions."""
 
-    max_ehr_tokens = max_prompt_length - empty_prompt_length - buffer
-    if max_ehr_tokens <= 0:
-        raise ValueError(f"Max prompt length ({max_prompt_length}) is too small to fit instructions.")
-
     # Character-level pre-slicing to reduce the amount of text we need to tokenize
     # (tokenization is the bottleneck and character slicing is very fast)
     # 6 characters per token is a conservative heuristic
-    pre_sliced_ehrs = [ehr[-max_ehr_tokens * 6 :] for ehr in ehr_texts]
+    pre_sliced_ehrs = [ehr[-max_ehr_tokens * character_per_token_heuristic :] for ehr in ehr_texts]
 
     # Tokenize and left hand truncate
     batch_token_ids = tokenizer(pre_sliced_ehrs, add_special_tokens=False)["input_ids"]
@@ -74,7 +96,7 @@ def truncate_ehr_texts(
     # Decode back to text
     decoded_ehrs = tokenizer.batch_decode(truncated_batch_ids, skip_special_tokens=True)
 
-    # Ideal truncate on a newline
+    # Ideal truncate on a newline (which are very common by design as codes are seperated by \n)
     final_ehrs = []
     for orig_ids, text in zip(batch_token_ids, decoded_ehrs):
         if len(orig_ids) <= max_ehr_tokens:
@@ -156,36 +178,35 @@ def ehr_text_and_boolean_to_prompts_and_completions(
     boolean_values: list[bool],
     task_description: str,
     tokenizer: PreTrainedTokenizer,
-    enable_thinking: bool,
-    max_prompt_length: int,
     empty_prompt_length: int,
-    yes_token: str,
-    no_token: str,
-    max_new_tokens: int | None = None,
-    buffer: int = 16,
+    tokenization_cfg: DictConfig,
 ) -> dict[str, list[str]]:
     """
     Convert a list of EHR texts and boolean values to a list of prompts and completions.
 
     """
+    max_ehr_tokens = tokenization_cfg.max_prompt_length - empty_prompt_length - tokenization_cfg.token_buffer
+    if max_ehr_tokens <= 0:
+        raise ValueError(f"Max prompt length ({tokenization_cfg.max_prompt_length}) is too small to fit instructions.")
 
     final_ehrs = truncate_ehr_texts(
         ehr_texts=ehr_texts,
         tokenizer=tokenizer,
-        max_prompt_length=max_prompt_length,
-        empty_prompt_length=empty_prompt_length,
-        buffer=buffer,
+        max_ehr_tokens=max_ehr_tokens,
+        character_per_token_heuristic=tokenization_cfg.character_per_token_heuristic,
     )
 
     prompts = create_prompts_from_ehr_texts(
         ehr_texts=final_ehrs,
         task_description=task_description,
         tokenizer=tokenizer,
-        enable_thinking=enable_thinking,
-        max_new_tokens=max_new_tokens,
+        enable_thinking=tokenization_cfg.enable_thinking,
+        max_new_tokens=tokenization_cfg.max_new_tokens,
     )
 
-    completions = [yes_token if boolean_value else no_token for boolean_value in boolean_values]
+    completions = [
+        tokenization_cfg.yes_token if boolean_value else tokenization_cfg.no_token for boolean_value in boolean_values
+    ]
 
     return {"prompt": prompts, "completion": completions}
 
@@ -200,7 +221,16 @@ def main(cfg: DictConfig) -> None:
     output_dir = Path(cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    tokenizer = load_tokenizer(cfg.model.pretrained_model_name_or_path)
+    if cfg.model.is_gemini:
+        if not cfg.tokenization.enable_thinking:
+            raise ValueError(
+                "Gemini models are optimized for reasoning, so thinking instructions "
+                "must be enabled when using the GeminiTokenizerWrapper."
+            )
+        log.info("Using GeminiTokenizerWrapper for local tokenization.")
+        tokenizer = GeminiTokenizerWrapper(cfg.model.pretrained_model_name_or_path)
+    else:
+        tokenizer = load_tokenizer(cfg.model.pretrained_model_name_or_path)
 
     valid_splits = set(cfg.splits_to_process)
     valid_tasks = set(cfg.get("tasks") or [])
@@ -242,7 +272,7 @@ def main(cfg: DictConfig) -> None:
             enable_thinking=cfg.tokenization.enable_thinking,
             max_new_tokens=cfg.tokenization.max_new_tokens,
         )[0]
-        empty_prompt_length = len(tokenizer.tokenize(empty_prompt, add_special_tokens=False))
+        empty_prompt_length = len(tokenizer([empty_prompt], add_special_tokens=False)["input_ids"][0])
 
         dataset = dataset.map(
             lambda ehr_texts, boolean_values: ehr_text_and_boolean_to_prompts_and_completions(
@@ -250,13 +280,8 @@ def main(cfg: DictConfig) -> None:
                 boolean_values=boolean_values,
                 task_description=task_description,
                 tokenizer=tokenizer,
-                max_prompt_length=cfg.tokenization.max_prompt_length,
-                enable_thinking=cfg.tokenization.enable_thinking,
-                max_new_tokens=cfg.tokenization.max_new_tokens,
                 empty_prompt_length=empty_prompt_length,
-                yes_token=cfg.tokenization.yes_token,
-                no_token=cfg.tokenization.no_token,
-                buffer=cfg.tokenization.token_buffer,
+                tokenization_cfg=cfg.tokenization,
             ),
             input_columns=["ehr_text", "boolean_value"],
             remove_columns=["ehr_text"],

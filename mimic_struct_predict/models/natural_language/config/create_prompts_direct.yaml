@@ -10,6 +10,7 @@ splits_to_process: ["train", "tuning", "held_out"]
 train_split_name: train
 
 model:
+  is_gemini: false
   pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
 
 tokenization:
@@ -22,6 +23,7 @@ tokenization:
   enable_thinking: false
   max_new_tokens: 1
   token_buffer: 16
+  character_per_token_heuristic: 6
 
 task_description:
   los_hosp_3_days: "'Yes' if the patient will be discharged from hospital within the next 2 days, 'No' otherwise"

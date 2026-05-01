@@ -46,8 +46,7 @@ def get_token_id(tokenizer: PreTrainedTokenizer, string: str) -> int:
     # 1. Check for multi-token decomposition
     if len(token_ids) != 1:
         raise ValueError(
-            f"'{string}' must encode to exactly 1 token. "
-            f"Instead, it encoded to {len(token_ids)} tokens: {token_ids}"
+            f"'{string}' must encode to exactly 1 token. Instead, it encoded to {len(token_ids)} tokens: {token_ids}"
         )
 
     token_id = token_ids[0]
@@ -81,6 +80,7 @@ def load_tokenizer(tokenizer_dir: str, padding_side: str = "left") -> PreTrained
     Returns:
         PreTrainedTokenizer: The loaded tokenizer.
     """
+
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
     tokenizer.padding_side = padding_side
     if tokenizer.pad_token is None:

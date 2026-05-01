@@ -1,0 +1,15 @@
+defaults:
+  - create_prompts_direct
+  - _self_
+
+model:
+  is_gemini: true
+  pretrained_model_name_or_path: gemini-2.5-flash
+
+# Only create prompts for held_out test set as not currently training reasoning model
+splits_to_process: ["tuning"]
+
+tokenization:
+  max_prompt_length: 4096
+  enable_thinking: true
+  max_new_tokens: 256

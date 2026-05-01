@@ -1,13 +1,15 @@
 {
   "search.exclude": {
     "**/data/**": true,
-    "**/output/**": true
+    "**/output/**": true,
+    "**/pre_trained_models/**": true
   },
 
   "files.watcherExclude": {
     "**/data/**": true,
     "**/output/**": true,
-    "**/.venv/**": true
+    "**/.venv/**": true,
+    "**/pre_trained_models/**": true
   },
 
   "[python]": {
