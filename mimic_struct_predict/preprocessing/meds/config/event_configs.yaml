@@ -1,4 +1,4 @@
-# Natural Language adaptation of the MIMIC_IV_MEDS event_config.
+# Natural Language adaptation of the ETHOS_ARES event_config_ed.yaml.
 # The resulting MEDS events can then be converted concatenated to either form a stream of discrete tokens
 # or a natural language description of the patient's stay.
 #
@@ -9,21 +9,169 @@
 # - Move all string fields to the code field (can be tokenized out later)
 # - Numeric fields are kept to allow for quantile-based tokenization.
 # - Traditional "static variables" are include as discrete events at admission time (e.g. gender, race, insurance, language, marital status)
+# - Birth event not included. Instead age is added at hospital admission
 
-
-hosp/admissions:
+ed/edstays:
   ed_registration:
     code:
-      - Emergency Department
+      - Emergency Department Registration
       - Registration
-    time: col(edregtime)
+      - Arrival Method
+      - col(arrival_transport)
+    time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
   ed_out:
     code:
-      - Emergency Department
-      - Out
-    time: col(edouttime)
+      - Emergency Department Discharge or Transfer
+      - Disposition
+      - col(disposition)
+    time: col(outtime)
     time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/triage:
+  temperature:
+    code:
+      - Emergency Department Triage
+      - Temperature
+    numeric_value: temperature
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  heart_rate:
+    code:
+      - Emergency Department Triage
+      - Heart Rate
+    numeric_value: heartrate
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  respiratory_rate:
+    code:
+      - Emergency Department Triage
+      - Respiratory Rate
+    numeric_value: resprate
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  o2_saturation:
+    code:
+      - Emergency Department Triage
+      - O2 Saturation
+    numeric_value: o2sat
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  blood_pressure_systolic:
+    code:
+      - Emergency Department Triage
+      - Systolic Blood Pressure
+    numeric_value: sbp
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  blood_pressure_diastolic:
+    code:
+      - Emergency Department Triage
+      - Diastolic Blood Pressure
+    numeric_value: dbp
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  pain:
+    code:
+      - Emergency Department Triage
+      - Pain Score (0-10)
+      - col(pain)
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    stay_id: stay_id
+  acuity:
+    code:
+      - Emergency Department Triage
+      - Emergency Severity Index (1 most - 5 least urgent)
+    numeric_value: acuity
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  chief_complaint:
+    code:
+      - Emergency Department Triage
+      - Chief Complaint
+      - col(chiefcomplaint)
+    time: col(intime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+
+ed/diagnosis:
+  diagnosis:
+    code:
+      - Emergency Department Diagnosis
+      - col(long_title)
+    stay_id: stay_id
+    time: col(outtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+
+ed/vitalsign:
+  temperature:
+    code:
+      - Emergency Department Vital Sign
+      - Temperature
+    numeric_value: temperature
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  heart_rate:
+    code:
+      - Emergency Department Vital Sign
+      - Heart Rate
+    numeric_value: heartrate
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  respiratory_rate:
+    code:
+      - Emergency Department Vital Sign
+      - Respiratory Rate
+    numeric_value: resprate
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  o2_saturation:
+    code:
+      - Emergency Department Vital Sign
+      - O2 Saturation
+    numeric_value: o2sat
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  blood_pressure_systolic:
+    code:
+      - Emergency Department Vital Sign
+      - Systolic Blood Pressure
+    numeric_value: sbp
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  blood_pressure_diastolic:
+    code:
+      - Emergency Department Vital Sign
+      - Diastolic Blood Pressure
+    numeric_value: dbp
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+  pain:
+    code:
+      - Emergency Department Vital Sign
+      - Pain Score (0-10)
+      - col(pain)
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+
+hosp/admissions:
   admission:
     code:
       - Hospital Admission
@@ -94,7 +242,7 @@ hosp/diagnoses_icd:
     code:
       - Diagnosis
       - col(long_title)
-    time: col(hadm_discharge_time)
+    time: col(dischtime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
 hosp/drgcodes:
@@ -106,17 +254,26 @@ hosp/drgcodes:
       - col(drg_severity)
       - Risk Of Mortality
       - col(drg_mortality)
-    time: col(hadm_discharge_time)
+    time: col(dischtime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
 hosp/emar:
   medication:
     code:
-      - Medication Administration
+      - Hospital Medication Administration
       - col(medication)
       - col(event_txt)
     time: col(charttime)
     time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/pyxis:
+  medication:
+    code:
+      - Emergency Department Medication Administration
+      - col(name)
+    time: col(charttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    stay_id: stay_id
 
 hosp/hcpcsevents:
   hcpcs:
@@ -165,29 +322,29 @@ hosp/patients:
     time_format:
       - "%Y-%m-%d %H:%M:%S"
 
-hosp/pharmacy:
- medication_start:
-   code:
-     - Pharmacy Prescription
-     - Start
-     - col(medication)
-     - Route
-     - col(route)
-     - Frequency
-     - col(frequency)
-     - Doses Per 24 Hrs
-     - col(doses_per_24_hrs)
-   time: col(starttime)
-   time_format:
-     - "%Y-%m-%d %H:%M:%S"
- medication_stop:
-   code:
-     - Pharmacy Prescription
-     - Stop
-     - col(medication)
-   time: col(stoptime)
-   time_format:
-     - "%Y-%m-%d %H:%M:%S"
+# hosp/pharmacy:
+#  medication_start:
+#    code:
+#      - Pharmacy Prescription
+#      - Start
+#      - col(medication)
+#      - Route
+#      - col(route)
+#      - Frequency
+#      - col(frequency)
+#      - Doses Per 24 Hrs
+#      - col(doses_per_24_hrs)
+#    time: col(starttime)
+#    time_format:
+#      - "%Y-%m-%d %H:%M:%S"
+#  medication_stop:
+#    code:
+#      - Pharmacy Prescription
+#      - Stop
+#      - col(medication)
+#    time: col(stoptime)
+#    time_format:
+#      - "%Y-%m-%d %H:%M:%S"
 
 hosp/procedures_icd:
   procedure:
@@ -224,78 +381,78 @@ icu/icustays:
     time: col(outtime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
-icu/chartevents:
-  event:
-    code:
-      - Icu Observation
-      - col(label)
-      - Value
-      - col(valueuom)
-      # HACK: If valuenum (float) is not null value (string) is set to None in preMEDS.py
-      # Subsequent processing cleans up // notation
-      - col(value)
-    time: col(charttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: valuenum
+# icu/chartevents:
+#   event:
+#     code:
+#       - Icu Observation
+#       - col(label)
+#       - Value
+#       - col(valueuom)
+#       # HACK: If valuenum (float) is not null value (string) is set to None in preMEDS.py
+#       # Subsequent processing cleans up // notation
+#       - col(value)
+#     time: col(charttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: valuenum
 
-icu/procedureevents:
-  start:
-    code:
-      - Icu Procedure
-      - Start
-      - col(label)
-    time: col(starttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-  end:
-    code:
-      - Icu Procedure
-      - End
-      - col(label)
-    time: col(endtime)
-    time_format: "%Y-%m-%d %H:%M:%S"
+# icu/procedureevents:
+#   start:
+#     code:
+#       - Icu Procedure
+#       - Start
+#       - col(label)
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#   end:
+#     code:
+#       - Icu Procedure
+#       - End
+#       - col(label)
+#     time: col(endtime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
 
-icu/inputevents:
-  input_start:
-    code:
-      - Icu Input
-      - Start
-      - col(label)
-      - Order Category
-      - col(ordercategorydescription)
-      - Rate
-      - col(rateuom)
-    time: col(starttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: rate
-  input_end:
-    code:
-      - Icu Input
-      - End
-      - col(label)
-      - Order Category
-      - col(ordercategorydescription)
-      - Status
-      - col(statusdescription)
-      - Amount
-      - col(amountuom)
-    time: col(endtime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: amount
-  subject_weight:
-    code:
-      - Icu Observation
-      - Patient Weight
-      - KG
-    time: col(starttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: patientweight
+# icu/inputevents:
+#   input_start:
+#     code:
+#       - Icu Input
+#       - Start
+#       - col(label)
+#       - Order Category
+#       - col(ordercategorydescription)
+#       - Rate
+#       - col(rateuom)
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: rate
+#   input_end:
+#     code:
+#       - Icu Input
+#       - End
+#       - col(label)
+#       - Order Category
+#       - col(ordercategorydescription)
+#       - Status
+#       - col(statusdescription)
+#       - Amount
+#       - col(amountuom)
+#     time: col(endtime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: amount
+#   subject_weight:
+#     code:
+#       - Icu Observation
+#       - Patient Weight
+#       - KG
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: patientweight
 
-icu/outputevents:
-  output:
-    code:
-      - Icu Output
-      - col(label)
-      - col(valueuom)
-    time: col(charttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: value
+# icu/outputevents:
+#   output:
+#     code:
+#       - Icu Output
+#       - col(label)
+#       - col(valueuom)
+#     time: col(charttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: value

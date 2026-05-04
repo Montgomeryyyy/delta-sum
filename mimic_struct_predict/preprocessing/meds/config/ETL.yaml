@@ -54,29 +54,28 @@ stages:
       # Birth
       - "Birth"
       # Admissions
-      - "Emergency Department"
+      - "Emergency Department Registration"
       - "Hospital Transfer" # Includes ED->Hospital transfers
       - "Hospital Admission"
       - "Patient Demographics" # Recorded at admission time
       - "Icu Admission"
       # Lab results and observations
+      - "Emergency Department Triage"
+      - "Emergency Department Vital Sign"
       - "Laboratory Test"
       - "Clinical Observation"
-      - "Icu Observation"
-      - "Icu Output"
       # Interventions and treatments
-      - "Pharmacy Prescription"
-      - "Medication Administration"
-      - "Icu Medication"
-      - "Icu Input"
+      - "Emergency Department Medication Administration"
+      - "Hospital Medication Administration"
       - "Hospital Procedure"
-      - "Icu Procedure"
       # Death (discharge and billing happens after death)
       - "Death"
       # Discharges
       - "Icu Discharge"
       - "Hospital Discharge"
+      - "Emergency Department Discharge or Transfer"
       # Billing codes
+      - "Emergency Department Diagnosis"
       - "Diagnosis"
       - "Diagnosis Related Group"
       - "Hcpcs Billing Item"

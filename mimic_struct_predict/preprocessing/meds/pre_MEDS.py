@@ -52,16 +52,36 @@ def _set_value_empty_string_when_valuenum_present(events_df: pl.LazyFrame) -> pl
     )
 
 
-def _add_discharge_time_by_hadm_id(
-    df: pl.LazyFrame, discharge_time_df: pl.LazyFrame, out_column_name: str = "hadm_discharge_time"
-) -> pl.LazyFrame:
-    """Joins the two dataframes by ``"hadm_id"`` and adds the discharge time to the original dataframe."""
+def _add_time_by_id(df: pl.LazyFrame, time_source_df: pl.LazyFrame, on: str, time_column_name: str) -> pl.LazyFrame:
+    """Joins the two dataframes by ``on`` and adds the time to the original dataframe."""
 
-    discharge_time_df = discharge_time_df.select("hadm_id", pl.col("dischtime").alias(out_column_name))
-    return df.join(discharge_time_df, on="hadm_id", how="left")
+    time_source_df = time_source_df.select(on, time_column_name)
+    return df.join(time_source_df, on=on, how="left")
 
+
+def _convert_fahrenheit_to_celsius(df: pl.LazyFrame) -> pl.LazyFrame:
+    """Convert Fahrenheit temperatures to Celsius (assumes F if > 45)."""
+    return df.with_columns(
+        pl.when(pl.col("temperature") > 45)
+        .then((pl.col("temperature") - 32) * 5 / 9)
+        .otherwise(pl.col("temperature"))
+        .alias("temperature")
+    )
+
+
+_add_discharge_time_by_hadm_id = partial(_add_time_by_id, on="hadm_id", time_column_name="dischtime")
 
 ### Process Functions ###
+
+
+def process_ed_triage_df(ed_triage_df: pl.LazyFrame, edstays_df: pl.LazyFrame) -> pl.LazyFrame:
+    """Adds intime from edstays to triage data."""
+    ed_triage_df = _convert_fahrenheit_to_celsius(ed_triage_df)
+    return _add_time_by_id(ed_triage_df, edstays_df, on="stay_id", time_column_name="intime")
+
+
+def process_ed_vitals_df(ed_vitals_df: pl.LazyFrame) -> pl.LazyFrame:
+    return _convert_fahrenheit_to_celsius(ed_vitals_df)
 
 
 def process_admissions_df(admissions_df: pl.LazyFrame, patients_df: pl.LazyFrame) -> pl.LazyFrame:
@@ -84,11 +104,10 @@ def process_admissions_df(admissions_df: pl.LazyFrame, patients_df: pl.LazyFrame
     )
 
 
-def process_icd_df(icd_df: pl.LazyFrame, admissions_df: pl.LazyFrame, d_icd_df: pl.LazyFrame) -> pl.LazyFrame:
+def process_icd_df(icd_df: pl.LazyFrame, d_icd_df: pl.LazyFrame) -> pl.LazyFrame:
     """Adds discharge time from admissions, joins with `d_icd` for long titles,
-    ensures codes are strings, and converts `chartdate` to end-of-day timestamps.
+    ensures codes are strings.
     """
-    icd_df = _add_discharge_time_by_hadm_id(icd_df, admissions_df)
     # Cast to string to match d_icd schema
     icd_df = icd_df.with_columns(
         pl.col("icd_code").cast(pl.String),
@@ -99,10 +118,38 @@ def process_icd_df(icd_df: pl.LazyFrame, admissions_df: pl.LazyFrame, d_icd_df: 
         on=["icd_code", "icd_version"],
         how="left",
     )
-    # Convert chartdate to timestamp at 23:59:59 (applies to procedures_icd)
-    if "chartdate" in icd_df.collect_schema():
-        icd_df = _convert_date_to_end_of_day_timestamp(icd_df)
     return icd_df
+
+
+def process_ed_diagnosis_df(
+    ed_diagnosis_df: pl.LazyFrame, edstays_df: pl.LazyFrame, d_icd_diagnoses_df: pl.LazyFrame
+) -> pl.LazyFrame:
+    """Processes ED diagnoses by adding outtime from edstays and joining with `d_icd_diagnoses`
+    to add long titles."""
+    ed_diagnosis_df = _add_time_by_id(ed_diagnosis_df, edstays_df, on="stay_id", time_column_name="outtime")
+    ed_diagnosis_df = process_icd_df(ed_diagnosis_df, d_icd_diagnoses_df)
+    return ed_diagnosis_df
+
+
+def process_hosp_diagnosis_df(
+    diagnosis_df: pl.LazyFrame, admissions_df: pl.LazyFrame, d_icd_diagnoses_df: pl.LazyFrame
+) -> pl.LazyFrame:
+    """Processes diagnoses_icd by adding discharge time from admissions and joining with `d_icd_diagnoses`
+    to add long titles."""
+    process_diagnosis_df = _add_discharge_time_by_hadm_id(diagnosis_df, admissions_df)
+    diagnosis_df = process_icd_df(process_diagnosis_df, d_icd_diagnoses_df)
+    return diagnosis_df
+
+
+def process_procedures_df(
+    procedures_df: pl.LazyFrame, admissions_df: pl.LazyFrame, d_icd_procedures_df: pl.LazyFrame
+) -> pl.LazyFrame:
+    """Processes procedures_icd by adding discharge time from admissions and joining with `d_icd_procedures`
+    to add long titles and converting chartdate to end-of-day timestamps."""
+    procedures_df = _add_discharge_time_by_hadm_id(procedures_df, admissions_df)
+    procedures_df = process_icd_df(procedures_df, d_icd_procedures_df)
+    procedures_df = _convert_date_to_end_of_day_timestamp(procedures_df)
+    return procedures_df
 
 
 def process_drgcodes_df(drgcodes_df: pl.LazyFrame, admissions_df: pl.LazyFrame) -> pl.LazyFrame:
@@ -253,19 +300,33 @@ def process_icu_output_events_df(icu_output_events_df: pl.LazyFrame, d_items_df:
 # NOTE: Dependencies are passed to the function as positional arguments in
 # list order. Reordering entries will change which dataframe each parameter receives.
 FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[str]]] | None]] = {
+    "ed/diagnosis": (
+        process_ed_diagnosis_df,
+        [("ed/edstays", ["stay_id", "outtime"]), ("hosp/d_icd_diagnoses", ["icd_code", "icd_version", "long_title"])],
+    ),
+    "ed/triage": (
+        process_ed_triage_df,
+        [
+            ("ed/edstays", ["stay_id", "intime"]),
+        ],
+    ),
+    "ed/vitals": (
+        process_ed_vitals_df,
+        None,
+    ),
     "hosp/admissions": (
         process_admissions_df,
         [("hosp/patients", ["subject_id", "gender", "anchor_year", "anchor_age"])],
     ),
     "hosp/diagnoses_icd": (
-        process_icd_df,
+        process_hosp_diagnosis_df,
         [
             ("hosp/admissions", ["hadm_id", "dischtime"]),
             ("hosp/d_icd_diagnoses", ["icd_code", "icd_version", "long_title"]),
         ],
     ),
     "hosp/procedures_icd": (
-        process_icd_df,
+        process_procedures_df,
         [
             ("hosp/admissions", ["hadm_id", "dischtime"]),
             ("hosp/d_icd_procedures", ["icd_code", "icd_version", "long_title"]),
