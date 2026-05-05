@@ -1,11 +1,9 @@
 N_WORKERS          := 6
 
-# DATASET_NAME = mimic_iv
 # MIMIC_VERSION = 3.1
 
 DATASET_NAME = mimic-iv-demo
-DATASET_NAME_DEMO = mimic-iv-demo
-DATASET_NAME_ED = mimic-iv-ed
+DATASET_NAME_ED = mimic-iv-ed-demo
 MIMIC_VERSION = 2.2
 
 PHYSIONET_URL    := https://physionet.org/files
@@ -45,26 +43,6 @@ define check_credentials
 	@test -n "$(MIMIC_USER)" || (echo "Error: MIMIC_USER required (use 'export MIMIC_USER=your_username')" && exit 1)
 	@test -n "$(MIMIC_PASSWORD)" || (echo "Error: MIMIC_PASSWORD required (use 'export MIMIC_PASSWORD=your_password')" && exit 1)
 endef
-
-.PHONY: download-mimic-demo
-download-mimic-demo:
-	$(call check_credentials)
-	@mkdir -p $(MIMICIV_RAW_DIR)
-	cd $(MIMICIV_RAW_DIR) && \
-		wget -r -N -c -np --user $(MIMIC_USER) --password $(MIMIC_PASSWORD) \
-			--no-check-certificate --accept gz,csv --reject "index.html*" -nH --cut-dirs=3 \
-			$(PHYSIONET_URL)/$(DATASET_NAME_DEMO)/$(MIMIC_VERSION)/
-	@echo "Downloaded $(DATASET_NAME_DEMO) v$(MIMIC_VERSION) to $(MIMICIV_RAW_DIR)"
-
-	cd $(MIMICIV_RAW_DIR) && \
-		wget -r -N -c -np --user "$$MIMIC_USER" --password "$$MIMIC_PASSWORD" \
-			--no-check-certificate --accept gz,csv --reject "index.html*" -nH --cut-dirs=3 \
-			$(PHYSIONET_URL)/$(DATASET_NAME_ED)/$(MIMIC_VERSION)/
-	@echo "Downloaded $(DATASET_NAME_ED) v$(MIMIC_VERSION) to $(MIMICIV_RAW_DIR)"
-
-	@echo "Filtering to demo data..."
-	uv run python scripts/filter_ed_to_demo.py \
-		mimic_raw_dir=$(MIMICIV_RAW_DIR)
 
 .PHONY: download-mimic
 download-mimic:
