@@ -6,8 +6,7 @@ model:
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
 output_dir: ???          # Required: directory to save outputs
 split: ???
-tasks:
-  - mortality_hosp_discharge_30_days # If null or empty, will run on all tasks in the dataset
+tasks: null
 
 batch_size: 8
 num_workers: 1
