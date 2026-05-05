@@ -15,14 +15,13 @@ ed/edstays:
   ed_registration:
     code:
       - Emergency Department Registration
-      - Registration
       - Arrival Method
       - col(arrival_transport)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
   ed_out:
     code:
-      - Emergency Department Discharge or Transfer
+      - Emergency Department Discharge
       - Disposition
       - col(disposition)
     time: col(outtime)

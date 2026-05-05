@@ -73,7 +73,7 @@ stages:
       # Discharges
       - "Icu Discharge"
       - "Hospital Discharge"
-      - "Emergency Department Discharge or Transfer"
+      - "Emergency Department Discharge"
       # Billing codes
       - "Emergency Department Diagnosis"
       - "Diagnosis"

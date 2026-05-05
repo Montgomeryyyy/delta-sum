@@ -1,0 +1,31 @@
+metadata:
+  description: >-
+    True if patient is admitted to the hospital immediately after an emergency department visit, false otherwise.
+    Prediction is made at emergency department admission, transfers to other hospitals are not considered admissions.
+
+predicates:
+  ed_admission:
+    code: {regex: "Emergency Department Registration//.*"}
+  ed_out:
+    code: {regex: "Emergency Department Discharge//.*"}
+  ed_out_to_admission:
+    code: "Emergency Department Discharge//Disposition//Admitted"
+
+trigger: ed_admission
+
+windows:
+  input:
+    # All of patients history up until ED admission
+    start: NULL
+    end: trigger
+    start_inclusive: True
+    # Will also include triage as has same timestamp as ed_admission
+    end_inclusive: True
+    index_timestamp: end
+  target:
+    # True if patient ed_out disposition is admitted to the hospital, false otherwise
+    start: input.end
+    end: start->ed_out
+    start_inclusive: False
+    end_inclusive: True
+    label: ed_out_to_admission
