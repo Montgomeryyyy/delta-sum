@@ -1,6 +1,6 @@
 metadata:
   description: >-
-    True if patient is admitted to the hospital immediately after an emergency department visit, false otherwise.
+    True if patient is admitted to the hospital immediately after ED visit, false otherwise.
     Prediction is made at emergency department admission, transfers to other hospitals are not considered admissions.
 
 predicates:

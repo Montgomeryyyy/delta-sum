@@ -23,13 +23,11 @@ tokenization:
   character_per_token_heuristic: 6
 
 task_description:
-  los_hosp_3_days: "True if the patient will be discharged from hospital within the next 2 days, False otherwise"
-  los_icu_3_days: "True if the patient will be discharged from ICU within the next 2 days, False otherwise"
-  mortality_hosp_discharge_30_days: "True if the patient will die within 30 days of hospital discharge, False otherwise"
-  mortality_hosp_discharge_365_days: "True if the patient will die within 365 days of hospital discharge, False otherwise"
-  mortality_in_hosp: "True if the patient will die during this hospital stay, False otherwise"
-  mortality_in_icu: "True if the patient will die during this ICU stay, False otherwise"
-  readmission_hosp_30_days: "True if the patient will be readmitted to the hospital within 30 days of discharge, False otherwise"
+  ed_72hr_reattendance: "True if the patient returns to the emergency department within the next 72 hours. False otherwise"
+  ed_to_hospital_admission: "True if the patient is admitted to the hospital immediately after an emergency department visit, this does not include patients who are transferred to other hospitals. False otherwise."
+  hospital_length_of_stay_leq_7_days: "True if the patient will have a hospital stay of 7 days or less. False otherwise"
+  hospital_post_discharge_30_day_mortality: "True if the patient will die within 30 days of hospital discharge. False otherwise"
+  in_hospital_mortality: "True if the patient will die during this hospital stay. False otherwise"
 
 hydra:
   run:
