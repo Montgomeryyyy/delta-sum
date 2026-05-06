@@ -99,8 +99,8 @@ meds-dataset:
 		pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_quantiles.yaml\
 
 
-.PHONY: aces-labels
-aces-labels:
+.PHONY: aces-dataset
+aces-dataset:
 	@rm -rf $(ACES_OUTPUT_DIR)
 	for task in $(ACES_TASKS); do \
 		uv run aces-cli -m data=sharded \
@@ -117,8 +117,8 @@ aces-labels:
 MEDS_TAB_OUTPUT_DATA_DIR := $(DATA_DIR)/MEDS_tab
 MEDS_TAB_OUTPUT_MODEL_DIR := $(TRAINING_DIR)/MEDS_tab
 
-.PHONY: meds_tab_train
-meds_tab_train:
+.PHONY: meds-tab-train
+meds-tab-train:
 	@echo "Describing MEDS tabular data..."
 	uv run meds-tab-describe \
 		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
@@ -162,8 +162,8 @@ meds_tab_train:
 			"delete_below_top_k=1"; \
 	done
 
-.PHONY: meds_tab_inference
-meds_tab_inference:
+.PHONY: meds-tab-inference
+meds-tab-inference:
 	uv run meds_tab_inference \
 		"model_dir=outputs/training/MEDS_tab" \
 		"output_dir=$(INFERENCE_DIR)/tabular" \
@@ -177,22 +177,29 @@ STRUCTURED_PRETRAINING_DATA_DIR := $(STRUCTURED_OUTPUT_DATA_DIR)/pretraining
 STRUCTURED_MODEL_DIR := $(TRAINING_DIR)/structured
 STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/20260427_141044/final_model
 
-.PHONY: structured_pretraining_tokenize
-structured_pretraining_tokenize:
+.PHONY: structured-pretraining-tokenize
+structured-dataset-pretraining:
 	uv run structured_pretraining_tokenize \
 		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
 		output_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)
 
-.PHONY: train-structured-pretraining
-structured_pretraining:
+.PHONY: structured_create_task_prompts
+structured_dataset_prompts:
+	uv run structured_create_task_prompts \
+		meds_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
+		aces_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts
+
+.PHONY: structured-train-pretraining
+structured-train-pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run structured_pretraining \
 	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
 
-.PHONY: train-structured-pretraining-multigpu
-train-structured-pretraining-multigpu:
+.PHONY: structured-train-pretraining-multigpu
+structured-train-pretraining-multigpu:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run accelerate launch config_file --config_file=./mimic_struct_predict/models/train/structured/pretraining/config/accelerate_multigpu.yaml \
 		structured_pretraining \
@@ -200,15 +207,8 @@ train-structured-pretraining-multigpu:
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
 
-.PHONY: structured_create_task_prompts
-structured_create_task_prompts:
-	uv run structured_create_task_prompts \
-		meds_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
-		aces_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts
-
-.PHONY: structured_train_embedding_logistic_regression
-structured_train_embedding_logistic_regression:
+.PHONY: structured-train-embedding-and-lr
+structured-train-embedding-and-lr:
 	uv run structured_inference_embedding \
 		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
@@ -223,8 +223,9 @@ structured_train_embedding_logistic_regression:
 			output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/models/$$task; \
 	done
 
-structured_inference_embedding_and_lr:
-	uv run structured_inference_embedding_and_lr \
+.PHONY: structured_inference_embedding_and_lr
+structured-inference-embedding-and-lr:
+	uv run structured_embedding_and_lr_inference \
 		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(INFERENCE_DIR)/structured/embedding_and_lr \
@@ -252,8 +253,8 @@ download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
 
-
-natural_language_create_ehr_texts:
+.PHONY: natural_language_dataset
+natural_language_dataset:
 	uv run natural_language_create_ehr_texts \
 		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
