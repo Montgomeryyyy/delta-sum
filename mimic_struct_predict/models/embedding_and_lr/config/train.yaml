@@ -36,4 +36,4 @@ hydra:
     dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
   callbacks:
     cleanup:
-       _target_: mimic_struct_predict.models.structured.train_embedding_lr.CleanupCallback
+       _target_: mimic_struct_predict.models.embedding_and_lr.train.CleanupCallback

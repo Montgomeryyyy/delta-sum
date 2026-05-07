@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="train_embedding_lr",
+    config_name="train",
 )
 def main(cfg: DictConfig) -> float:
     """

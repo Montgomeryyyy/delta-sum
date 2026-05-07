@@ -253,7 +253,7 @@ def main(cfg: DictConfig) -> None:
             log.error(f"Task description not found for task: {task}")
             raise ValueError(f"Task description not found for task: {task}")
 
-        dataset = datasets.load_dataset("parquet", data_files=split_to_shards, columns=["ehr_text", "boolean_value"])
+        dataset = datasets.load_dataset("parquet", data_files=split_to_shards)
 
         # Safely handle and remove empty splits so they don't persist to tokenization/interleaving
 

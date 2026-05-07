@@ -53,7 +53,7 @@ def batch_embedding_inference(
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="inference_embedding",
+    config_name="inference_embedding_only",
 )
 def main(cfg: DictConfig) -> None:
     """

@@ -175,7 +175,7 @@ meds-tab-inference:
 STRUCTURED_OUTPUT_DATA_DIR := $(DATA_DIR)/structured
 STRUCTURED_PRETRAINING_DATA_DIR := $(STRUCTURED_OUTPUT_DATA_DIR)/pretraining
 STRUCTURED_MODEL_DIR := $(TRAINING_DIR)/structured
-STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/20260427_141044/final_model
+STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/20260506_164441/final_model
 
 .PHONY: structured-pretraining-tokenize
 structured-dataset-pretraining:
@@ -183,8 +183,8 @@ structured-dataset-pretraining:
 		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
 		output_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)
 
-.PHONY: structured_create_task_prompts
-structured_dataset_prompts:
+.PHONY: structured-dataset-prompts
+structured-dataset-prompts:
 	uv run structured_create_task_prompts \
 		meds_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
@@ -209,7 +209,7 @@ structured-train-pretraining-multigpu:
 
 .PHONY: structured-train-embedding-and-lr
 structured-train-embedding-and-lr:
-	uv run structured_inference_embedding \
+	uv run embedding_and_lr_inference_embedding_only \
 		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/embeddings \
@@ -218,22 +218,22 @@ structured-train-embedding-and-lr:
 	for task_dir in $(STRUCTURED_MODEL_DIR)/embedding_lr/embeddings/*/; do \
 		task=$$(basename $$task_dir); \
 		echo "Training embedding logistic regression for task: $$task"; \
-		uv run structured_train_embedding_logistic_regression --multirun \
+		uv run embedding_and_lr_train --multirun \
 			task_dir=$$task_dir \
 			output_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/models/$$task; \
 	done
 
-.PHONY: structured_inference_embedding_and_lr
+.PHONY: structured-inference-embedding-and-lr
 structured-inference-embedding-and-lr:
-	uv run structured_embedding_and_lr_inference \
+	uv run embedding_and_lr_inference \
 		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
 		output_dir=$(INFERENCE_DIR)/structured/embedding_and_lr \
 		lr_model_dir=$(STRUCTURED_MODEL_DIR)/embedding_lr/models \
 		split=tuning
 
-.PHONY: structured_inference_generative_rollout
-structured_inference_generative_rollout:
+.PHONY: structured-inference-generative-rollout
+structured-inference-generative-rollout:
 	uv run structured_inference_generative_rollout \
 		model.pretrained_model_name_or_path=$(STRUCTURED_BEST_PRETRAINED_MODEL_DIR) \
 		dataset_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts \
@@ -246,75 +246,102 @@ NATURAL_LANGUAGE_RAW_DATA_DIR := $(DATA_DIR)/natural_language/raw
 NATURAL_LANGUAGE_DIRECT_DATA_DIR := $(DATA_DIR)/natural_language/direct
 NATURAL_LANGUAGE_THINKING_DATA_DIR := $(DATA_DIR)/natural_language/thinking
 NATURAL_LANGUAGE_GEMINI_DATA_DIR := $(DATA_DIR)/natural_language/gemini
-NATURAL_LANGUAGE_SFT_MODEL_DIR := $(TRAINING_DIR)/natural_language/direct/sft
+NATURAL_LANGUAGE_MODEL_DIR := $(TRAINING_DIR)/natural_language
+NATURAL_LANGUAGE_SFT_MODEL_DIR := $(NATURAL_LANGUAGE_SFT_MODEL_DIR)/direct/sft
+
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
 
-.PHONY: natural_language_dataset
-natural_language_dataset:
-	uv run natural_language_create_ehr_texts \
+.PHONY: natural-language-dataset-prompts
+natural-language-dataset-prompts:
+	uv run natural_language_create_task_prompts \
 		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
 
-.PHONY: natural_language_create_prompts_direct
-natural_language_create_prompts_direct:
-	uv run natural_language_create_prompts \
+.PHONY: natural-language-dataset-prompts-direct
+natural-language-dataset-prompts-direct:
+	uv run natural_language_create_model_prompts \
 		data_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR) \
 
-
-.PHONY: natural_language_create_prompts_thinking
-natural_language_create_prompts_thinking:
-	uv run natural_language_create_prompts \
+.PHONY: natural-language-dataset-prompts-thinking
+natural-language-dataset-prompts-thinking:
+	uv run natural_language_create_model_prompts \
 		--config-name create_prompts_thinking.yaml \
 		data_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)
+		output_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR) \
+		splits_to_process="[train,tuning]" \
 
-.PHONY: natural_language_create_prompts_gemini
-natural_language_create_prompts_gemini:
-	uv run natural_language_create_prompts \
+.PHONY: natural-language-dataset-prompts-gemini
+natural-language-dataset-prompts-gemini:
+	uv run natural_language_create_model_prompts \
 		--config-name create_prompts_gemini.yaml \
 		data_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_GEMINI_DATA_DIR)
 
-.PHONY: natural_language_sft
-natural_language_sft:
+.PHONY: natural-language-train-sft
+natural-language-train-sft:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run natural_language_sft \
 		dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)
 
+.PHONY: natural-language-train-embedding-and-lr
+natural-language-train-embedding-and-lr:
+	uv run embedding_and_lr_inference_embedding_only \
+		model.pretrained_model_name_or_path='./pre_trained_models/Qwen3-0.6B' \
+		dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings \
+		splits="[train,tuning]" \
 
-.PHONY: natural_language_inference_direct_sft
-natural_language_inference_direct_sft:
+	for task_dir in $(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings/*/; do \
+		task=$$(basename $$task_dir); \
+		echo "Training embedding logistic regression for task: $$task"; \
+		uv run embedding_and_lr_train --multirun \
+			task_dir=$$task_dir \
+			output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/models/$$task; \
+	done
+
+.PHONY: natural-language-inference-embedding-and-lr
+natural-language-inference-embedding-and-lr:
+	uv run embedding_and_lr_inference \
+		model.pretrained_model_name_or_path='./pre_trained_models/Qwen3-0.6B' \
+		dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DATA_DIR)/prompts \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings \
+		lr_model_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/models \
+		split=tuning
+
+
+.PHONY: natural-language-inference-sft
+natural-language-inference-sft:
 	uv run natural_language_inference \
 		"model.pretrained_model_name_or_path=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)/20260427_152027/final_model" \
 		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/direct_sft" \
 		"split=tuning"
 
-.PHONY: natural_language_inference_direct
-natural_language_inference_direct:
+.PHONY: natural-language-inference-direct
+natural-language-inference-direct:
 	uv run natural_language_inference \
 		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/direct" \
 		"split=tuning"
 
-.PHONY: natural_language_inference_thinking
-natural_language_inference_thinking:
+.PHONY: natural-language-inference-thinking
+natural-language-inference-thinking:
 	uv run natural_language_inference \
 		--config-name inference_thinking.yaml \
 		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking" \
 		"split=tuning"
 
-.PHONY: natural_language_inference_gemini
-natural_language_inference_gemini:
+.PHONY: natural-language-inference-gemini
+natural-language-inference-gemini:
 	uv run natural_language_inference_gemini \
-		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)" \
+		"dataset_dir=$(NATURAL_LANGUAGE_GEMINI_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/gemini" \
 		"split=tuning"

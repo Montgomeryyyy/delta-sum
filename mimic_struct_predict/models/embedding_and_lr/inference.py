@@ -14,7 +14,7 @@ from omegaconf import DictConfig
 from sklearn.pipeline import Pipeline
 from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizerBase
 
-from mimic_struct_predict.models.structured.inference_embedding import batch_embedding_inference
+from mimic_struct_predict.models.embedding_and_lr.inference_embedding_only import batch_embedding_inference
 from mimic_struct_predict.models.utils import (
     load_model_and_tokenizer,
 )
@@ -59,7 +59,7 @@ def batch_embedding_and_lr_inference(
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="inference_embedding_and_lr",
+    config_name="inference",
 )
 def main(cfg: DictConfig) -> None:
     """
