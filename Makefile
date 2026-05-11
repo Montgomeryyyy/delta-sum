@@ -201,6 +201,8 @@ structured-dataset-prompts:
 structured-train-pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run pre_training_train \
+		--config-name full.yaml \
+		random_init=true \
 	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
@@ -269,6 +271,31 @@ natural-language-dataset-pretraining:
 		--config-name natural_language.yaml \
 		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
 		output_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)
+
+.PHONY: natural-language-train-pretraining-scratch
+natural-language-train-pretraining-scratch:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run pre_training_train \
+		--config-name full.yaml \
+		random_init=true \
+	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
+
+.PHONY: natural-language-train-pretraining-full
+natural-language-train-pretraining-full:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run pre_training_train \
+		--config-name full.yaml \
+	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
+
+.PHONY: natural-language-train-pretraining-lora
+natural-language-train-pretraining-lora:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run pre_training_train \
+		--config-name lora.yaml \
+	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
 
 .PHONY: natural-language-dataset-prompts
 natural-language-dataset-prompts:

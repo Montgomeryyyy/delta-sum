@@ -8,6 +8,7 @@ import hydra
 import trackio
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
+from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -20,6 +21,8 @@ from transformers import (
     TrainingArguments,
 )
 from transformers.utils import logging as hf_logging
+
+from mimic_struct_predict.models.utils.model_loading import resolve_dtype
 
 log = getLogger(__name__)
 
@@ -39,7 +42,7 @@ class TrackioSystemMetricsCallback(TrainerCallback):
         trackio.log_gpu()
 
 
-@hydra.main(version_base=None, config_path="config", config_name="pretrain")
+@hydra.main(version_base=None, config_path="config/train")
 def main(cfg: DictConfig) -> None:
     hf_logging.set_verbosity_info()
     hf_logging.enable_propagation()
@@ -59,19 +62,40 @@ def main(cfg: DictConfig) -> None:
         f"Val size: {len(dataset[cfg.split_names.val])}"
     )
 
-    log.info("Initializing model...")
     tokenizer = PreTrainedTokenizerFast.from_pretrained(str(tokenizer_dir))
-    config = AutoConfig.from_pretrained(
-        cfg.model.name,
-        vocab_size=math.ceil(len(tokenizer) / cfg.model.vocab_padding_multiple) * cfg.model.vocab_padding_multiple,
-        n_positions=tokenizer.model_max_length,
-        pad_token_id=tokenizer.pad_token_id,
-    )
-
-    model = AutoModelForCausalLM.from_config(config)
+    torch_dtype = resolve_dtype(cfg.model.get("torch_dtype", None))
+    if cfg.model.random_init:
+        log.info("Initializing model with random weights...")
+        config = AutoConfig.from_pretrained(
+            cfg.model.name,
+            vocab_size=math.ceil(len(tokenizer) / cfg.model.vocab_padding_multiple) * cfg.model.vocab_padding_multiple,
+            n_positions=tokenizer.model_max_length,
+            pad_token_id=tokenizer.pad_token_id,
+            torch_dtype=torch_dtype,
+            use_cache=cfg.model.use_cache,
+        )
+        model = AutoModelForCausalLM.from_config(config)
+    else:
+        log.info(f"Loading pre-trained model from {cfg.model.name}...")
+        model = AutoModelForCausalLM.from_pretrained(
+            cfg.model.name, torch_dtype=torch_dtype, use_cache=cfg.model.use_cache
+        )
     model.train()
-    model_size = sum(t.numel() for t in model.parameters())
-    log.info(f"Model size: {model_size/1000**2:.1f}M parameters")
+
+    if cfg.get("lora", None):
+        log.info("Applying LoRA adapters to the model...")
+        lora_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            **cfg.lora,
+        )
+        model = get_peft_model(model, lora_config)
+
+        # Print trainable parameters to verify LoRA is working
+        trainable_params, all_param = model.get_nb_trainable_parameters()
+        log.info(
+            f"trainable params: {trainable_params:,d} || all params: {all_param:,d} || "
+            f"trainable%: {100 * trainable_params / all_param:.4f}"
+        )
 
     log.info("Starting training...")
     args = TrainingArguments(
