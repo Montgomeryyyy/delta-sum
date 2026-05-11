@@ -12,7 +12,8 @@ model:
   random_init: true
   vocab_padding_multiple: 8
   torch_dtype: float32
-  use_cache: false
+  config:
+    use_cache: false
 
 tokenizer_dir: ${model.name}
 

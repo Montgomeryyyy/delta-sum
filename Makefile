@@ -202,10 +202,19 @@ structured-train-pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run pre_training_train \
 		--config-name full.yaml \
-		random_init=true \
+		model.random_init=true \
 	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
+
+.PHONY: structured-train-pretraining-tiny
+structured-train-pretraining-tiny:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run pre_training_train \
+		--config-name tiny_model.yaml \
+	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
+		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining_tiny
 
 .PHONY: structured-train-pretraining-multigpu
 structured-train-pretraining-multigpu:
@@ -294,6 +303,14 @@ natural-language-train-pretraining-lora:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run pre_training_train \
 		--config-name lora.yaml \
+	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
+
+.PHONY: natural-language-train-pretraining-tiny
+natural-language-train-pretraining-tiny:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run pre_training_train \
+		--config-name tiny_model.yaml \
 	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
 		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
 

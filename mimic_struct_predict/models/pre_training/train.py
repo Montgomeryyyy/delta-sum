@@ -7,7 +7,7 @@ import datasets
 import hydra
 import trackio
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (
     AutoConfig,
@@ -64,6 +64,8 @@ def main(cfg: DictConfig) -> None:
 
     tokenizer = PreTrainedTokenizerFast.from_pretrained(str(tokenizer_dir))
     torch_dtype = resolve_dtype(cfg.model.get("torch_dtype", None))
+    hydra_model_config = OmegaConf.to_container(cfg.model.get("config", {}), resolve=True)
+
     if cfg.model.random_init:
         log.info("Initializing model with random weights...")
         config = AutoConfig.from_pretrained(
@@ -72,14 +74,12 @@ def main(cfg: DictConfig) -> None:
             n_positions=tokenizer.model_max_length,
             pad_token_id=tokenizer.pad_token_id,
             torch_dtype=torch_dtype,
-            use_cache=cfg.model.use_cache,
+            **hydra_model_config,
         )
         model = AutoModelForCausalLM.from_config(config)
     else:
         log.info(f"Loading pre-trained model from {cfg.model.name}...")
-        model = AutoModelForCausalLM.from_pretrained(
-            cfg.model.name, torch_dtype=torch_dtype, use_cache=cfg.model.use_cache
-        )
+        model = AutoModelForCausalLM.from_pretrained(cfg.model.name, torch_dtype=torch_dtype, **hydra_model_config)
     model.train()
 
     if cfg.get("lora", None):
