@@ -1,4 +1,4 @@
-N_WORKERS          := 6
+N_WORKERS          := 1
 
 # MIMIC_VERSION = 3.1
 
@@ -25,7 +25,7 @@ MEDS_DIR := mimic_struct_predict/preprocessing/meds
 ACES_OUTPUT_DIR := data/aces_labels
 ACES_DEFINITIONS_DIR := mimic_struct_predict/preprocessing/aces_task_definitions
 ACES_TASKS := $(notdir $(basename $(wildcard $(ACES_DEFINITIONS_DIR)/*.yaml)))
-# ACES_TASKS := 30_day_readmission
+# ACES_TASKS := ed_to_hospital_admission
 
 NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR := $(INFERENCE_DIR)/natural_language
 STRUCTURED_INPUT_DATA_DIR := $(DATA_DIR)/MEDS_cohort_with_headers_and_quantiles
@@ -117,6 +117,7 @@ aces-dataset:
 MEDS_TAB_OUTPUT_DATA_DIR := $(DATA_DIR)/MEDS_tab
 MEDS_TAB_OUTPUT_MODEL_DIR := $(TRAINING_DIR)/MEDS_tab
 
+# Based on https://github.com/mmcdermott/MEDS_Tabular_AutoML/blob/main/MIMICIV_TUTORIAL/task_tabularize_meds.sh
 .PHONY: meds-tab-train
 meds-tab-train:
 	@echo "Describing MEDS tabular data..."
@@ -124,49 +125,54 @@ meds-tab-train:
 		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
 		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)"
 
-	@echo "Tabularizing time series..."
-	uv run meds-tab-tabularize-time-series \
-		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
-		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)" \
-		"tabularization.min_code_inclusion_count=10" \
-		"tabularization.window_sizes=[1d,7d,30d,365d]" \
-		"tabularization.aggs=[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]" \
-		"do_overwrite=False"
-
 	@for task in $(ACES_TASKS); do \
 		echo "Processing task: $$task"; \
-		mkdir -p "$(MEDS_TAB_OUTPUT_DATA_DIR)/$$task"; \
-		rsync -r "$(MEDS_TAB_OUTPUT_DATA_DIR)/metadata/" "$(MEDS_TAB_OUTPUT_DATA_DIR)/$$task/metadata"; \
-		echo "  -> Running task_specific_caching.py"; \
-		uv run meds-tab-cache-task \
+		mkdir -p "$(MEDS_TAB_OUTPUT_DATA_DIR)/training/$$task"; \
+		rsync -r "$(MEDS_TAB_OUTPUT_DATA_DIR)/metadata/" "$(MEDS_TAB_OUTPUT_DATA_DIR)/training/$$task/metadata"; \
+		echo "  -> Running task_specific_tabularization"; \
+		uv run meds-tab-tabularize-time-series \
+			--multirun \
+			worker="range(0,$(N_WORKERS))" \
 			hydra/launcher=joblib \
 			"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
-			"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)" \
-			"input_label_dir=$(ACES_OUTPUT_DIR)/$$task/" \
-			"task_name=$$task" \
-			"do_overwrite=False"; \
+			"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)/training/$$task" \
+			"input_label_dir=$(ACES_OUTPUT_DIR)/$$task/"; \
+			"do_overwrite=False" \
+			"tabularization.min_code_inclusion_count=10" \
+			"tabularization.window_sizes=[1d,7d,30d,365d]" \
+			"tabularization.aggs=[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]" \
 		echo "  -> Running xgboost"; \
 		uv run meds-tab-model \
 			--multirun \
 			model_launcher=xgboost \
 			"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/data" \
-			"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)" \
+			"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)/training/$$task" \
+			"input_tabularized_cache_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)/training/$$task/tabularize/" \
+        	"input_label_cache_dir=$(ACES_OUTPUT_DIR)/$$task/" \
 			"output_model_dir=$(MEDS_TAB_OUTPUT_MODEL_DIR)/$$task/" \
 			"task_name=$$task" \
 			"do_overwrite=False" \
-			"hydra.sweeper.n_trials=3" \
-			"hydra.sweeper.n_jobs=1" \
+			"hydra.sweeper.n_trials=10" \
+			"hydra.sweeper.n_jobs=$(N_WORKERS)" \
 			"tabularization.min_code_inclusion_count=10" \
-			"tabularization.window_sizes=$(shell uv run generate-subsets "[1d,30d,365d]")" \
+			"tabularization.window_sizes=$(shell uv run generate-subsets "[1d,7d,30d,365d]")" \
     		"tabularization.aggs=$(shell uv run generate-subsets "[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]")" \
 			"delete_below_top_k=1"; \
 	done
 
+MEDS_TAB_LATEST_MODEL_DIR := $(TRAINING_DIR)/MEDS_tab
+
 .PHONY: meds-tab-inference
 meds-tab-inference:
+	mkdir -p $(MIMICIV_MEDS_COHORT_DIR)/held_out
+	cp -r $(MIMICIV_MEDS_COHORT_DIR)/data/held_out $(MIMICIV_MEDS_COHORT_DIR)/held_out/held_out
+
 	uv run meds_tab_inference \
-		"model_dir=outputs/training/MEDS_tab" \
-		"output_dir=$(INFERENCE_DIR)/tabular" \
+		"model_dir=$(TRAINING_DIR)/MEDS_tab" \
+		"input_dir=$(MIMICIV_MEDS_COHORT_DIR)/held_out" \
+		"output_dir=$(MEDS_TAB_OUTPUT_DATA_DIR)/inference" \
+		"aces_dir=$(ACES_OUTPUT_DIR)" \
+		"prediction_dir=$(INFERENCE_DIR)/MEDS_tab" \
 		"split=tuning"
 
 

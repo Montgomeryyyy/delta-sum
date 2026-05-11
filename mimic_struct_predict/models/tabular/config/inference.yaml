@@ -1,7 +1,12 @@
 model_dir: ???
+input_dir: ???
 output_dir: ???
+aces_dir: ???
+prediction_dir: ???
 split: "held_out"
+
+num_workers: 1
 
 hydra:
   run:
-    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+    dir: ${prediction_dir}/${now:%Y%m%d_%H%M%S}
