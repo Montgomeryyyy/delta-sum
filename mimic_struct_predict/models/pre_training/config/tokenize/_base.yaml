@@ -1,6 +1,5 @@
 dataset_dir: ???  # Required: directory of meds datasets with quantiles
 output_dir: ???          # Required: directory to save outputs
-seed: 42
 
 overwrite: false
 
@@ -9,18 +8,18 @@ dataset:
     train: train
     val: tuning
 
-tokenization:
-  special_tokens:
-    unk_token: "Unknown"
-    pad_token: "<PAD>"
-    eoc_token: "\n" # End of Code token
+pre_processing:
   delimiter: "//"
-  min_frequency: 5
-  model_max_length: 512
+  split_on_delimiter: false
+  append_numeric_values: false
+
+tokenizer:
+  pre_trained_tokenizer: null
   padding_side: right
-  truncation_side: left
+
+tokenization:
   stride: 64
-  pad_to_multiple_of: 8
+  max_length: 512
 
 num_workers: 4
 batch_size: 50

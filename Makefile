@@ -185,7 +185,8 @@ STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/2026
 
 .PHONY: structured-pretraining-tokenize
 structured-dataset-pretraining:
-	uv run structured_pretraining_tokenize \
+	uv run pre_training_tokenize \
+		--config-name structured.yaml \
 		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
 		output_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)
 
@@ -199,7 +200,7 @@ structured-dataset-prompts:
 .PHONY: structured-train-pretraining
 structured-train-pretraining:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
-	uv run structured_pretraining \
+	uv run pre_training_train \
 	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
@@ -208,7 +209,7 @@ structured-train-pretraining:
 structured-train-pretraining-multigpu:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
 	uv run accelerate launch config_file --config_file=./mimic_struct_predict/models/train/structured/pretraining/config/accelerate_multigpu.yaml \
-		structured_pretraining \
+		pre_training_train \
 		dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
@@ -255,11 +256,19 @@ NATURAL_LANGUAGE_GEMINI_DATA_DIR := $(DATA_DIR)/natural_language/gemini
 NATURAL_LANGUAGE_MODEL_DIR := $(TRAINING_DIR)/natural_language
 NATURAL_LANGUAGE_SFT_MODEL_DIR := $(NATURAL_LANGUAGE_SFT_MODEL_DIR)/direct/sft
 
+NATURAL_LANGUAGE_PRETRAINING_DATA_DIR := $(DATA_DIR)/natural_language/pretraining
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
+
+.PHONY: structured-pretraining-tokenize
+natural-language-dataset-pretraining:
+	uv run pre_training_tokenize \
+		--config-name natural_language.yaml \
+		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
+		output_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)
 
 .PHONY: natural-language-dataset-prompts
 natural-language-dataset-prompts:

@@ -15,6 +15,7 @@ from transformers import (
     PreTrainedTokenizerFast,
 )
 
+from mimic_struct_predict.models.utils.model_loading import load_tokenizer
 from mimic_struct_predict.models.utils.preprocessing import (
     meds_to_string_dataset,
 )
@@ -59,7 +60,7 @@ def train_custom_tokenizer(dataset: datasets.Dataset, cfg: DictConfig, batch_siz
     )
 
 
-@hydra.main(version_base=None, config_path="config", config_name="pretraining_tokenize")
+@hydra.main(version_base=None, config_path="config/tokenize")
 def main(cfg: DictConfig) -> None:
     """
     Main function to create a pretraining dataset from MEDS, train a custom tokenizer, and tokenize the dataset.
@@ -86,11 +87,9 @@ def main(cfg: DictConfig) -> None:
         splits={train_split, val_split},
         # Add delimiter around eoc token to ensure it is always a separate token
         # and to allow for easier decoding back to text
-        code_join_token=cfg.tokenization.delimiter
-        + cfg.tokenization.special_tokens.eoc_token
-        + cfg.tokenization.delimiter,
-        delimiter=cfg.tokenization.delimiter,
-        split_on_delimiter=False,  # Tokenizer will split to create tokens
+        code_join_token=cfg.pre_processing.code_join_token,
+        delimiter=cfg.pre_processing.delimiter,
+        split_on_delimiter=cfg.pre_processing.split_on_delimiter,  # Tokenizer will split to create tokens
         append_numeric_values=False,  # We are using quantiles instead of raw numeric values
         overwrite=cfg.overwrite,
     )
@@ -105,10 +104,14 @@ def main(cfg: DictConfig) -> None:
     dataset = datasets.load_dataset("parquet", data_files=datafiles)
     log.info(f"Loaded {len(dataset[train_split])} train examples and {len(dataset[val_split])} val examples.")
 
-    log.info("Training custom tokenizer on raw pretraining dataset...")
-    tokenizer = train_custom_tokenizer(dataset[train_split], cfg.tokenization, cfg.batch_size)
-    tokenizer.save_pretrained(str(output_dir / "tokenizer"))
-    log.info(f"Tokenizer of vocab size {len(tokenizer)} trained and saved to {output_dir / 'tokenizer'}")
+    if cfg.tokenizer.pre_trained_tokenizer:
+        log.info(f"Loading existing tokenizer from {output_dir / 'tokenizer'}...")
+        tokenizer = load_tokenizer(cfg.tokenizer.pre_trained_tokenizer, padding_side=cfg.tokenizer.padding_side)
+    else:
+        log.info("Training custom tokenizer on raw pretraining dataset...")
+        tokenizer = train_custom_tokenizer(dataset[train_split], cfg.tokenizer, cfg.batch_size)
+        tokenizer.save_pretrained(str(output_dir / "tokenizer"))
+        log.info(f"Tokenizer of vocab size {len(tokenizer)} trained and saved to {output_dir / 'tokenizer'}")
 
     log.info("Tokenizing and chunking raw pretraining dataset with the trained tokenizer...")
     tokenized_dataset = dataset.map(
@@ -116,12 +119,13 @@ def main(cfg: DictConfig) -> None:
             k: v
             for k, v in tokenizer(
                 texts,
-                truncation=True,
-                stride=cfg.tokenization.stride,
                 return_overflowing_tokens=True,
-                padding_side=cfg.tokenization.padding_side,
                 return_attention_mask=True,
                 padding=False,
+                truncation=True,
+                padding_side=cfg.tokenizer.padding_side,
+                max_length=cfg.tokenization.max_length,
+                stride=cfg.tokenization.stride,
             ).items()
             if k in ["input_ids", "attention_mask"]
         },

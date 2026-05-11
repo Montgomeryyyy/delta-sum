@@ -53,6 +53,9 @@ pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 
 meds_tab_inference = "mimic_struct_predict.models.tabular.inference:main"
 
+pre_training_tokenize = "mimic_struct_predict.models.pre_training.tokenize:main"
+pre_training_train = "mimic_struct_predict.models.pre_training.train:main"
+
 structured_pretraining_tokenize = "mimic_struct_predict.models.structured.pretraining_tokenize:main"
 structured_pretraining = "mimic_struct_predict.models.structured.pretrain:main"
 structured_create_task_prompts = "mimic_struct_predict.models.structured.create_task_prompts:main"

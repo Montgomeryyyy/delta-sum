@@ -1,0 +1,10 @@
+defaults:
+  - _self_
+  - _base
+
+pre_processing:
+  code_join_token: "\n"
+  split_on_delimiter: true
+
+tokenizer:
+  pre_trained_tokenizer: google/gemma-3-270m
