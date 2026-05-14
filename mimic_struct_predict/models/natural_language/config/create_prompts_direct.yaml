@@ -14,19 +14,20 @@ model:
   pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
 
 tokenization:
-  max_prompt_length: 2048
+  max_ehr_tokens: 256
   batch_size: null
   # Direct output "Yes"/"No" without "Thinking..." intermediate step
   enable_thinking: false
-  max_new_tokens: null
+  output_format: yes_no  # Options: "yes_no", "probability"
+  max_new_tokens: 256
   token_buffer: 16
   character_per_token_heuristic: 6
 
 task_description:
-  ed_72hr_reattendance: "True if the patient returns to the emergency department within the next 72 hours. False otherwise"
-  ed_to_hospital_admission: "True if the patient is admitted to the hospital immediately after an emergency department visit, this does not include patients who are transferred to other hospitals. False otherwise."
-  hospital_length_of_stay_leq_7_days: "True if the patient will have a hospital stay of 7 days or less. False otherwise"
-  hospital_post_discharge_30_day_mortality: "True if the patient will die within 30 days of hospital discharge. False otherwise"
+  ed_72hr_reattendance: "True if the patient will return to the emergency department within the next 72 hours. False otherwise"
+  ed_to_hospital_admission: "True if the patient will be admitted to the hospital following this emergency department visit, this does not include patients who are transferred to other hospitals. False otherwise."
+  hospital_length_of_stay_leq_7_days: "True if the patient's current hospital stay will be 7 days or less. False otherwise"
+  hospital_post_discharge_30_day_mortality: "True if the patient will die within 30 days of this hospital discharge. False otherwise"
   in_hospital_mortality: "True if the patient will die during this hospital stay. False otherwise"
 
 hydra:

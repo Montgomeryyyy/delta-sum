@@ -29,6 +29,8 @@ split_names:
   train: train
   val: tuning
 
+brier_loss: false
+
 training:
   # SFTTrainer parameters
   ## Parameters that control the data preprocessing

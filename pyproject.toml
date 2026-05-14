@@ -68,7 +68,7 @@ embedding_and_lr_train = "mimic_struct_predict.models.embedding_and_lr.train:mai
 embedding_and_lr_inference = "mimic_struct_predict.models.embedding_and_lr.inference:main"
 embedding_and_lr_inference_embedding_only = "mimic_struct_predict.models.embedding_and_lr.inference_embedding_only:main"
 
-natural_language_create_task_prompts = "mimic_struct_predict.models.natural_language.create_task_prompts:main"
+natural_language_create_task_ehr_texts = "mimic_struct_predict.models.natural_language.create_task_ehr_texts:main"
 natural_language_create_model_prompts = "mimic_struct_predict.models.natural_language.create_model_prompts:main"
 natural_language_sft = "mimic_struct_predict.models.natural_language.sft:main"
 natural_language_inference = "mimic_struct_predict.models.natural_language.inference:main"

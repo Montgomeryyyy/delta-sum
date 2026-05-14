@@ -260,8 +260,8 @@ structured-inference-generative-rollout:
 
 ### Natural Language ###
 
-NATURAL_LANGUAGE_RAW_DATA_DIR := $(DATA_DIR)/natural_language/raw
-NATURAL_LANGUAGE_DIRECT_DATA_DIR := $(DATA_DIR)/natural_language/direct
+NATURAL_LANGUAGE_TASK_EHR_TEXT_DIR := $(DATA_DIR)/natural_language/task_ehr_texts
+NATURAL_LANGUAGE_PROMPT_DATA_DIR := $(DATA_DIR)/natural_language/prompts
 NATURAL_LANGUAGE_THINKING_DATA_DIR := $(DATA_DIR)/natural_language/thinking
 NATURAL_LANGUAGE_GEMINI_DATA_DIR := $(DATA_DIR)/natural_language/gemini
 NATURAL_LANGUAGE_MODEL_DIR := $(TRAINING_DIR)/natural_language
@@ -273,6 +273,49 @@ NATURAL_LANGUAGE_PRETRAINING_DATA_DIR := $(DATA_DIR)/natural_language/pretrainin
 download-qwen-06B:
 	uv run hf auth login
 	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
+
+.PHONY: natural-language-dataset-prompts
+natural-language-dataset-prompts:
+	uv run natural_language_create_task_ehr_texts \
+		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
+		aces_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+
+# 	uv run natural_language_create_model_prompts \
+# 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+# 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_yes_no \
+
+# 	uv run natural_language_create_model_prompts \
+# 		tokenization.enable_thinking=true \
+# 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+# 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_yes_no \
+
+	uv run natural_language_create_model_prompts \
+		tokenization.output_format=probability \
+		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_probability \
+
+# 	uv run natural_language_create_model_prompts \
+# 		tokenization.output_format=probability \
+# 		tokenization.enable_thinking=true \
+# 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+# 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability \
+
+.PHONY: natural-language-train-sft
+natural-language-train-sft:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run natural_language_sft \
+		dataset_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_yes_no \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/sft
+
+.PHONY: natural-language-train-sft-brier
+natural-language-train-sft-brier:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run natural_language_sft \
+		brier_loss=true \
+		dataset_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_probability \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/brier_sft
+
 
 .PHONY: structured-pretraining-tokenize
 natural-language-dataset-pretraining:
@@ -314,18 +357,8 @@ natural-language-train-pretraining-tiny:
 	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
 		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
 
-.PHONY: natural-language-dataset-prompts
-natural-language-dataset-prompts:
-	uv run natural_language_create_task_prompts \
-		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
-		aces_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
 
-.PHONY: natural-language-dataset-prompts-direct
-natural-language-dataset-prompts-direct:
-	uv run natural_language_create_model_prompts \
-		data_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR) \
+
 
 .PHONY: natural-language-dataset-prompts-thinking
 natural-language-dataset-prompts-thinking:
@@ -342,12 +375,7 @@ natural-language-dataset-prompts-gemini:
 		data_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_GEMINI_DATA_DIR)
 
-.PHONY: natural-language-train-sft
-natural-language-train-sft:
-	TRACKIO_DIR=$(TRACKIO_DIR) \
-	uv run natural_language_sft \
-		dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_SFT_MODEL_DIR)
+
 
 .PHONY: natural-language-train-embedding-and-lr
 natural-language-train-embedding-and-lr:

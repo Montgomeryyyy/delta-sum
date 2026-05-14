@@ -8,6 +8,7 @@ import datasets
 import hydra
 import pandas as pd
 import torch
+import torch.nn.functional as F
 import trackio
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
@@ -18,6 +19,47 @@ from trl import SFTConfig, SFTTrainer
 from mimic_struct_predict.models.utils.model_loading import load_model_and_tokenizer
 
 log = logging.getLogger(__name__)
+
+
+def create_expected_brier_loss(digit_token_ids: list[int], true_label_token_id: int) -> Any:
+    """
+    digit_token_ids: List of token IDs representing confidences 0 through N.
+                     (e.g., the token IDs for '0', '1', ..., '9').
+    true_label_token_id: The specific token ID in your labels that represents
+                         a correctness of 1.0 (True).
+    """
+    N = len(digit_token_ids) - 1
+    implied_confidences = torch.tensor([i / N for i in range(N + 1)], dtype=torch.float32)
+    allowed_ids_tensor = torch.tensor(digit_token_ids, dtype=torch.long)
+
+    def expected_brier_loss_func(outputs: Any, labels: Any, num_items_in_batch: Any = None) -> torch.Tensor:
+        logits = outputs.get("logits") if hasattr(outputs, "get") else outputs.logits
+
+        device = logits.device
+        confidences = implied_confidences.to(device)
+        allowed_ids = allowed_ids_tensor.to(device)
+
+        # 1. Extract final token logits & labels
+        target_logits = logits[:, -2, :]  # (batch_size, vocab_size)
+        target_labels = labels[:, -1]  # (batch_size,)
+
+        # 2. Map the token ID to the mathematical y value (1.0 or 0.0)
+        # If the label is the true token ID, y becomes 1.0. Otherwise 0.0.
+        y = (target_labels == true_label_token_id).float()
+
+        # 3. Extract q: the predictive distribution over the confidence tokens
+        relevant_logits = target_logits[:, allowed_ids]  # (batch_size, N+1)
+        q = F.softmax(relevant_logits, dim=-1)  # (batch_size, N+1)
+        # 4. Compute expected squared error: sum( q_i * (y - i/N)^2 )
+        squared_errors = (y.unsqueeze(1) - confidences.unsqueeze(0)) ** 2
+        brier_loss_per_sample = torch.sum(q * squared_errors, dim=-1)
+
+        # 5. Average the loss
+        if num_items_in_batch is not None:
+            return torch.sum(brier_loss_per_sample) / num_items_in_batch
+        return torch.mean(brier_loss_per_sample)
+
+    return expected_brier_loss_func
 
 
 class TrackioTableCallback(TrainerCallback):
@@ -46,7 +88,7 @@ class TrackioTableCallback(TrainerCallback):
 
         # Prepare lists to act as our table columns
         all_prompts = []
-        all_predictions = []
+        all_completions = []
         all_tasks = []
         all_ground_truths = []
 
@@ -71,7 +113,7 @@ class TrackioTableCallback(TrainerCallback):
 
             # 4. Append data to our master columns
             all_prompts.extend(prompts)
-            all_predictions.extend(outputs)
+            all_completions.extend(outputs)
             # Create a list of the task name repeated for the size of the batch
             all_tasks.extend([task_name] * len(prompts))
             all_ground_truths.extend(ground_truths)
@@ -83,7 +125,7 @@ class TrackioTableCallback(TrainerCallback):
                 "step": steps,
                 "task": all_tasks,
                 "prompt": all_prompts,
-                "prediction": all_predictions,
+                "completion": all_completions,
                 "ground_truth": all_ground_truths,
             }
         )
@@ -150,6 +192,7 @@ def main(cfg: DictConfig) -> None:
     eval_dict = {
         eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir))
         for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir()
+        if eval_task_dir.is_dir()
     }
     log.info(f"Eval datasets: { {task: (len(ds), ds.column_names) for task, ds in eval_dict.items()} }")
 
@@ -167,6 +210,12 @@ def main(cfg: DictConfig) -> None:
         log.info("Using LoRA for training")
         peft_config = LoraConfig(**cfg.get("lora", {}))
 
+    if cfg.brier_loss:
+        log.info("Using custom Brier loss for training")
+        digit_token_ids = [tokenizer.convert_tokens_to_ids(str(i)) for i in range(10)]
+        true_label_token_id = tokenizer.convert_tokens_to_ids("1")
+        custom_loss_func = create_expected_brier_loss(digit_token_ids, true_label_token_id)
+
     # --- Create trainer ---
     trainer = MultiTaskSFTTrainer(
         model=model,
@@ -177,6 +226,7 @@ def main(cfg: DictConfig) -> None:
         callbacks=[TrackioTableCallback(tokenizer, eval_dict, batch_size=cfg.training.per_device_eval_batch_size)]
         if cfg.tracking.report_to == "trackio"
         else None,
+        compute_loss_func=custom_loss_func if cfg.brier_loss else None,
     )
 
     # --- Train ---

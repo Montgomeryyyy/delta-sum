@@ -14,38 +14,42 @@ from mimic_struct_predict.models.utils import load_tokenizer
 log = logging.getLogger(__name__)
 
 
-PROMPT_TEMPLATE = """Analyze the following patient Electronic Health Record (EHR) and predict the probability that the following outcome will occur.
-
-# Outcome to Predict
-{task_description}
+PROMPT_TEMPLATE = """Analyze this patient's Electronic Health Record (EHR).
 
 # Patient's EHR
 {ehr}
 
+# Task
+Based on the patient's electronic health record above, predict if the outcome will occur:
+{task_description}
+
 # Instructions
-{instructions}
+{reasoning_instructions}
+{format_instructions}
 """  # noqa: E501
 
-DIRECT_INSTRUCTIONS = """Based on the patient's electronic health record above, predict the probability that the outcome will occur.
+DIRECT_INSTRUCTIONS = """Do not explain your reasoning. Output only your final answer."""
 
-## Constraints
-Do not explain your reasoning, just provide the final answer.
-Your final answer must be exactly between <answer> and </answer> tags and only be a probability float between 0.0 and 1.0.
-
-## Output Format
-<answer>0.0-1.0</answer>
-"""  # noqa: E501
-
-THINKING_INSTRUCTIONS = """Based on the patient's electronic health record above, predict the probability that the outcome will occur.
-
-## Constraints
-Think step by step before giving your final answer.
-Your final answer must be exactly between <answer> and </answer> tags and only be a probability float between 0.0 and 1.0.
+THINKING_INSTRUCTIONS = """Think step by step before giving your final answer.
 Your entire response, including thinking, must be less than {max_new_words} words.
+"""
 
-## Output Format
-<answer>0.0-1.0</answer>
+YES_NO_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response.
+It must be exactly one of the following:
+Answer: Yes
+OR
+Answer: No"""  # noqa: E501
+
+PROBABILITY_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response.
+It must be a single decimal value representing the probability of the event occurring (between 0.0 and 1.0).
+Example format:
+Answer: 0.85
 """  # noqa: E501
+
+OUTPUT_NAME_TO_FORMAT_INSTRUCTIONS = {
+    "yes_no": YES_NO_FORMAT_INSTRUCTIONS,
+    "probability": PROBABILITY_FORMAT_INSTRUCTIONS,
+}
 
 
 class GeminiTokenizerWrapper:
@@ -117,6 +121,7 @@ def create_prompts_from_ehr_texts(
     task_description: str,
     tokenizer: PreTrainedTokenizer,
     enable_thinking: bool,
+    output_format: str,
     max_new_tokens: int | None = None,
 ) -> list[str]:
     """
@@ -136,12 +141,17 @@ def create_prompts_from_ehr_texts(
         list[str]: A list of prompts rendered via tokenizer chat template.
     Raises:
         ValueError: If `max_new_tokens` is not specified when `enable_thinking` is True, or if
-                `max_prompt_length` is not greater than 0.
+                `max_ehr_tokens` is not greater than 0.
 
     """
-    # 1. Recreate the prompt text exactly as the LLM will see it
-    instructions = THINKING_INSTRUCTIONS if enable_thinking else DIRECT_INSTRUCTIONS
+    if output_format not in OUTPUT_NAME_TO_FORMAT_INSTRUCTIONS:
+        raise ValueError(
+            f"Unsupported output format: {output_format}. "
+            f"Supported formats: {list(OUTPUT_NAME_TO_FORMAT_INSTRUCTIONS.keys())}"
+        )
+    format_instructions = OUTPUT_NAME_TO_FORMAT_INSTRUCTIONS[output_format]
 
+    reasoning_instructions = THINKING_INSTRUCTIONS if enable_thinking else DIRECT_INSTRUCTIONS
     if enable_thinking:
         if max_new_tokens is None:
             raise ValueError(
@@ -149,19 +159,22 @@ def create_prompts_from_ehr_texts(
             )
         # Heuristic: 1 word = 0.75 tokens then round down to the nearest 10
         max_new_words = int(((max_new_tokens * 0.75) // 10) * 10)
-        instructions = instructions.format(max_new_words=max_new_words)
+        reasoning_instructions = reasoning_instructions.format(max_new_words=max_new_words)
 
     batch_messages = []
     for ehr in ehr_texts:
         formatted_content = PROMPT_TEMPLATE.format(
             ehr=ehr,
             task_description=task_description,
-            instructions=instructions,
+            reasoning_instructions=reasoning_instructions,
+            format_instructions=format_instructions,
         )
 
         messages = [{"role": "user", "content": formatted_content}]
         if not enable_thinking:
-            messages.append({"role": "assistant", "content": "<answer>"})
+            # Add generation prompt to guide the model to output in the correct format for direct prompt
+
+            messages.append({"role": "assistant", "content": "Answer:" if output_format == "yes_no" else "Answer: 0."})
 
         batch_messages.append(messages)
 
@@ -176,25 +189,20 @@ def create_prompts_from_ehr_texts(
     return prompts
 
 
-def ehr_text_and_boolean_to_prompts_and_completions(
+def ehr_text_to_prompts(
     ehr_texts: list[str],
     task_description: str,
     tokenizer: PreTrainedTokenizer,
-    empty_prompt_length: int,
     tokenization_cfg: DictConfig,
 ) -> list[str]:
     """
     Convert a list of EHR texts and boolean values to a list of prompts and completions.
 
     """
-    max_ehr_tokens = tokenization_cfg.max_prompt_length - empty_prompt_length - tokenization_cfg.token_buffer
-    if max_ehr_tokens <= 0:
-        raise ValueError(f"Max prompt length ({tokenization_cfg.max_prompt_length}) is too small to fit instructions.")
-
     final_ehrs = truncate_ehr_texts(
         ehr_texts=ehr_texts,
         tokenizer=tokenizer,
-        max_ehr_tokens=max_ehr_tokens,
+        max_ehr_tokens=tokenization_cfg.max_ehr_tokens,
         character_per_token_heuristic=tokenization_cfg.character_per_token_heuristic,
     )
 
@@ -203,10 +211,20 @@ def ehr_text_and_boolean_to_prompts_and_completions(
         task_description=task_description,
         tokenizer=tokenizer,
         enable_thinking=tokenization_cfg.enable_thinking,
+        output_format=tokenization_cfg.output_format,
         max_new_tokens=tokenization_cfg.max_new_tokens,
     )
 
     return prompts
+
+
+def bool_to_completion(values: list[bool], output_format: str) -> list[str]:
+    if output_format == "yes_no":
+        return ["Yes" if v else "No" for v in values]
+    elif output_format == "probability":
+        return ["1" if v else "0" for v in values]
+    else:
+        raise ValueError(f"Unsupported output format: {output_format}")
 
 
 @hydra.main(
@@ -263,26 +281,17 @@ def main(cfg: DictConfig) -> None:
             log.warning(f"All splits empty for task {task}. Skipping task entirely.")
             continue
 
-        empty_prompt = create_prompts_from_ehr_texts(
-            ehr_texts=[""],
-            task_description=task_description,
-            tokenizer=tokenizer,
-            enable_thinking=cfg.tokenization.enable_thinking,
-            max_new_tokens=cfg.tokenization.max_new_tokens,
-        )[0]
-        empty_prompt_length = len(tokenizer([empty_prompt], add_special_tokens=False)["input_ids"][0])
-
         dataset = dataset.map(
-            lambda ehr_texts: {
-                "prompt": ehr_text_and_boolean_to_prompts_and_completions(
+            lambda ehr_texts, boolean_values: {
+                "prompt": ehr_text_to_prompts(
                     ehr_texts=ehr_texts,
                     task_description=task_description,
                     tokenizer=tokenizer,
-                    empty_prompt_length=empty_prompt_length,
                     tokenization_cfg=cfg.tokenization,
-                )
+                ),
+                "completion": bool_to_completion(boolean_values, cfg.tokenization.output_format),
             },
-            input_columns=["ehr_text"],
+            input_columns=["ehr_text", "boolean_value"],
             remove_columns=["ehr_text"],
             batched=True,
             batch_size=cfg.tokenization.batch_size,
