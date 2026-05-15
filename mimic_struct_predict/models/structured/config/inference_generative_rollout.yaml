@@ -29,37 +29,30 @@ generation:
   num_return_sequences : 2
 
 end_conditions:
-  los_hosp_3_days:
+  ed_72hr_reattendance:
     codes:
-      - "Hospital Discharge//"
+      - "Emergency Department Registration//"
     time:
-      days: 2 # Prediction made after 24hrs
-  mortality_hosp_discharge_30_days:
-    codes:
-      - "Death//Died"
-    time:
-      days: 30
-  mortality_in_hosp:
-    codes:
-      - "Death//Died"
-  readmission_hosp_30_days:
+      days: 3 # 72 hours
+  ed_to_hospital_admission:
     codes:
       - "Hospital Admission//"
     time:
+      days: 3 # Reasonable to assume that if a patient is admitted, it will be within a week of the ED visit
+  hospital_length_of_stay_leq_7_days:
+    codes:
+      - "Hospital Discharge//"
+    time:
+      days: 7
+  hospital_post_discharge_30_day_mortality:
+    codes:
+      - "Death//Died"
+    time:
       days: 30
-  los_icu_3_days:
-    codes:
-      - "Icu Discharge//"
-    time:
-      days: 2 # Prediction made after 24hrs
-  mortality_hosp_discharge_365_days:
+  in_hospital_mortality:
     codes:
       - "Death//Died"
-    time:
-      days: 365
-  mortality_in_icu:
-    codes:
-      - "Death//Died"
+      - "Hospital Discharge//"
 
 hydra:
   run:

@@ -1,4 +1,4 @@
-N_WORKERS          := 1
+N_WORKERS          := 2
 
 # MIMIC_VERSION = 3.1
 
@@ -10,7 +10,7 @@ PHYSIONET_URL    := https://physionet.org/files
 
 MIMICIV_RAW_DIR      := data/raw_input
 MIMICIV_PRE_MEDS_DIR := data/pre_MEDS
-MIMICIV_MEDS_COHORT_DIR     := data/MEDS_cohort
+MIMICIV_MEDS_COHORT_DIR := data/MEDS_cohort
 
 
 NATURAL_LANGUAGE_INPUT_DIR := data/MEDS_cohort_with_headers
@@ -152,7 +152,7 @@ meds-tab-train:
 			"output_model_dir=$(MEDS_TAB_OUTPUT_MODEL_DIR)/$$task/" \
 			"task_name=$$task" \
 			"do_overwrite=False" \
-			"hydra.sweeper.n_trials=10" \
+			"hydra.sweeper.n_trials=4" \
 			"hydra.sweeper.n_jobs=$(N_WORKERS)" \
 			"tabularization.min_code_inclusion_count=10" \
 			"tabularization.window_sizes=$(shell uv run generate-subsets "[1d,7d,30d,365d]")" \
@@ -160,7 +160,6 @@ meds-tab-train:
 			"delete_below_top_k=1"; \
 	done
 
-MEDS_TAB_LATEST_MODEL_DIR := $(TRAINING_DIR)/MEDS_tab
 
 .PHONY: meds-tab-inference
 meds-tab-inference:
@@ -181,7 +180,7 @@ meds-tab-inference:
 STRUCTURED_OUTPUT_DATA_DIR := $(DATA_DIR)/structured
 STRUCTURED_PRETRAINING_DATA_DIR := $(STRUCTURED_OUTPUT_DATA_DIR)/pretraining
 STRUCTURED_MODEL_DIR := $(TRAINING_DIR)/structured
-STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/20260506_164441/final_model
+STRUCTURED_BEST_PRETRAINED_MODEL_DIR := $(STRUCTURED_MODEL_DIR)/pretraining/20260514_185803/final_model
 
 .PHONY: structured-pretraining-tokenize
 structured-dataset-pretraining:
@@ -189,13 +188,6 @@ structured-dataset-pretraining:
 		--config-name structured.yaml \
 		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
 		output_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)
-
-.PHONY: structured-dataset-prompts
-structured-dataset-prompts:
-	uv run structured_create_task_prompts \
-		meds_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
-		aces_dir=$(ACES_OUTPUT_DIR) \
-		output_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts
 
 .PHONY: structured-train-pretraining
 structured-train-pretraining:
@@ -207,14 +199,12 @@ structured-train-pretraining:
 		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
 		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining
 
-.PHONY: structured-train-pretraining-tiny
-structured-train-pretraining-tiny:
-	TRACKIO_DIR=$(TRACKIO_DIR) \
-	uv run pre_training_train \
-		--config-name tiny_model.yaml \
-	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
-		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
-		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining_tiny
+.PHONY: structured-dataset-prompts
+structured-dataset-prompts:
+	uv run structured_create_task_prompts \
+		meds_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
+		aces_dir=$(ACES_OUTPUT_DIR) \
+		output_dir=$(STRUCTURED_OUTPUT_DATA_DIR)/prompts
 
 .PHONY: structured-train-pretraining-multigpu
 structured-train-pretraining-multigpu:
@@ -258,6 +248,15 @@ structured-inference-generative-rollout:
 		output_dir=$(INFERENCE_DIR)/structured/generative_rollout \
 		split=tuning \
 
+.PHONY: structured-train-pretraining-tiny
+structured-train-pretraining-tiny:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run pre_training_train \
+		--config-name tiny_model.yaml \
+	    dataset_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		tokenizer_dir=$(STRUCTURED_PRETRAINING_DATA_DIR)/tokenizer \
+		output_dir=$(STRUCTURED_MODEL_DIR)/pretraining_tiny
+
 ### Natural Language ###
 
 NATURAL_LANGUAGE_TASK_EHR_TEXT_DIR := $(DATA_DIR)/natural_language/task_ehr_texts
@@ -269,17 +268,75 @@ NATURAL_LANGUAGE_SFT_MODEL_DIR := $(NATURAL_LANGUAGE_SFT_MODEL_DIR)/direct/sft
 
 NATURAL_LANGUAGE_PRETRAINING_DATA_DIR := $(DATA_DIR)/natural_language/pretraining
 
-.PHONY: download-qwen-06B
-download-qwen-06B:
-	uv run hf auth login
-	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
-
 .PHONY: natural-language-dataset-prompts
 natural-language-dataset-prompts:
 	uv run natural_language_create_task_ehr_texts \
 		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+
+
+
+.PHONY: download-qwen-06B
+download-qwen-06B:
+	uv run hf auth login
+	uv run hf download Qwen/Qwen3-0.6B --local-dir ./pre_trained_models/Qwen3-0.6B
+
+.PHONY: structured-pretraining-tokenize
+natural-language-dataset-pretraining:
+	uv run pre_training_tokenize \
+		--config-name natural_language.yaml \
+		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
+		output_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)
+
+.PHONY: natural-language-train-pretraining-scratch
+natural-language-train-pretraining-scratch:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run pre_training_train \
+		--config-name full.yaml \
+		model.random_init=true \
+	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
+
+.PHONY: natural-language-train-pretraining-full
+natural-language-train-pretraining-full:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run pre_training_train \
+		--config-name full.yaml \
+	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
+
+
+
+.PHONY: natural-language-train-embedding-and-lr
+natural-language-train-embedding-and-lr:
+	uv run embedding_and_lr_inference_embedding_only \
+		model.pretrained_model_name_or_path=$(MODEL_DIR) \
+		dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR) \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings \
+		splits="[train,tuning]" \
+
+	for task_dir in $(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings/*/; do \
+		task=$$(basename $$task_dir); \
+		echo "Training embedding logistic regression for task: $$task"; \
+		uv run embedding_and_lr_train --multirun \
+			task_dir=$$task_dir \
+			output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/models/$$task; \
+	done
+
+.PHONY: natural-language-inference-embedding-and-lr
+natural-language-inference-embedding-and-lr:
+	uv run embedding_and_lr_inference \
+		model.pretrained_model_name_or_path='./pre_trained_models/Qwen3-0.6B' \
+		dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DATA_DIR)/prompts \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings \
+		lr_model_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/models \
+		split=tuning
+
+
+
+
+
 
 # 	uv run natural_language_create_model_prompts \
 # 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
@@ -317,29 +374,8 @@ natural-language-train-sft-brier:
 		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/brier_sft
 
 
-.PHONY: structured-pretraining-tokenize
-natural-language-dataset-pretraining:
-	uv run pre_training_tokenize \
-		--config-name natural_language.yaml \
-		dataset_dir=$(STRUCTURED_INPUT_DATA_DIR)/data \
-		output_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)
 
-.PHONY: natural-language-train-pretraining-scratch
-natural-language-train-pretraining-scratch:
-	TRACKIO_DIR=$(TRACKIO_DIR) \
-	uv run pre_training_train \
-		--config-name full.yaml \
-		random_init=true \
-	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
-		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
 
-.PHONY: natural-language-train-pretraining-full
-natural-language-train-pretraining-full:
-	TRACKIO_DIR=$(TRACKIO_DIR) \
-	uv run pre_training_train \
-		--config-name full.yaml \
-	    dataset_dir=$(NATURAL_LANGUAGE_PRETRAINING_DATA_DIR)/tokenized_dataset \
-		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/pretraining
 
 .PHONY: natural-language-train-pretraining-lora
 natural-language-train-pretraining-lora:
@@ -375,32 +411,6 @@ natural-language-dataset-prompts-gemini:
 		data_dir=$(NATURAL_LANGUAGE_RAW_DATA_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_GEMINI_DATA_DIR)
 
-
-
-.PHONY: natural-language-train-embedding-and-lr
-natural-language-train-embedding-and-lr:
-	uv run embedding_and_lr_inference_embedding_only \
-		model.pretrained_model_name_or_path='./pre_trained_models/Qwen3-0.6B' \
-		dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR) \
-		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings \
-		splits="[train,tuning]" \
-
-	for task_dir in $(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings/*/; do \
-		task=$$(basename $$task_dir); \
-		echo "Training embedding logistic regression for task: $$task"; \
-		uv run embedding_and_lr_train --multirun \
-			task_dir=$$task_dir \
-			output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/models/$$task; \
-	done
-
-.PHONY: natural-language-inference-embedding-and-lr
-natural-language-inference-embedding-and-lr:
-	uv run embedding_and_lr_inference \
-		model.pretrained_model_name_or_path='./pre_trained_models/Qwen3-0.6B' \
-		dataset_dir=$(NATURAL_LANGUAGE_OUTPUT_DATA_DIR)/prompts \
-		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/embeddings \
-		lr_model_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/embedding_lr/models \
-		split=tuning
 
 
 .PHONY: natural-language-inference-sft
