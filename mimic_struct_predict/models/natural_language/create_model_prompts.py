@@ -34,16 +34,23 @@ THINKING_INSTRUCTIONS = """Think step by step before giving your final answer.
 Your entire response, including thinking, must be less than {max_new_words} words.
 """
 
-YES_NO_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response.
+YES_NO_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response between <answer> and </answer> tags.
 It must be exactly one of the following:
-Answer: Yes
+<answer>
+Yes
+</answer>
 OR
-Answer: No"""  # noqa: E501
+<answer>
+No
+</answer>
+"""  # noqa: E501
 
-PROBABILITY_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response.
+PROBABILITY_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response between <answer> and </answer> tags.
 It must be a single decimal value representing the probability of the event occurring (between 0.0 and 1.0).
 Example format:
-Answer: 0.85
+<answer>
+0.85
+</answer>
 """  # noqa: E501
 
 OUTPUT_NAME_TO_FORMAT_INSTRUCTIONS = {
@@ -174,7 +181,9 @@ def create_prompts_from_ehr_texts(
         if not enable_thinking:
             # Add generation prompt to guide the model to output in the correct format for direct prompt
 
-            messages.append({"role": "assistant", "content": "Answer:" if output_format == "yes_no" else "Answer: 0."})
+            messages.append(
+                {"role": "assistant", "content": "<answer>\n" if output_format == "yes_no" else "<answer>\n0."}
+            )
 
         batch_messages.append(messages)
 

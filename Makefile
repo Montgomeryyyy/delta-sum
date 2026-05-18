@@ -275,7 +275,25 @@ natural-language-dataset-prompts:
 		aces_dir=$(ACES_OUTPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
 
+# 	# 	uv run natural_language_create_model_prompts \
+# # 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+# # 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_yes_no \
 
+	uv run natural_language_create_model_prompts \
+		tokenization.enable_thinking=true \
+		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_yes_no \
+
+# 	uv run natural_language_create_model_prompts \
+# 		tokenization.output_format=probability \
+# 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+# 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_probability \
+
+	uv run natural_language_create_model_prompts \
+		tokenization.output_format=probability \
+		tokenization.enable_thinking=true \
+		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability \
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
