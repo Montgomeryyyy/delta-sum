@@ -24,11 +24,16 @@ tokenization:
   character_per_token_heuristic: 6
 
 task_description:
-  ed_72hr_reattendance: "True if the patient will return to the emergency department within the next 72 hours. False otherwise"
-  ed_to_hospital_admission: "True if the patient will be admitted to the hospital following this emergency department visit, this does not include patients who are transferred to other hospitals. False otherwise."
-  hospital_length_of_stay_leq_7_days: "True if the patient's current hospital stay will be 7 days or less. False otherwise"
-  hospital_post_discharge_30_day_mortality: "True if the patient will die within 30 days of this hospital discharge. False otherwise"
-  in_hospital_mortality: "True if the patient will die during this hospital stay. False otherwise"
+  ed_72hr_reattendance: "Input: You are provided with this patient's EHR up to and including their most recent Emergency Department Discharge (the last batch of EHR events).\n\
+    Outcome: True if the patient will have a Emergency Department Registration event in 72 hours following their discharge. False otherwise."
+  ed_to_hospital_admission: "Input: You are provided with this patient's EHR up to and including their most recent Emergency Department Registration and Triage (the last batch of EHR events).\n\
+    Outcome: True if the patient's future ED discharge disposition is admitted to the main hospital as an inpatient. False if the patient is discharged home, transferred to another hospital, or has any other disposition."
+  hospital_length_of_stay_leq_7_days: "Input: You are provided with this patient's EHR up to and including their most recent inpatient hospital admission.\n\
+    Outcome: True if the patient will be discharged within 7 days of their most recent inpatient hospital admission. False otherwise."
+  in_hospital_mortality: "Input: You are provided with this patient's EHR up to and including the first 24 hours of their most recent inpatient hospital admission.\n\
+    Outcome: True if the patient will die before being discharged from their most recent inpatient hospital stay. False otherwise."
+  hospital_post_discharge_30_day_mortality: "Input: You are provided with this patient's EHR up to and including their most recent hospital discharge.\n\
+    Outcome: True if the patient will die within 30 days of their most recent hospital discharge. False otherwise."
 
 hydra:
   run:

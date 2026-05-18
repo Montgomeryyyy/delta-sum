@@ -17,7 +17,7 @@ from omegaconf import DictConfig
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from tqdm.asyncio import tqdm
 
-from mimic_struct_predict.models.natural_language.inference import extract_answer
+from mimic_struct_predict.models.natural_language.inference import extract_probability_by_regex
 
 log = logging.getLogger(__name__)
 
@@ -56,14 +56,16 @@ async def gemini_inference(
         log.warning("No candidates returned")
         completion = ""
         thoughts = ""
-        adherence = False
+        adherence = 0.0
         prob = default_value
     else:
         parts = response.candidates[0].content.parts
         # This is not full thinking trace but a summary of it
         thoughts = "\n".join([part.text for part in parts if part.thought and part.text])
         completion = "\n".join([part.text for part in parts if not part.thought and part.text])
-        prob, adherence = extract_answer(completion, regex_pattern, default_value)
+        probs, adherences = extract_probability_by_regex([completion], None, regex_pattern, default_value)
+        prob = probs[0]
+        adherence = adherences[0]
 
     # Return the original example updated with model results
     return {

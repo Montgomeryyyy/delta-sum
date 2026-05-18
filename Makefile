@@ -279,10 +279,10 @@ natural-language-dataset-prompts:
 # # 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
 # # 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_yes_no \
 
-	uv run natural_language_create_model_prompts \
-		tokenization.enable_thinking=true \
-		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
-		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_yes_no \
+# 	uv run natural_language_create_model_prompts \
+# 		tokenization.enable_thinking=true \
+# 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+# 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_yes_no \
 
 # 	uv run natural_language_create_model_prompts \
 # 		tokenization.output_format=probability \
@@ -294,6 +294,15 @@ natural-language-dataset-prompts:
 		tokenization.enable_thinking=true \
 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability \
+
+.PHONY: natural-language-inference-thinking
+natural-language-inference-thinking:
+	uv run natural_language_inference \
+		--config-name inference_thinking.yaml \
+		"dataset_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability" \
+		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking_probability" \
+		"split=tuning"
+
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
@@ -394,7 +403,6 @@ natural-language-train-sft-brier:
 
 
 
-
 .PHONY: natural-language-train-pretraining-lora
 natural-language-train-pretraining-lora:
 	TRACKIO_DIR=$(TRACKIO_DIR) \
@@ -444,14 +452,6 @@ natural-language-inference-direct:
 	uv run natural_language_inference \
 		"dataset_dir=$(NATURAL_LANGUAGE_DIRECT_DATA_DIR)" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/direct" \
-		"split=tuning"
-
-.PHONY: natural-language-inference-thinking
-natural-language-inference-thinking:
-	uv run natural_language_inference \
-		--config-name inference_thinking.yaml \
-		"dataset_dir=$(NATURAL_LANGUAGE_THINKING_DATA_DIR)" \
-		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking" \
 		"split=tuning"
 
 .PHONY: natural-language-inference-gemini

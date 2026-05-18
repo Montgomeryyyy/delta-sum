@@ -14,14 +14,22 @@ from mimic_struct_predict.models.utils import load_tokenizer
 log = logging.getLogger(__name__)
 
 
-PROMPT_TEMPLATE = """Analyze this patient's Electronic Health Record (EHR).
+PROMPT_TEMPLATE = """You are a clinical AI forecaster.
+You will be given a patient's historical EHR up to the PRESENT MOMENT.
+The outcome event has NOT happened yet in the EHR.
+Your job is to forecast if it WILL happen in the future based on the patient's past medical history.
 
-# Patient's EHR
-{ehr}
-
-# Task
-Based on the patient's electronic health record above, predict if the outcome will occur:
+# Prediction Task
 {task_description}
+
+# Patient's Historical EHR
+Events are ordered chronologically from least to most recent.
+They are hierarchically batched by timestamp and category tags:
+- `## Delta +X days`: Days elapsed since the previous batch.
+- `### Time HHh:mmm`: Same date and time.
+- `#### Category`: Same date, time, and event category.
+
+{ehr}
 
 # Instructions
 {reasoning_instructions}
@@ -31,8 +39,8 @@ Based on the patient's electronic health record above, predict if the outcome wi
 DIRECT_INSTRUCTIONS = """Do not explain your reasoning. Output only your final answer."""
 
 THINKING_INSTRUCTIONS = """Think step by step before giving your final answer.
-Your entire response, including thinking, must be less than {max_new_words} words.
-"""
+Your response, including thinking, will be cut off after {max_new_words} words. You must provide your final answer within that limit.
+"""  # noqa: E501
 
 YES_NO_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response between <answer> and </answer> tags.
 It must be exactly one of the following:

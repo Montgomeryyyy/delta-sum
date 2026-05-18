@@ -11,6 +11,7 @@ import logging
 import re
 import time
 from pathlib import Path
+from typing import Any, Callable
 
 import datasets
 import hydra
@@ -33,20 +34,61 @@ from mimic_struct_predict.models.utils import (
 log = logging.getLogger(__name__)
 
 
-def extract_answer(text: str, regex_pattern: re.Pattern, default_prob: float) -> tuple[float, bool]:
-    # Matches the content between the tags
-    match = re.search(regex_pattern, text)
+# def extract_yes_no_logit_probabilities(
+#     new_tokens: torch.Tensor,
+#     logits: torch.Tensor,
+#     pad_token_id: int,
+#     yes_token_id: int,
+#     no_token_id: int,
+# ) -> np.ndarray:
+#     """
+#     This works on the assumption that the stop string ends with Yes or No
+#     So the index of last non-padding token in row of new_tokens is the Yes/No idx.
+#     """
+#     # logits is a tuple of (B, vocab_size) tensors, one per new token step.
+#     # Stack into (B, T_new, vocab_size), then pick the relevant step per sample.
+#     stacked_logits = torch.stack(logits, dim=1)  # (B, T_new, vocab_size)
 
-    if match:
-        try:
-            # Strip whitespace and convert to float
-            return float(match.group(1).strip()), True
-        except ValueError:
-            # Found text, but it wasn't a valid number
-            return default_prob, False
+#     # Mask to non-padded tokens
+#     new_tokens_mask = new_tokens != pad_token_id  # (B, T_new)
 
-    # Tag not found at all
-    return default_prob, False
+#     if not new_tokens_mask.any(dim=1).all():
+#         log.warning("Some sequences are entirely padding tokens")
+
+#     # Find the last non-padded token per sequence: flip so the last True becomes the
+#     # 1st then argmax finds it; subtract from (T_new - 1) to convert back to
+#     # the original index.
+#     yes_no_step_indices = new_tokens_mask.shape[1] - 1 - new_tokens_mask.int().flip(dims=[1]).argmax(dim=1)  # (B,)
+
+#     yes_no_logits = stacked_logits[torch.arange(stacked_logits.shape[0]), yes_no_step_indices]  # (B, vocab_size)]
+
+#     target_logits = yes_no_logits[:, [yes_token_id, no_token_id]]
+
+#     # Softmax over just these two options
+#     probs = F.softmax(target_logits, dim=-1)
+
+#     # Return probability of Yes (index 0)
+#     return probs[:, 0]
+
+
+def extract_probability_by_regex(
+    completions: list[str], outputs: Any, regex_pattern: re.Pattern, default_prob: float
+) -> tuple[list[float], list[float]]:
+    probability = [default_prob] * len(completions)
+    format_adherence = [0.0] * len(completions)
+
+    for idx, completion in enumerate(completions):
+        match = re.search(regex_pattern, completion)
+        if match:
+            try:
+                # Strip whitespace and convert to float
+                prob_str = match.group(1).strip()
+                probability[idx] = float(prob_str)
+                format_adherence[idx] = 1.0
+            except (ValueError, IndexError):
+                pass  # Keep default probability and format adherence 0 if conversion fails
+
+    return probability, format_adherence
 
 
 def batch_inference(
@@ -54,8 +96,7 @@ def batch_inference(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     generation_config: DictConfig,
-    regex_pattern: re.Pattern,
-    default_prob: float,
+    post_processing_func: Callable[[list[str], Any], tuple[list[float], list[float]]],
 ) -> dict[str, list]:
     """Run inference on a batch of texts by
     - Tokenizing the input texts with appropriate padding and truncation
@@ -86,18 +127,15 @@ def batch_inference(
     new_tokens = outputs[:, inputs["input_ids"].shape[1] :]
     completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
 
-    probabilities, format_adherence = zip(
-        *map(lambda completion: extract_answer(completion, regex_pattern, default_prob), completions)
-    )
-
+    probabilities, format_adherence = post_processing_func(completions, outputs)
     end_time = time.perf_counter()
     sample_latency = (end_time - start_time) / len(batch_texts)
 
     return {
         "completion": completions,
         "probability": list(probabilities),
-        "sample_latency": [sample_latency] * len(batch_texts),
         "format_adherence": list(format_adherence),
+        "sample_latency": [sample_latency] * len(batch_texts),
     }
 
 
@@ -149,7 +187,15 @@ def main(cfg: DictConfig) -> None:
         padding_side="left",
     )
 
-    regex_pattern = re.compile(cfg.post_processing.regex_pattern)
+    if cfg.post_processing.output_format == "probability":
+        regex_pattern = re.compile(cfg.post_processing.regex_pattern)
+
+        def _post_processing_func(completions: list[str], outputs: Any) -> tuple[list[float], list[float]]:
+            return extract_probability_by_regex(completions, outputs, regex_pattern, cfg.post_processing.default_prob)
+
+        post_processing_func = _post_processing_func
+    else:
+        raise ValueError(f"Unsupported output format: {cfg.post_processing.output_format}")
 
     for task_dir in dataset_dir.iterdir():
         if not task_dir.is_dir():
@@ -187,8 +233,7 @@ def main(cfg: DictConfig) -> None:
                     model=model,
                     tokenizer=tokenizer,
                     generation_config=cfg.generation,
-                    regex_pattern=regex_pattern,
-                    default_prob=cfg.post_processing.default_prob,
+                    post_processing_func=post_processing_func,
                 )
                 for key, values in results.items():
                     batch[key] = values
