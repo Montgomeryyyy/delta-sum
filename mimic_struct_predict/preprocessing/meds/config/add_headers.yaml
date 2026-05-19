@@ -18,7 +18,7 @@ delimiter: "//"
 ### Insert hierarchical rows to reduce repeated tokens
 stages:
   - add_prefix_rows:
-      header: "#### Category"
+      header: "####"
       delimiter: ${delimiter}
   - add_time_rows:
       header: "### Time"
