@@ -24,16 +24,16 @@ tokenization:
   character_per_token_heuristic: 6
 
 task_description:
-  ed_72hr_reattendance: "Input: You are provided with this patient's EHR up to and including their most recent Emergency Department Discharge (the last batch of EHR events).\n\
-    Outcome: True if the patient will have a Emergency Department Registration event in 72 hours following their discharge. False otherwise."
-  ed_to_hospital_admission: "Input: You are provided with this patient's EHR up to and including their most recent Emergency Department Registration and Triage (the last batch of EHR events).\n\
-    Outcome: True if the patient's future ED discharge disposition is admitted to the main hospital as an inpatient. False if the patient is discharged home, transferred to another hospital, or has any other disposition."
-  hospital_length_of_stay_leq_7_days: "Input: You are provided with this patient's EHR up to and including their most recent inpatient hospital admission.\n\
-    Outcome: True if the patient will be discharged within 7 days of their most recent inpatient hospital admission. False otherwise."
-  in_hospital_mortality: "Input: You are provided with this patient's EHR up to and including the first 24 hours of their most recent inpatient hospital admission.\n\
-    Outcome: True if the patient will die before being discharged from their most recent inpatient hospital stay. False otherwise."
-  hospital_post_discharge_30_day_mortality: "Input: You are provided with this patient's EHR up to and including their most recent hospital discharge.\n\
-    Outcome: True if the patient will die within 30 days of their most recent hospital discharge. False otherwise."
+  ed_72hr_reattendance: "The patient has just been discharged from the Emergency Department.\n\
+    Predict if the patient will have an Emergency Department Registration event within the next 72 hours following their discharge."
+  ed_to_hospital_admission: "The patient has just been registered and triaged in the Emergency Department.\n\
+    Predict if the patient will be admitted to the main hospital as an inpatient on discharge from the Emergency Department, instead of being discharged home, transferred to another hospital, or having any other disposition."
+  hospital_length_of_stay_leq_7_days: "The patient has just been admitted to the hospital.\n\
+    Predict if the patient will be discharged from the hospital in next 7 days (inclusive)."
+  in_hospital_mortality: "The patient has been a hospital inpatient for 24 hours.\n\
+    Predict if the patient will die before being discharged from their most recent inpatient hospital stay."
+  hospital_post_discharge_30_day_mortality: "The patient has just been discharged from the hospital.\n\
+    Predict if the patient will die within the next 30 days."
 
 hydra:
   run:

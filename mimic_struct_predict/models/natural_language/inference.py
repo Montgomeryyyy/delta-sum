@@ -1,10 +1,8 @@
-"""Zero-shot LLM inference on natural language EHR datasets with shard-sharding.
-
-Usage:
-    uv run llm_inference \
-        dataset_dir=data/mimic-iv-nl-dataset \
-        split=tuning \
-        output_dir=outputs/zero_shot/inference
+"""HuggingFace LLM inference datasets with shard-sharding.
+Probability extraction supports two modes:
+1. yes_no: Model is prompted to end with "Yes" or "No". We extract the logits for these tokens
+and compute probability from them.
+2. probability: Model is prompted to include a probability in its output, which we extract using a regex.
 """
 
 import logging
@@ -18,6 +16,7 @@ import hydra
 import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
+import torch.nn.functional as F
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tqdm import tqdm
@@ -26,6 +25,7 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
+from transformers.generation import GenerateDecoderOnlyOutput
 
 from mimic_struct_predict.models.utils import (
     load_model_and_tokenizer,
@@ -34,48 +34,72 @@ from mimic_struct_predict.models.utils import (
 log = logging.getLogger(__name__)
 
 
-# def extract_yes_no_logit_probabilities(
-#     new_tokens: torch.Tensor,
-#     logits: torch.Tensor,
-#     pad_token_id: int,
-#     yes_token_id: int,
-#     no_token_id: int,
-# ) -> np.ndarray:
-#     """
-#     This works on the assumption that the stop string ends with Yes or No
-#     So the index of last non-padding token in row of new_tokens is the Yes/No idx.
-#     """
-#     # logits is a tuple of (B, vocab_size) tensors, one per new token step.
-#     # Stack into (B, T_new, vocab_size), then pick the relevant step per sample.
-#     stacked_logits = torch.stack(logits, dim=1)  # (B, T_new, vocab_size)
+def extract_yes_no_logit_probabilities(
+    outputs: GenerateDecoderOnlyOutput,
+    len_inputs: int,
+    tokenizer: PreTrainedTokenizerBase,
+    pad_token_id: int,
+    yes_token_id: int,
+    no_token_id: int,
+    regex_pattern: re.Pattern,
+    default_prob: float = 0.5,
+) -> tuple[list[str], list[float], list[bool]]:
+    """
+    This works on the assumption that the stop string ends with Yes or No
+    So the index of last non-padding token in row of new_tokens is the Yes/No idx.
+    """
+    new_tokens = outputs.sequences[:, len_inputs:]
+    completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
 
-#     # Mask to non-padded tokens
-#     new_tokens_mask = new_tokens != pad_token_id  # (B, T_new)
+    format_adherence = [re.search(regex_pattern, completion) is not None for completion in completions]
 
-#     if not new_tokens_mask.any(dim=1).all():
-#         log.warning("Some sequences are entirely padding tokens")
+    # outputs.logits is a tuple of (B, vocab_size) tensors, one per new token step.
+    # Stack into (B, T_new, vocab_size), then pick the relevant step per sample.
+    stacked_logits = torch.stack(outputs.logits, dim=1)  # (B, T_new, vocab_size)
 
-#     # Find the last non-padded token per sequence: flip so the last True becomes the
-#     # 1st then argmax finds it; subtract from (T_new - 1) to convert back to
-#     # the original index.
-#     yes_no_step_indices = new_tokens_mask.shape[1] - 1 - new_tokens_mask.int().flip(dims=[1]).argmax(dim=1)  # (B,)
+    # Mask to non-padded tokens
+    new_tokens_mask = new_tokens != pad_token_id  # (B, T_new)
 
-#     yes_no_logits = stacked_logits[torch.arange(stacked_logits.shape[0]), yes_no_step_indices]  # (B, vocab_size)]
+    if not new_tokens_mask.any(dim=1).all():
+        log.warning("Some sequences are entirely padding tokens")
 
-#     target_logits = yes_no_logits[:, [yes_token_id, no_token_id]]
+    # Find the last non-padded token per sequence: flip so the last True becomes the
+    # 1st then argmax finds it; subtract from (T_new - 1) to convert back to
+    # the original index.
+    yes_no_step_indices = new_tokens_mask.shape[1] - 1 - new_tokens_mask.int().flip(dims=[1]).argmax(dim=1)  # (B,)
 
-#     # Softmax over just these two options
-#     probs = F.softmax(target_logits, dim=-1)
+    yes_no_logits = stacked_logits[torch.arange(stacked_logits.shape[0]), yes_no_step_indices]  # (B, vocab_size)]
 
-#     # Return probability of Yes (index 0)
-#     return probs[:, 0]
+    target_logits = yes_no_logits[:, [yes_token_id, no_token_id]]
+
+    # Softmax over just these two options
+    probs = F.softmax(target_logits, dim=-1)
+
+    # When format adherence is 0, we have no confidence in the model's output, so we can set probability to default_prob
+    # in those cases.
+    probs = torch.where(
+        torch.tensor(format_adherence, device=probs.device).unsqueeze(1),
+        probs,
+        torch.tensor([[default_prob, 1 - default_prob]], device=probs.device),
+    )
+
+    # Return probability of Yes (index 0)
+    return completions, probs[:, 0].tolist(), format_adherence
 
 
 def extract_probability_by_regex(
-    completions: list[str], outputs: Any, regex_pattern: re.Pattern, default_prob: float
-) -> tuple[list[float], list[float]]:
+    outputs: GenerateDecoderOnlyOutput,
+    len_inputs: int,
+    tokenizer: PreTrainedTokenizerBase,
+    regex_pattern: re.Pattern,
+    default_prob: float,
+) -> tuple[list[str], list[float], list[bool]]:
+    # Extract sequences and logits
+    new_tokens = outputs.sequences[:, len_inputs:]
+    completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
+
     probability = [default_prob] * len(completions)
-    format_adherence = [0.0] * len(completions)
+    format_adherence = [False] * len(completions)
 
     for idx, completion in enumerate(completions):
         match = re.search(regex_pattern, completion)
@@ -84,11 +108,11 @@ def extract_probability_by_regex(
                 # Strip whitespace and convert to float
                 prob_str = match.group(1).strip()
                 probability[idx] = float(prob_str)
-                format_adherence[idx] = 1.0
+                format_adherence[idx] = True
             except (ValueError, IndexError):
-                pass  # Keep default probability and format adherence 0 if conversion fails
+                pass  # Keep default probability and format adherence False if conversion fails
 
-    return probability, format_adherence
+    return completions, probability, format_adherence
 
 
 def batch_inference(
@@ -96,7 +120,7 @@ def batch_inference(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     generation_config: DictConfig,
-    post_processing_func: Callable[[list[str], Any], tuple[list[float], list[float]]],
+    post_processing_func: Callable[[GenerateDecoderOnlyOutput, int], tuple[list[str], list[float], list[bool]]],
 ) -> dict[str, list]:
     """Run inference on a batch of texts by
     - Tokenizing the input texts with appropriate padding and truncation
@@ -120,14 +144,11 @@ def batch_inference(
         outputs = model.generate(
             **inputs,
             tokenizer=tokenizer,  # Pass tokenizer for handling of stopping criteria
+            return_dict_in_generate=True,
             **generation_config,
         )
 
-    # Extract sequences and logits
-    new_tokens = outputs[:, inputs["input_ids"].shape[1] :]
-    completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
-
-    probabilities, format_adherence = post_processing_func(completions, outputs)
+    completions, probabilities, format_adherence = post_processing_func(outputs, inputs["input_ids"].shape[1])
     end_time = time.perf_counter()
     sample_latency = (end_time - start_time) / len(batch_texts)
 
@@ -186,14 +207,40 @@ def main(cfg: DictConfig) -> None:
         eval_mode=True,
         padding_side="left",
     )
+    regex_pattern = re.compile(cfg.post_processing.regex_pattern)
 
     if cfg.post_processing.output_format == "probability":
-        regex_pattern = re.compile(cfg.post_processing.regex_pattern)
 
-        def _post_processing_func(completions: list[str], outputs: Any) -> tuple[list[float], list[float]]:
-            return extract_probability_by_regex(completions, outputs, regex_pattern, cfg.post_processing.default_prob)
+        def _post_processing_func_prob(outputs: Any, len_inputs: int) -> tuple[list[str], list[float], list[bool]]:
+            return extract_probability_by_regex(
+                outputs, len_inputs, tokenizer, regex_pattern, cfg.post_processing.default_prob
+            )
 
-        post_processing_func = _post_processing_func
+        post_processing_func = _post_processing_func_prob
+    elif cfg.post_processing.output_format == "yes_no":
+        yes_token_id = tokenizer("Yes", add_special_tokens=False).input_ids[-1]
+        no_token_id = tokenizer("No", add_special_tokens=False).input_ids[-1]
+
+        if not cfg.generation.get("output_logits", False):
+            raise ValueError(
+                "For yes/no output format, generation_config.output_logits must be set to True to access"
+                "logits for probability extraction."
+            )
+
+        def _post_processing_func_yes_no(outputs: Any, len_inputs: int) -> tuple[list[str], list[float], list[bool]]:
+            return extract_yes_no_logit_probabilities(
+                outputs,
+                len_inputs,
+                tokenizer,
+                pad_token_id=tokenizer.pad_token_id,
+                yes_token_id=yes_token_id,
+                no_token_id=no_token_id,
+                regex_pattern=regex_pattern,
+                default_prob=cfg.post_processing.default_prob,
+            )
+
+        post_processing_func = _post_processing_func_yes_no
+
     else:
         raise ValueError(f"Unsupported output format: {cfg.post_processing.output_format}")
 

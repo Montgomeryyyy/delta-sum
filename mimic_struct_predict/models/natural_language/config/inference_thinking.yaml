@@ -16,6 +16,6 @@ generation:
   min_p: 0.0
 
 post_processing:
-  output_format: probability
+  output_format: ???
   default_prob: 0.5
-  regex_pattern: '(?<=<answer>)([\s\S]*?)(?=</answer>)'
+  regex_pattern: ???

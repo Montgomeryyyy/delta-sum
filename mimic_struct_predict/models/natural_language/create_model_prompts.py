@@ -15,20 +15,22 @@ log = logging.getLogger(__name__)
 
 
 PROMPT_TEMPLATE = """You are a clinical AI forecaster.
-You will be given a patient's historical EHR up to the PRESENT MOMENT.
-The outcome event has NOT happened yet in the EHR.
-Your job is to forecast if it WILL happen in the future based on the patient's past medical history.
+You will be given a patient's historical EHR up to the present moment.
+The outcome event has not happened yet in the EHR.
+Your job is to forecast if it will happen in the future based on the patient's past medical history.
 
 # Prediction Task
 {task_description}
 
 # Patient's Historical EHR
-Events are ordered chronologically from least to most recent.
+Events are new line separated and ordered chronologically from least to most recent.
 They are hierarchically batched by timestamp and category tags:
 - `## Delta +X days`: Days elapsed since the previous batch.
 - `### Time HHh:mmm`: Same date and time.
 - `#### Category`: Same date, time, and event category.
+The most recent batch of events at the present moment.
 
+[Previous events truncated...]
 {ehr}
 
 # Instructions
@@ -42,7 +44,8 @@ THINKING_INSTRUCTIONS = """Think step by step before giving your final answer.
 Your response, including thinking, will be cut off after {max_new_words} words. You must provide your final answer within that limit.
 """  # noqa: E501
 
-YES_NO_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response between <answer> and </answer> tags.
+YES_NO_FORMAT_INSTRUCTIONS = """Predict yes or no if the target event will occur.
+Provide your final answer at the very end of your response between <answer> and </answer> tags.
 It must be exactly one of the following:
 <answer>
 Yes
@@ -53,7 +56,8 @@ No
 </answer>
 """  # noqa: E501
 
-PROBABILITY_FORMAT_INSTRUCTIONS = """Provide your final answer at the very end of your response between <answer> and </answer> tags.
+PROBABILITY_FORMAT_INSTRUCTIONS = """Predict the probability of the target event occurring.
+Provide your final answer at the very end of your response between <answer> and </answer> tags.
 It must be a single decimal value representing the probability of the event occurring (between 0.0 and 1.0).
 Example format:
 <answer>

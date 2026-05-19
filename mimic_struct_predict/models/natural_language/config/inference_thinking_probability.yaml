@@ -1,0 +1,8 @@
+# Inherits from llm_inference_direct.yaml, but overrides settings to enable thinking and adjust generation parameters accordingly.
+defaults:
+  - inference_thinking
+  - _self_
+
+post_processing:
+  output_format: probability
+  regex_pattern: '(?<=<answer>)([\s\S]*?)(?=</answer>)'

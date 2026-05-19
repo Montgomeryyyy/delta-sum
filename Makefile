@@ -279,30 +279,37 @@ natural-language-dataset-prompts:
 # # 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
 # # 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_yes_no \
 
-# 	uv run natural_language_create_model_prompts \
-# 		tokenization.enable_thinking=true \
-# 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
-# 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_yes_no \
+	uv run natural_language_create_model_prompts \
+		tokenization.enable_thinking=true \
+		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_yes_no \
 
 # 	uv run natural_language_create_model_prompts \
 # 		tokenization.output_format=probability \
 # 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
 # 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/direct_probability \
 
-	uv run natural_language_create_model_prompts \
-		tokenization.output_format=probability \
-		tokenization.enable_thinking=true \
-		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
-		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability \
+# 	uv run natural_language_create_model_prompts \
+# 		tokenization.output_format=probability \
+# 		tokenization.enable_thinking=true \
+# 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
+# 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability \
 
-.PHONY: natural-language-inference-thinking
-natural-language-inference-thinking:
+.PHONY: natural-language-inference-thinking-probability
+natural-language-inference-thinking-probability:
 	uv run natural_language_inference \
-		--config-name inference_thinking.yaml \
+		--config-name inference_thinking_probability.yaml \
 		"dataset_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability" \
 		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking_probability" \
 		"split=tuning"
 
+.PHONY: natural-language-inference-thinking-yes-no
+natural-language-inference-thinking-yes-no:
+	uv run natural_language_inference \
+		--config-name inference_thinking_yes_no.yaml \
+		"dataset_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_yes_no" \
+		"output_dir=$(NATURAL_LANGUAGE_INFERENCE_OUTPUT_DIR)/thinking_yes_no" \
+		"split=tuning"
 
 .PHONY: download-qwen-06B
 download-qwen-06B:
