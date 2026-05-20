@@ -3,6 +3,10 @@ defaults:
   - inference_thinking
   - _self_
 
+generation:
+  stop_strings:
+    - "</answer>"
+
 post_processing:
   output_format: probability
   regex_pattern: '(?<=<answer>)([\s\S]*?)(?=</answer>)'

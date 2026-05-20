@@ -1,6 +1,7 @@
 import logging
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import hydra
@@ -63,6 +64,8 @@ def main(cfg: DictConfig) -> None:
         # HACK: Must be a better way to do this. But allows tabularization of test set
         # using same config as the model about to be used for inference.
         tabularization_config = trained_config.tabularization
+
+        start_time = time.perf_counter()
         command = [
             "uv",
             "run",
@@ -100,6 +103,8 @@ def main(cfg: DictConfig) -> None:
         # Run inference and time it (time only the predict call, not label assembly or IO)
 
         y_pred = model.model.predict(dataset_dmatrix)
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
 
         # Get true labels and sample latency and write df
         y_true = dataset_dmatrix.get_label()
@@ -108,6 +113,7 @@ def main(cfg: DictConfig) -> None:
                 "boolean_value": y_true,
                 "probability": y_pred,
                 "format_adherence": [1] * len(y_true),
+                "sample_latency": [elapsed_time / len(y_true)] * len(y_true),
             },
         )
 
