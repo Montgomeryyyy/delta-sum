@@ -295,6 +295,22 @@ natural-language-dataset-prompts:
 # 		data_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
 # 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability \
 
+.PHONY: natural-language-train-grpo-yes-no
+natural-language-train-grpo-yes-no:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run natural_language_grpo \
+		--config-name grpo_yes_no.yaml \
+		dataset_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_yes_no \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/grpo_yes_no
+
+.PHONY: natural-language-train-grpo-probability
+natural-language-train-grpo-probability:
+	TRACKIO_DIR=$(TRACKIO_DIR) \
+	uv run natural_language_grpo \
+		--config-name grpo_probability.yaml \
+		dataset_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/thinking_probability \
+		output_dir=$(NATURAL_LANGUAGE_MODEL_DIR)/grpo_probability
+
 .PHONY: natural-language-inference-thinking-probability
 natural-language-inference-thinking-probability:
 	uv run natural_language_inference \

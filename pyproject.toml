@@ -73,6 +73,7 @@ natural_language_create_model_prompts = "mimic_struct_predict.models.natural_lan
 natural_language_sft = "mimic_struct_predict.models.natural_language.sft:main"
 natural_language_inference = "mimic_struct_predict.models.natural_language.inference:main"
 natural_language_inference_gemini = "mimic_struct_predict.models.natural_language.inference_gemini:main"
+natural_language_grpo = "mimic_struct_predict.models.natural_language.grpo:main"
 
 [tool.ruff]
 exclude = [
