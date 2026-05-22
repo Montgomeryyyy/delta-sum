@@ -1,5 +1,15 @@
 # mimic-struct-predict
 
+## CREATE Setup commands
+
+Get an interative session
+`srun -p cpu --time 60 --pty /bin/bash -l`
+
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export UV_PROJECT_ENVIRONMENT="/scratch/users/<k_number>>/mimic-struct-predict/.venv"
+uv sync
+```
 
 ## Implemented
 
