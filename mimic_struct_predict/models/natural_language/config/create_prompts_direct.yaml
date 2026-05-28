@@ -11,7 +11,7 @@ train_split_name: train
 
 model:
   is_gemini: false
-  pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
+  pretrained_model_name_or_path: ???
 
 tokenization:
   max_ehr_tokens: 256

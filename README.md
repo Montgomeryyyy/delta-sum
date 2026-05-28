@@ -10,6 +10,76 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 ```
 
+```
+export DATA_DIR=
+export MIMIC_USER=
+export MIMIC_PASSWORD=
+export HF_MODEL_NAME=
+```
+Run in interactive shell
+```
+uv run hf auth login
+bash scripts/download_hf_model.sh
+```
+
+```
+sbatch\
+    --partition cpu \
+    --time 5 \
+    --chdir $(pwd) \
+    --export=all \
+    --output=/scratch/users/%u/logs/download_mimic/%j.out \
+    scripts/download_mimic.sh
+
+sbatch\
+    --partition cpu \
+    --time 5 \
+    --chdir $(pwd) \
+    --export=all \
+    --output=/scratch/users/%u/logs/run_meds_pipeline/%j.out \
+    scripts/run_meds_pipeline.sh
+
+sbatch\
+    --partition cpu \
+    --time 5 \
+    --chdir $(pwd) \
+    --export=all \
+    --output=/scratch/users/%u/logs/create_prompts/%j.out \
+    scripts/create_prompts.sh
+
+sbatch \
+    --partition biomed_a100_gpu \
+    --gres=gpu:1 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task=1 \
+    --mem=16G \
+    --time 10 \
+    --chdir $(pwd) \
+    --export=all \
+    --output=/scratch/users/%u/logs/run_natural_language_inference/%j.out \
+    scripts/run_natural_language_inference.sh \
+    --config-name inference_thinking_probability.yaml \
+    --dataset-name thinking_yes_no \
+    --split tuning
+
+sbatch \
+    --partition biomed_a100_gpu \
+    --gres=gpu:1 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task=1 \
+    --mem=16G \
+    --time 10 \
+    --chdir $(pwd) \
+    --export=all \
+    --output=/scratch/users/%u/logs/run_natural_language_inference/%j.out \
+    scripts/run_natural_language_inference.sh \
+    --config-name inference_thinking_probability.yaml \
+    --dataset-name thinking_probability \
+    --split tuning
+```
+
 ## Implemented
 
 ### Data prep

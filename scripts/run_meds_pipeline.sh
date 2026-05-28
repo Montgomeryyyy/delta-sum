@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 
-#SBATCH --output=/scratch/users/%u/logs/run_meds_pipeline/%j.out
-
-# To run need to set DATA_DIR
-# sbatch -p cpu -t 5 -D $(pwd) --export=ALL --export=DATA_DIR scripts/run_meds_pipeline.sh
-
 # Exit immediately if a command exits with a non-zero status
 set -e
 

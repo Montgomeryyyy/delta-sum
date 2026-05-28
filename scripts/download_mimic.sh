@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH --output=/scratch/users/%u/logs/download_mimic/%j.out
-
-# To run need to set DATA_DIR, MIMIC_USER, MIMIC_PASSWORD
-# sbatch -p cpu -t 5 -D $(pwd) --export=ALL --export=DATA_DIR,MIMIC_USER,MIMIC_PASSWORD scripts/download_mimic.sh
 
 # Exit immediately if a command exits with a non-zero status
 set -e
