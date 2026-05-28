@@ -12,5 +12,9 @@ MIMICIV_RAW_DIR="${DATA_DIR}/raw_input"
 MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
 MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
+ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
+ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
+ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
+
 NATURAL_LANGUAGE_INPUT_DIR="${DATA_DIR}/MEDS_cohort_with_headers"
 STRUCTURED_INPUT_DATA_DIR="${DATA_DIR}/MEDS_cohort_with_headers_and_quantiles"

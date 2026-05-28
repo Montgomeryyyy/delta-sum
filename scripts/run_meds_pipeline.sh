@@ -48,4 +48,18 @@ DATASET_VERSION="$MIMIC_VERSION" \
 uv run MEDS_transform-pipeline \
     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_quantiles.yaml
 
+echo "Running ACES pipeline"
+rm -rf "${ACES_OUTPUT_DIR}"
+for task in ${ACES_TASKS}; do
+    uv run aces-cli -m data=sharded \
+        config_path="${ACES_DEFINITIONS_DIR}/${task}.yaml" \
+        data.standard=meds \
+        data=sharded \
+        data.root="${MIMICIV_MEDS_COHORT_DIR}/data" \
+        "data.shard=$(uv run expand_shards "${MIMICIV_MEDS_COHORT_DIR}/data")" \
+        cohort_dir="${ACES_OUTPUT_DIR}" \
+        cohort_name="${task}" \
+        -m
+done
+
 echo "MEDS dataset pipeline completed successfully!"

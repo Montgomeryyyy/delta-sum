@@ -7,7 +7,6 @@ Get an interative session
 
 ```
 curl -LsSf https://astral.sh/uv/install.sh | sh
-export UV_PROJECT_ENVIRONMENT="/scratch/users/<k_number>>/mimic-struct-predict/.venv"
 uv sync
 ```
 
