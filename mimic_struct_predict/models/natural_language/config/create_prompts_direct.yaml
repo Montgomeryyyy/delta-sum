@@ -14,12 +14,12 @@ model:
   pretrained_model_name_or_path: ???
 
 tokenization:
-  max_ehr_tokens: 256
+  max_ehr_tokens: 4096
   batch_size: null
   # Direct output "Yes"/"No" without "Thinking..." intermediate step
   enable_thinking: false
   output_format: yes_no  # Options: "yes_no", "probability"
-  max_new_tokens: 256
+  max_new_tokens: 1024
   token_buffer: 16
   character_per_token_heuristic: 6
 

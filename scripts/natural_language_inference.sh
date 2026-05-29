@@ -3,7 +3,7 @@
 # Exit immediately if any command fails
 set -e
 
-nvidia-smi
+# nvidia-smi
 
 # --- Get config ---
 source "./scripts/config.sh"
@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$USER" ]]; then
+if [[ -z "$PROMPT_DATASET_NAME" ]]; then
     echo "Error: The -u/--user argument is required." >&2
     echo $USAGE_STRING >&2
     exit 1
@@ -58,7 +58,7 @@ fi
 set -x
 
 uv run natural_language_inference \
-    --config-name="${CONFIG_NAME}" \
+    --config-name "${CONFIG_NAME}" \
     model.pretrained_model_name_or_path="${MODEL_PATH}" \
     dataset_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/${PROMPT_DATASET_NAME}" \
     output_dir="${NATURAL_LANGUAGE_INFERENCE_DIR}/${PROMPT_DATASET_NAME}" \

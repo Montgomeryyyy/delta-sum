@@ -13,7 +13,7 @@ set -x
 EHR_TEXT_DIR="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/ehr_texts"
 
 uv run natural_language_create_task_ehr_texts \
-    meds_dir="${NATURAL_LANGUAGE_INPUT_DIR}/data" \
+    meds_dir="${NATURAL_LANGUAGE_DATA_DIR}/data" \
     aces_dir="${ACES_OUTPUT_DIR}" \
     output_dir="${EHR_TEXT_DIR}"
 

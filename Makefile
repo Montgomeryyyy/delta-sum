@@ -13,7 +13,7 @@ MIMICIV_PRE_MEDS_DIR := data/pre_MEDS
 MIMICIV_MEDS_COHORT_DIR := data/MEDS_cohort
 
 
-NATURAL_LANGUAGE_INPUT_DIR := data/MEDS_cohort_with_headers
+NATURAL_LANGUAGE_DATA_DIR := data/MEDS_cohort_with_headers
 NATURAL_LANGUAGE_OUTPUT_DIR := data/natural_language
 
 DATA_DIR := data
@@ -81,9 +81,9 @@ meds-dataset:
 		pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/ETL.yaml\
 
 	@echo "Running add headers pipeline..."
-	rm -rf $(NATURAL_LANGUAGE_INPUT_DIR)
+	rm -rf $(NATURAL_LANGUAGE_DATA_DIR)
 	INPUT_DIR=$(MIMICIV_MEDS_COHORT_DIR) \
-	OUTPUT_DIR=$(NATURAL_LANGUAGE_INPUT_DIR) \
+	OUTPUT_DIR=$(NATURAL_LANGUAGE_DATA_DIR) \
 	DATASET_NAME=$(DATASET_NAME) \
 	DATASET_VERSION=$(MIMIC_VERSION) \
 	uv run MEDS_transform-pipeline \
@@ -91,7 +91,7 @@ meds-dataset:
 
 	@echo "Running add quantiles pipeline..."
 	rm -rf $(STRUCTURED_INPUT_DATA_DIR)
-	INPUT_DIR=$(NATURAL_LANGUAGE_INPUT_DIR) \
+	INPUT_DIR=$(NATURAL_LANGUAGE_DATA_DIR) \
 	OUTPUT_DIR=$(STRUCTURED_INPUT_DATA_DIR) \
 	DATASET_NAME=$(DATASET_NAME) \
 	DATASET_VERSION=$(MIMIC_VERSION) \
@@ -271,7 +271,7 @@ NATURAL_LANGUAGE_PRETRAINING_DATA_DIR := $(DATA_DIR)/natural_language/pretrainin
 .PHONY: natural-language-dataset-prompts
 natural-language-dataset-prompts:
 	uv run natural_language_create_task_ehr_texts \
-		meds_dir=$(NATURAL_LANGUAGE_INPUT_DIR)/data \
+		meds_dir=$(NATURAL_LANGUAGE_DATA_DIR)/data \
 		aces_dir=$(ACES_OUTPUT_DIR) \
 		output_dir=$(NATURAL_LANGUAGE_PROMPT_DATA_DIR)/ehr_texts \
 

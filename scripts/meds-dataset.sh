@@ -26,22 +26,22 @@ uv run MEDS_transform-pipeline \
     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/ETL.yaml
 
 echo "Running add headers pipeline..."
-rm -rf "$NATURAL_LANGUAGE_INPUT_DIR"
+rm -rf "$NATURAL_LANGUAGE_DATA_DIR"
 INPUT_DIR="$MIMICIV_MEDS_COHORT_DIR" \
-OUTPUT_DIR="$NATURAL_LANGUAGE_INPUT_DIR" \
+OUTPUT_DIR="$NATURAL_LANGUAGE_DATA_DIR" \
 DATASET_NAME="$DATASET_NAME" \
 DATASET_VERSION="$MIMIC_VERSION" \
 uv run MEDS_transform-pipeline \
     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_headers.yaml
 
-echo "Running add quantiles pipeline..."
-rm -rf "$STRUCTURED_INPUT_DATA_DIR"
-INPUT_DIR="$NATURAL_LANGUAGE_INPUT_DIR" \
-OUTPUT_DIR="$STRUCTURED_INPUT_DATA_DIR" \
-DATASET_NAME="$DATASET_NAME" \
-DATASET_VERSION="$MIMIC_VERSION" \
-uv run MEDS_transform-pipeline \
-    pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_quantiles.yaml
+# echo "Running add quantiles pipeline..."
+# rm -rf "$STRUCTURED_INPUT_DATA_DIR"
+# INPUT_DIR="$NATURAL_LANGUAGE_DATA_DIR" \
+# OUTPUT_DIR="$STRUCTURED_INPUT_DATA_DIR" \
+# DATASET_NAME="$DATASET_NAME" \
+# DATASET_VERSION="$MIMIC_VERSION" \
+# uv run MEDS_transform-pipeline \
+#     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_quantiles.yaml
 
 echo "Running ACES pipeline"
 rm -rf "${ACES_OUTPUT_DIR}"

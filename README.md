@@ -11,10 +11,10 @@ uv sync
 ```
 
 ```
-export DATA_DIR=
 export MIMIC_USER=
 export MIMIC_PASSWORD=
-export HF_MODEL_NAME=
+export SCRATCH_DIR=/scratch$(pwd)
+export HF_MODEL_NAME=Qwen/Qwen3-0.6B
 ```
 Run in interactive shell
 ```
@@ -33,19 +33,21 @@ sbatch\
 
 sbatch\
     --partition cpu \
+    --mem 8000 \
     --time 5 \
     --chdir $(pwd) \
     --export=all \
-    --output=/scratch/users/%u/logs/run_meds_pipeline/%j.out \
-    scripts/run_meds_pipeline.sh
+    --output=/scratch/users/%u/logs/meds-dataset/%j.out \
+    scripts/meds-dataset.sh
 
 sbatch\
     --partition cpu \
+    --mem 8000 \
     --time 5 \
     --chdir $(pwd) \
     --export=all \
-    --output=/scratch/users/%u/logs/create_prompts/%j.out \
-    scripts/create_prompts.sh
+    --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
+    scripts/natural-language-dataset-prompts.sh
 
 sbatch \
     --partition biomed_a100_gpu \
@@ -57,9 +59,9 @@ sbatch \
     --time 10 \
     --chdir $(pwd) \
     --export=all \
-    --output=/scratch/users/%u/logs/run_natural_language_inference/%j.out \
-    scripts/run_natural_language_inference.sh \
-    --config-name inference_thinking_probability.yaml \
+    --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
+    scripts/natural_language_inference.sh \
+    --config-name inference_thinking_yes_no.yaml \
     --dataset-name thinking_yes_no \
     --split tuning
 
@@ -73,11 +75,28 @@ sbatch \
     --time 10 \
     --chdir $(pwd) \
     --export=all \
-    --output=/scratch/users/%u/logs/run_natural_language_inference/%j.out \
-    scripts/run_natural_language_inference.sh \
+    --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
+    scripts/natural_language_inference.sh \
     --config-name inference_thinking_probability.yaml \
     --dataset-name thinking_probability \
     --split tuning
+
+sbatch \
+    --partition biomed_a100_gpu \
+    --gres=gpu:1 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task=1 \
+    --mem=16G \
+    --time 10 \
+    --chdir $(pwd) \
+    --export=all \
+    --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
+    scripts/natural_language_train_grpo.sh \
+    --config-name grpo_yes_no.yaml \
+    --dataset-name thinking_yes_no
+
+bash scripts/trackio.sh
 ```
 
 ## Implemented
