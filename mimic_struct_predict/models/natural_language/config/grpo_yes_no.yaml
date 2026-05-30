@@ -1,6 +1,6 @@
 model:
-  pretrained_model_name_or_path: ./pre_trained_models/Qwen3-0.6B
-  dtype: float16
+  pretrained_model_name_or_path: ???
+  dtype: bfloat16
 
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
 output_dir: ???          # Required: directory to save outputs
@@ -46,55 +46,54 @@ training:
   # SFTTrainer parameters
   ## Parameters that control the data preprocessing
   remove_unused_columns: false
-  num_generations: 4
-  num_generations_eval: 1
-  max_completion_length: 256
+  num_generations : 8
+  max_completion_length: 1024
   shuffle_dataset: true
   ## Parameters that control generation
-  temperature: 0.6
-  top_p: 0.95
-  top_k: 20
-  min_p: 0
   generation_kwargs:
-    use_cache: true
-  use_vllm: false # TODO
-  ## Parameters that control the training
-  beta: 0
-  loss_type: dapo # TODO
-  mask_truncated_completions: false
+    temperature: 0.6
+    top_p: 0.95
+    top_k: 20
+    min_p: 0
+    max_tokens: 1024
+  ## Parameters that control generation acceleration powered by vLLM
+  use_vllm: true
+  vllm_mode: "colocate"
+  ## Parameters that control colocated vLLM execution (only used when `vllm_mode` is `"colocate"`)
+  vllm_gpu_memory_utilization: 0.40
+  vllm_max_model_length: 5120
   ## Parameters that control the logging
   log_completions: true
-  num_completions_to_print: 4
+  num_completions_to_print: 0
   # TrainingArguments parameters
   ## Training Duration and Batch Size
-  per_device_train_batch_size: 1
-  max_steps : 4
+  per_device_train_batch_size: 8
+  num_train_epochs : 1
   ## Learning Rate & Scheduler
-  learning_rate: 2e-5
+  learning_rate: 1e-6
   lr_scheduler_type: cosine
-  warmup_ratio: 0.1
+  warmup_steps: 0.1
   ## Optimizer
-  optim: adamw_8bit
+  optim: adamw_torch
   weight_decay: 0.01
   ## Regularization & Training Stability
   gradient_accumulation_steps: 4
-  gradient_checkpointing: true
   ## Mixed Precision Training
   fp16: true
   ## Logging & Monitoring Training
   logging_strategy: steps
-  logging_steps: 1
+  logging_steps: 0.01
+  ## Logging
+  disable_tqdm: True
   ## Evaluation
   eval_strategy: steps
-  eval_steps: 2
-  per_device_eval_batch_size: 4
+  eval_steps: 0.05
+  per_device_eval_batch_size: 8
   ## Checkpointing & Saving
   save_strategy: steps
-  save_steps: 2  # Must match eval_steps for load_best_model_at_end to work correctly
+  save_steps: 0.05  # Must match eval_steps for load_best_model_at_end to work correctly
   save_total_limit: 3
   ## Best Model Tracking
   load_best_model_at_end: true
   metric_for_best_model: eval_loss
   greater_is_better: true
-  ## Dataloader
-  dataloader_num_workers: 1

@@ -182,6 +182,8 @@ def main(cfg: DictConfig) -> None:
         **cfg.get("training", {}),
     )
 
+    print(grpo_config)
+
     # --- LoRA config ---
     peft_config = None
     if "lora" in cfg:

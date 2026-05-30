@@ -15,6 +15,7 @@ export MIMIC_USER=
 export MIMIC_PASSWORD=
 export SCRATCH_DIR=/scratch$(pwd)
 export HF_MODEL_NAME=Qwen/Qwen3-0.6B
+bash scripts/config.sh
 ```
 Run in interactive shell
 ```
@@ -27,7 +28,7 @@ sbatch\
     --partition cpu \
     --time 5 \
     --chdir $(pwd) \
-    --export=all \
+    --get-user-env \
     --output=/scratch/users/%u/logs/download_mimic/%j.out \
     scripts/download_mimic.sh
 
@@ -36,7 +37,7 @@ sbatch\
     --mem 8000 \
     --time 5 \
     --chdir $(pwd) \
-    --export=all \
+    --get-user-env \
     --output=/scratch/users/%u/logs/meds-dataset/%j.out \
     scripts/meds-dataset.sh
 
@@ -45,7 +46,7 @@ sbatch\
     --mem 8000 \
     --time 5 \
     --chdir $(pwd) \
-    --export=all \
+    --get-user-env \
     --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
     scripts/natural-language-dataset-prompts.sh
 
@@ -58,7 +59,7 @@ sbatch \
     --mem=16G \
     --time 10 \
     --chdir $(pwd) \
-    --export=all \
+    --get-user-env \
     --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
     scripts/natural_language_inference.sh \
     --config-name inference_thinking_yes_no.yaml \
@@ -74,7 +75,7 @@ sbatch \
     --mem=16G \
     --time 10 \
     --chdir $(pwd) \
-    --export=all \
+    --get-user-env \
     --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
     scripts/natural_language_inference.sh \
     --config-name inference_thinking_probability.yaml \
@@ -88,15 +89,20 @@ sbatch \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
     --mem=16G \
-    --time 10 \
+    --time 5 \
     --chdir $(pwd) \
     --export=all \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
+    --get-user-env \
     scripts/natural_language_train_grpo.sh \
     --config-name grpo_yes_no.yaml \
     --dataset-name thinking_yes_no
 
 bash scripts/trackio.sh
+
+srun -p cpu --time 120 --mem=8G --pty /bin/bash -l
+
+srun --partition biomed_a100_gpu --gres=gpu:1 --time 20 --mem=8G --pty /bin/bash -l
 ```
 
 ## Implemented
