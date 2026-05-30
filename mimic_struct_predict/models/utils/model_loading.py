@@ -153,6 +153,7 @@ def load_model_and_tokenizer(
         torch_dtype=resolved_dtype,
         device_map="auto" if device.type == "cuda" else None,
         quantization_config=quantization_config,
+        attn_implementation=getattr(model_config, "attn_implementation", None),
     )
 
     adapter_path = getattr(model_config, "adapter_path", None)

@@ -874,6 +874,15 @@ wheels = [
 ]
 
 [[package]]
+name = "editables"
+version = "0.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/f8/02a4e9a0cb961b0feeb431ac96b231c157ecdcbbeacafe9e2fdb4b1dde39/editables-0.6.tar.gz", hash = "sha256:1163834902381c4613787951c5914800fdf155ae08848a373b8ea5006780977c", size = 16763, upload-time = "2026-04-14T10:39:04.677Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/0e/d095533037fc9468f947b19f2da53f869804632b508808de41e86e801797/editables-0.6-py3-none-any.whl", hash = "sha256:d70e4698078a1d033e7786d9c64e5be070d058a67c21417024d38a58ac20aa43", size = 5438, upload-time = "2026-04-14T10:39:03.663Z" },
+]
+
+[[package]]
 name = "einops"
 version = "0.8.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1082,6 +1091,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/94/b8/00651a0f559862f3b
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a4/a5/842ae8f0c08b61d6484b52f99a03510a3a72d23141942d216ebe81fefbce/filelock-3.25.2-py3-none-any.whl", hash = "sha256:ca8afb0da15f229774c9ad1b455ed96e85a81373065fb10446672f64444ddf70", size = 26759, upload-time = "2026-03-11T20:45:37.437Z" },
 ]
+
+[[package]]
+name = "flash-attn"
+version = "2.8.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "einops" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3b/b2/8d76c41ad7974ee264754709c22963447f7f8134613fd9ce80984ed0dab7/flash_attn-2.8.3.tar.gz", hash = "sha256:1e71dd64a9e0280e0447b8a0c2541bad4bf6ac65bdeaa2f90e51a9e57de0370d", size = 8447812, upload-time = "2025-08-15T08:28:12.911Z" }
 
 [[package]]
 name = "flexible-schema"
@@ -1371,7 +1390,7 @@ wheels = [
 
 [[package]]
 name = "google-genai"
-version = "1.73.1"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1385,9 +1404,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/d8/40f5f107e5a2976bbac52d421f04d14fc221b55a8f05e66be44b2f739fe6/google_genai-1.73.1.tar.gz", hash = "sha256:b637e3a3b9e2eccc46f27136d470165803de84eca52abfed2e7352081a4d5a15", size = 530998, upload-time = "2026-04-14T21:06:19.153Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/7b/6eb3b3d545b6bb4c374acba1ccf91b0f33b605e551536a6243cfcef2f07f/google_genai-2.7.0.tar.gz", hash = "sha256:3c6f32f5ced9877ededd1b384b5e5b7f09c20046ec3390b662b16d8cd1882ac5", size = 555853, upload-time = "2026-05-28T15:39:24.58Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/65/af/508e0528015240d710c6763f7c89ff44fab9a94a80b4377e265d692cbfd6/google_genai-1.73.1-py3-none-any.whl", hash = "sha256:af2d2287d25e42a187de19811ef33beb2e347c7e2bdb4dc8c467d78254e43a2c", size = 783595, upload-time = "2026-04-14T21:06:17.464Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/dd/7a8be39e9d698e80e9db796514efbc6083dbd787bdb9a101e8ba47248e5e/google_genai-2.7.0-py3-none-any.whl", hash = "sha256:21cac381e09a869151706aba797b6a4f96cfe92c484e13204d092caee7ff11cb", size = 822545, upload-time = "2026-05-28T15:39:22.907Z" },
 ]
 
 [[package]]
@@ -1593,6 +1612,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/01/ee/02a2c011bdab74c6fb3c75474d40b3052059d95df7e73351460c8588d963/h11-0.16.0.tar.gz", hash = "sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1", size = 101250, upload-time = "2025-04-24T03:35:25.427Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", size = 37515, upload-time = "2025-04-24T03:35:24.344Z" },
+]
+
+[[package]]
+name = "hatchling"
+version = "1.29.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pathspec" },
+    { name = "pluggy" },
+    { name = "trove-classifiers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cf/9c/b4cfe330cd4f49cff17fd771154730555fa4123beb7f292cf0098b4e6c20/hatchling-1.29.0.tar.gz", hash = "sha256:793c31816d952cee405b83488ce001c719f325d9cda69f1fc4cd750527640ea6", size = 55656, upload-time = "2026-02-23T19:42:06.539Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d3/8a/44032265776062a89171285ede55a0bdaadc8ac00f27f0512a71a9e3e1c8/hatchling-1.29.0-py3-none-any.whl", hash = "sha256:50af9343281f34785fab12da82e445ed987a6efb34fd8c2fc0f6e6630dbcc1b0", size = 76356, upload-time = "2026-02-23T19:42:05.197Z" },
 ]
 
 [[package]]
@@ -2598,8 +2632,11 @@ dependencies = [
     { name = "aiolimiter" },
     { name = "bitsandbytes" },
     { name = "datasets" },
+    { name = "editables" },
     { name = "es-aces" },
+    { name = "flash-attn" },
     { name = "google-genai" },
+    { name = "hatchling" },
     { name = "huggingface-hub" },
     { name = "hydra-optuna-sweeper" },
     { name = "jupyter" },
@@ -2609,7 +2646,9 @@ dependencies = [
     { name = "meds-tab" },
     { name = "meds-transforms" },
     { name = "netcal" },
+    { name = "ninja" },
     { name = "nvidia-ml-py" },
+    { name = "packaging" },
     { name = "peft" },
     { name = "polars" },
     { name = "pytest-mock" },
@@ -2629,8 +2668,11 @@ requires-dist = [
     { name = "aiolimiter", specifier = ">=1.2.1" },
     { name = "bitsandbytes", specifier = ">=0.49.2" },
     { name = "datasets", specifier = ">=4.0.0" },
+    { name = "editables", specifier = ">=0.6" },
     { name = "es-aces", specifier = ">=0.7.0" },
+    { name = "flash-attn", specifier = ">=2.8.3" },
     { name = "google-genai", specifier = ">=1.73.1" },
+    { name = "hatchling", specifier = ">=1.29.0" },
     { name = "huggingface-hub", specifier = ">=1.9.2" },
     { name = "hydra-optuna-sweeper", specifier = ">=1.2.0" },
     { name = "jupyter", specifier = ">=1.1.1" },
@@ -2640,7 +2682,9 @@ requires-dist = [
     { name = "meds-tab", specifier = ">=0.2.0" },
     { name = "meds-transforms", specifier = "~=0.5.0" },
     { name = "netcal", specifier = ">=1.3.5" },
+    { name = "ninja", specifier = ">=1.13.0" },
     { name = "nvidia-ml-py", specifier = ">=13.595.45" },
+    { name = "packaging", specifier = ">=25.0" },
     { name = "peft", specifier = ">=0.18.1" },
     { name = "polars", specifier = "~=1.27.1" },
     { name = "pytest-mock", specifier = ">=3.15.1" },
@@ -3464,6 +3508,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d6/cb/448649d7f25d228bf0be3a04590ab7afa77f15e056f8fa976ed05ec9a78f/pathlib_abc-0.5.2.tar.gz", hash = "sha256:fcd56f147234645e2c59c7ae22808b34c364bb231f685ddd9f96885aed78a94c", size = 33342, upload-time = "2025-10-10T18:37:20.524Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b1/29/c028a0731e202035f0e2e0bfbf1a3e46ad6c628cbb17f6f1cc9eea5d9ff1/pathlib_abc-0.5.2-py3-none-any.whl", hash = "sha256:4c9d94cf1b23af417ce7c0417b43333b06a106c01000b286c99de230d95eefbb", size = 19070, upload-time = "2025-10-10T18:37:19.437Z" },
+]
+
+[[package]]
+name = "pathspec"
+version = "1.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/82/42f767fc1c1143d6fd36efb827202a2d997a375e160a71eb2888a925aac1/pathspec-1.1.1.tar.gz", hash = "sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a", size = 135180, upload-time = "2026-04-27T01:46:08.907Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl", hash = "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189", size = 57328, upload-time = "2026-04-27T01:46:07.06Z" },
 ]
 
 [[package]]
@@ -5265,6 +5318,15 @@ vllm = [
     { name = "requests" },
     { name = "uvicorn" },
     { name = "vllm" },
+]
+
+[[package]]
+name = "trove-classifiers"
+version = "2026.5.22.10"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/b6/1c41aa221b157b624ea1a72e975404ef228724d249011ee411ac211a615e/trove_classifiers-2026.5.22.10.tar.gz", hash = "sha256:5477e9974e91904fb2cfa4a7581ab6e2f30c2c38d847fd00ed866080748101d5", size = 17061, upload-time = "2026-05-22T10:17:28.99Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c9/02/9a14d3048ffa4f45b7c60956a9b22688dd925d6de50f6baf7e55f3664942/trove_classifiers-2026.5.22.10-py3-none-any.whl", hash = "sha256:01fe864225726e03efb843827ecabfe319fc4dee8dd66d65b8996cb09be46e2c", size = 14225, upload-time = "2026-05-22T10:17:27.569Z" },
 ]
 
 [[package]]

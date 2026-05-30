@@ -1,5 +1,6 @@
 model:
   pretrained_model_name_or_path: ???
+  attn_implementation: flash_attention_2
   dtype: bfloat16
 
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
@@ -79,7 +80,7 @@ training:
   ## Regularization & Training Stability
   gradient_accumulation_steps: 4
   ## Mixed Precision Training
-  fp16: true
+  bf16: true
   ## Logging & Monitoring Training
   logging_strategy: steps
   logging_steps: 0.01

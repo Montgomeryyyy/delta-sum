@@ -32,6 +32,11 @@ dependencies = [
     "vertexai>=1.71.1",
     "seaborn>=0.13.2",
     "transformers>=5.5.0",
+    "packaging>=25.0",
+    "ninja>=1.13.0",
+    "hatchling>=1.29.0",
+    "editables>=0.6",
+    "flash-attn>=2.8.3",
 ]
 
 [build-system]

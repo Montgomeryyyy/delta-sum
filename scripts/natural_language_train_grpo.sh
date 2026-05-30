@@ -4,8 +4,14 @@
 # and catch pipeline failures.
 set -eo pipefail
 
+# --- Get config ---
+source "./scripts/config.sh"
+
+module load cuda/12.2.1-gcc-13.2.0
+
 # Print GPU status at launch
 nvidia-smi
+nvcc --version
 
 # --- Parse CLI args ---
 USAGE_STRING="Usage: $0 --dataset-name [dataset-name] --config-name [config-name]"

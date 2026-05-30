@@ -15,7 +15,7 @@ export MIMIC_USER=
 export MIMIC_PASSWORD=
 export SCRATCH_DIR=/scratch$(pwd)
 export HF_MODEL_NAME=Qwen/Qwen3-0.6B
-bash scripts/config.sh
+source scripts/config.sh
 ```
 Run in interactive shell
 ```
@@ -89,11 +89,10 @@ sbatch \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
     --mem=16G \
-    --time 5 \
+    --time 10 \
     --chdir $(pwd) \
-    --export=all \
+    --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
-    --get-user-env \
     scripts/natural_language_train_grpo.sh \
     --config-name grpo_yes_no.yaml \
     --dataset-name thinking_yes_no
