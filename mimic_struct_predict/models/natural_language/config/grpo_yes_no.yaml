@@ -69,30 +69,30 @@ training:
   # TrainingArguments parameters
   ## Training Duration and Batch Size
   per_device_train_batch_size: 8
-  num_train_epochs : 1
+  num_train_epochs : 50
   ## Learning Rate & Scheduler
-  learning_rate: 1e-6
-  lr_scheduler_type: cosine
+  learning_rate: 5e-5
+  lr_scheduler_type: constant_with_warmup
   warmup_steps: 0.1
   ## Optimizer
   optim: adamw_torch
   weight_decay: 0.01
   ## Regularization & Training Stability
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 1
   ## Mixed Precision Training
   bf16: true
   ## Logging & Monitoring Training
-  logging_strategy: steps
-  logging_steps: 0.01
+  logging_strategy: epoch
+  logging_steps: 1
   ## Logging
   disable_tqdm: True
   ## Evaluation
   eval_strategy: steps
-  eval_steps: 0.05
+  eval_steps: 1
   per_device_eval_batch_size: 8
   ## Checkpointing & Saving
   save_strategy: steps
-  save_steps: 0.05  # Must match eval_steps for load_best_model_at_end to work correctly
+  save_steps: 1  # Must match eval_steps for load_best_model_at_end to work correctly
   save_total_limit: 3
   ## Best Model Tracking
   load_best_model_at_end: true
