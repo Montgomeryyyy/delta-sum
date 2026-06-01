@@ -163,13 +163,13 @@ def main(cfg: DictConfig) -> None:
 
     # --- Load datasets ---
     train_dataset = datasets.load_from_disk(str(dataset_dir / cfg.split_names.train))
-    train_dataset = train_dataset.select(range(1))
+    train_dataset = train_dataset
     log.info(
         f"Combined train dataset has {len(train_dataset)} examples and the following columns:"
         f" {train_dataset.column_names}"
     )
     eval_dict = {
-        eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir)).select(range(1))
+        eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir))
         for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir()
         if eval_task_dir.is_dir()
     }

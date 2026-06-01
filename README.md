@@ -89,7 +89,7 @@ sbatch \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
     --mem=16G \
-    --time 10 \
+    --time 360 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
