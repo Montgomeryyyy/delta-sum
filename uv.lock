@@ -419,6 +419,17 @@ wheels = [
 ]
 
 [[package]]
+name = "causal-conv1d"
+version = "1.6.2.post1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ninja" },
+    { name = "packaging" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/63/5c/2403b8410122d159405c4bd8456340c7251c193358fa24d30cb273fb5048/causal_conv1d-1.6.2.post1.tar.gz", hash = "sha256:245e314ea21064ded7a5bf6b3b842b644aa6f92e45cecfe3e935629744c35ff4", size = 29434, upload-time = "2026-05-09T13:00:51.622Z" }
+
+[[package]]
 name = "cbor2"
 version = "6.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1093,6 +1104,19 @@ wheels = [
 ]
 
 [[package]]
+name = "fla-core"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "einops" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/03/14/2aabd37839b9f3c6a67fbc5678f906d04d0c242c603ac234eefe02df99a6/fla_core-0.5.0.tar.gz", hash = "sha256:476dd94711702af81cc4827010d9209f6053d8cdceac8e43d3c8497071f07a81", size = 418171, upload-time = "2026-04-21T20:25:40.948Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/03/96e6820d176256353670b41ca56dabbbebe129674b4f4ad7b54a152b7b36/fla_core-0.5.0-py3-none-any.whl", hash = "sha256:5c826ff32daf6b629658e3e4f6125d87cf8c32eea937e3be9ba85f51951d809a", size = 595276, upload-time = "2026-04-21T20:25:37.698Z" },
+]
+
+[[package]]
 name = "flash-attn"
 version = "2.8.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1101,6 +1125,19 @@ dependencies = [
     { name = "torch" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3b/b2/8d76c41ad7974ee264754709c22963447f7f8134613fd9ce80984ed0dab7/flash_attn-2.8.3.tar.gz", hash = "sha256:1e71dd64a9e0280e0447b8a0c2541bad4bf6ac65bdeaa2f90e51a9e57de0370d", size = 8447812, upload-time = "2025-08-15T08:28:12.911Z" }
+
+[[package]]
+name = "flash-linear-attention"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fla-core" },
+    { name = "transformers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/5c/1db76cc829c951117a3112f306d50333bd71399d2e35807fe7c99ffc2007/flash_linear_attention-0.5.0.tar.gz", hash = "sha256:22b789a47f07738b4382ecdf775d7bb40e0d803c467c34f8e2ecd6a1dc780938", size = 160419, upload-time = "2026-04-21T20:25:42.344Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/16/7736db08806981562c728f32ea1dcb4565948fa9faffdbf4ffbf72522fbf/flash_linear_attention-0.5.0-py3-none-any.whl", hash = "sha256:92e64e989ed34355c1f838232597b2e39783ee0494ada3199b58e156aa1d8eb8", size = 319037, upload-time = "2026-04-21T20:25:39.473Z" },
+]
 
 [[package]]
 name = "flexible-schema"
@@ -2631,10 +2668,12 @@ dependencies = [
     { name = "accelerate" },
     { name = "aiolimiter" },
     { name = "bitsandbytes" },
+    { name = "causal-conv1d" },
     { name = "datasets" },
     { name = "editables" },
     { name = "es-aces" },
     { name = "flash-attn" },
+    { name = "flash-linear-attention" },
     { name = "google-genai" },
     { name = "hatchling" },
     { name = "huggingface-hub" },
@@ -2667,10 +2706,12 @@ requires-dist = [
     { name = "accelerate", specifier = ">=1.13.0" },
     { name = "aiolimiter", specifier = ">=1.2.1" },
     { name = "bitsandbytes", specifier = ">=0.49.2" },
+    { name = "causal-conv1d", specifier = ">=1.6.2.post1" },
     { name = "datasets", specifier = ">=4.0.0" },
     { name = "editables", specifier = ">=0.6" },
     { name = "es-aces", specifier = ">=0.7.0" },
     { name = "flash-attn", specifier = ">=2.8.3" },
+    { name = "flash-linear-attention", specifier = ">=0.5.0" },
     { name = "google-genai", specifier = ">=1.73.1" },
     { name = "hatchling", specifier = ">=1.29.0" },
     { name = "huggingface-hub", specifier = ">=1.9.2" },

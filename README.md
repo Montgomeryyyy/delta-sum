@@ -14,7 +14,7 @@ uv sync
 export MIMIC_USER=
 export MIMIC_PASSWORD=
 export SCRATCH_DIR=/scratch$(pwd)
-export HF_MODEL_NAME=Qwen/Qwen3-0.6B
+export HF_MODEL_NAME=Qwen/Qwen3-8B
 source scripts/config.sh
 ```
 Run in interactive shell
@@ -26,9 +26,10 @@ bash scripts/download_hf_model.sh
 ```
 sbatch\
     --partition cpu \
-    --time 5 \
+    --time 120 \
+    --mem 16G \
     --chdir $(pwd) \
-    --get-user-env \
+    --export=SCRATCH_DIR,HF_MODEL_NAME,MIMIC_USER,MIMIC_PASSWORD, \
     --output=/scratch/users/%u/logs/download_mimic/%j.out \
     scripts/download_mimic.sh
 
@@ -43,10 +44,10 @@ sbatch\
 
 sbatch\
     --partition cpu \
-    --mem 8000 \
+    --mem 16G \
     --time 5 \
     --chdir $(pwd) \
-    --get-user-env \
+    --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
     scripts/natural-language-dataset-prompts.sh
 
@@ -56,8 +57,8 @@ sbatch \
     --nodes=1 \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
-    --mem=16G \
-    --time 10 \
+    --mem=32G \
+    --time 20 \
     --chdir $(pwd) \
     --get-user-env \
     --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
@@ -102,6 +103,7 @@ bash scripts/trackio.sh
 srun -p cpu --time 120 --mem=8G --pty /bin/bash -l
 
 srun --partition biomed_a100_gpu --gres=gpu:1 --time 20 --mem=8G --pty /bin/bash -l
+module load cuda/12.2.1-gcc-13.2.0
 ```
 
 ## Implemented

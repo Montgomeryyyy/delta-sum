@@ -3,19 +3,17 @@ defaults:
   - inference_direct
   - _self_
 
-tokenization:
-  max_prompt_length: 256
-  enable_thinking: true
+batch_size: 16
 
 generation:
-  max_new_tokens: 256
+  max_new_tokens: 1024
   use_cache: true
   temperature: 0.6
   top_p: 0.95
   top_k: 20
   min_p: 0.0
+  repetition_penalty: 1.0
 
 post_processing:
   output_format: ???
-  default_prob: 0.5
   regex_pattern: ???

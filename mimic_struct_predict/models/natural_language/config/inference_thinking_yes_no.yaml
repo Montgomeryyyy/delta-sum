@@ -3,10 +3,6 @@ defaults:
   - inference_thinking
   - _self_
 
-tokenization:
-  max_prompt_length: 256
-  enable_thinking: true
-
 generation:
   stop_strings:
     - "<answer>\nYes"
@@ -15,4 +11,4 @@ generation:
 
 post_processing:
   output_format: "yes_no"
-  regex_pattern: "<answer>\n(Yes|No)"
+  regex_pattern: "<answer>\n(Yes|No)$"

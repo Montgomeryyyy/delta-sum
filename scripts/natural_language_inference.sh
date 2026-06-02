@@ -3,7 +3,12 @@
 # Exit immediately if any command fails
 set -e
 
-# nvidia-smi
+module load cuda/12.2.1-gcc-13.2.0
+
+# Print GPU status at launch
+nvidia-smi
+nvcc --version
+echo "Running on ${HOSTNAME}"
 
 # --- Get config ---
 source "./scripts/config.sh"
@@ -56,6 +61,15 @@ fi
 
 # --- Run the natural language inference task ---
 set -x
+
+# rm -rf ${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/thinking_yes_no
+
+# uv run natural_language_create_model_prompts \
+#     model.pretrained_model_name_or_path="${PRETRAINED_MODEL_PATH}" \
+#     tokenization.output_format=yes_no \
+#     tokenization.enable_thinking=true \
+#     data_dir="${EHR_TEXT_DIR}" \
+#     output_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/thinking_yes_no"
 
 uv run natural_language_inference \
     --config-name "${CONFIG_NAME}" \

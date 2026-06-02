@@ -133,11 +133,14 @@ def batch_inference(
 
     inputs = tokenizer(
         batch_texts,
-        truncation=True,
-        max_length=tokenizer.model_max_length - generation_config.max_new_tokens,
-        padding=True,
+        truncation=False,
+        padding="longest",
+        padding_side="left",
+        pad_to_multiple_of=64,
         return_tensors="pt",
     ).to(model.device)
+
+    log.info(f"shape {inputs['input_ids'].shape}")
 
     # Forward pass to get logits for the next token
     with torch.inference_mode():
@@ -145,6 +148,7 @@ def batch_inference(
             **inputs,
             tokenizer=tokenizer,  # Pass tokenizer for handling of stopping criteria
             return_dict_in_generate=True,
+            pad_token_id=model.config.pad_token_id,
             **generation_config,
         )
 
@@ -207,6 +211,8 @@ def main(cfg: DictConfig) -> None:
         eval_mode=True,
         padding_side="left",
     )
+    model = torch.compile(model, dynamic=True)
+
     regex_pattern = re.compile(cfg.post_processing.regex_pattern)
 
     if cfg.post_processing.output_format == "probability":
@@ -220,6 +226,7 @@ def main(cfg: DictConfig) -> None:
     elif cfg.post_processing.output_format == "yes_no":
         yes_token_id = tokenizer("Yes", add_special_tokens=False).input_ids[-1]
         no_token_id = tokenizer("No", add_special_tokens=False).input_ids[-1]
+        print(tokenizer.pad_token_id, tokenizer.eos_token_id, model.config.pad_token_id, model.config.eos_token_id)
 
         if not cfg.generation.get("output_logits", False):
             raise ValueError(

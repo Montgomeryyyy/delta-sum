@@ -14,12 +14,23 @@ from mimic_struct_predict.models.utils import load_tokenizer
 log = logging.getLogger(__name__)
 
 
-PROMPT_TEMPLATE = """You are a clinical AI forecaster.
+SYSTEM_TEMPLATE = """You are a clinical AI forecaster.
 You will be given a patient's historical EHR up to the present moment.
 The outcome event has not happened yet in the EHR.
 Your job is to forecast if it will happen in the future based on the patient's past medical history.
 
-# Prediction Task
+{reasoning_instructions}
+"""
+
+DIRECT_INSTRUCTIONS = """Do not explain your reasoning. Output only your final answer between <answer> and </answer>."""
+
+THINKING_INSTRUCTIONS = """Show your step-by-step work between <think> and </think>
+Provide your final answer between <answer> and </answer>
+It is critical you adhere to a response length (including thinking) of {max_tokens} tokens or your response will fail.
+Limit your thinking process to a maximum of 3-4 bullet points or short paragraphs. Do not over-analyze or ramble.
+"""
+
+USER_TEMPLATE = """# Prediction Task
 {task_description}
 
 # Patient's Historical EHR
@@ -34,14 +45,7 @@ The most recent batch of events at the present moment.
 {ehr}
 
 # Instructions
-{reasoning_instructions}
 {format_instructions}
-"""  # noqa: E501
-
-DIRECT_INSTRUCTIONS = """Do not explain your reasoning. Output only your final answer."""
-
-THINKING_INSTRUCTIONS = """Think step by step before giving your final answer.
-Your response, including thinking, will be cut off after {max_new_words} words. You must provide your final answer within that limit.
 """  # noqa: E501
 
 YES_NO_FORMAT_INSTRUCTIONS = """Predict yes or no if the target event will occur.
@@ -177,22 +181,24 @@ def create_prompts_from_ehr_texts(
                 "max_new_tokens must be specified when thinking is enabled (as is part of prompt instructions)."
             )
         # Heuristic: 1 word = 0.75 tokens then round down to the nearest 10
-        max_new_words = int(((max_new_tokens * 0.75) // 10) * 10)
-        reasoning_instructions = reasoning_instructions.format(max_new_words=max_new_words)
+        max_tokens = int(((max_new_tokens * 0.75) // 10) * 10)
+        reasoning_instructions = reasoning_instructions.format(max_tokens=max_tokens)
 
     batch_messages = []
     for ehr in ehr_texts:
-        formatted_content = PROMPT_TEMPLATE.format(
-            ehr=ehr,
-            task_description=task_description,
-            reasoning_instructions=reasoning_instructions,
-            format_instructions=format_instructions,
-        )
-
-        messages = [{"role": "user", "content": formatted_content}]
+        messages = [
+            {"role": "system", "content": SYSTEM_TEMPLATE.format(reasoning_instructions=reasoning_instructions)},
+            {
+                "role": "user",
+                "content": USER_TEMPLATE.format(
+                    ehr=ehr,
+                    task_description=task_description,
+                    format_instructions=format_instructions,
+                ),
+            },
+        ]
         if not enable_thinking:
             # Add generation prompt to guide the model to output in the correct format for direct prompt
-
             messages.append(
                 {"role": "assistant", "content": "<answer>\n" if output_format == "yes_no" else "<answer>\n0."}
             )

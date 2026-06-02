@@ -156,6 +156,9 @@ def load_model_and_tokenizer(
         attn_implementation=getattr(model_config, "attn_implementation", None),
     )
 
+    if model.config.pad_token_id is None:
+        model.config.pad_token_id = model.config.eos_token_id
+
     adapter_path = getattr(model_config, "adapter_path", None)
     if adapter_path is not None:
         logger.info(f"Loading adapter from {adapter_path}")

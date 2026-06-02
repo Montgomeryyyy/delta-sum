@@ -17,7 +17,7 @@ tokenization:
   max_ehr_tokens: 4096
   batch_size: null
   # Direct output "Yes"/"No" without "Thinking..." intermediate step
-  enable_thinking: false
+  enable_thinking: true
   output_format: yes_no  # Options: "yes_no", "probability"
   max_new_tokens: 1024
   token_buffer: 16

@@ -12,8 +12,8 @@ if [ -z "$HF_MODEL_NAME" ]; then
 fi
 
 # ---- Internal Script Variables (No export needed) ----
-DATASET_NAME="mimic-iv-demo"
-DATASET_NAME_ED="mimic-iv-ed-demo"
+DATASET_NAME="mimiciv"
+DATASET_NAME_ED="mimic-iv-ed"
 MIMIC_VERSION="2.2"
 
 PHYSIONET_URL="https://physionet.org/files"
@@ -34,6 +34,7 @@ ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 
 NATURAL_LANGUAGE_DATA_DIR="${DATA_DIR}/MEDS_cohort_with_headers"
 NATURAL_LANGUAGE_PROMPT_DATA_DIR="${DATA_DIR}/natural_language/prompts"
+EHR_TEXT_DIR="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/ehr_texts"
 NATURAL_LANGUAGE_MODEL_DIR="${TRAINING_DIR}/natural_language"
 NATURAL_LANGUAGE_INFERENCE_DIR="${INFERENCE_DIR}/natural_language"
 
