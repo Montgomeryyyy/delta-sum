@@ -14,7 +14,7 @@ uv sync
 export MIMIC_USER=
 export MIMIC_PASSWORD=
 export SCRATCH_DIR=/scratch$(pwd)
-export HF_MODEL_NAME=Qwen/Qwen3-8B
+export HF_MODEL_NAME=google/gemma-4-E4B-it
 source scripts/config.sh
 ```
 Run in interactive shell
@@ -27,7 +27,7 @@ bash scripts/download_hf_model.sh
 sbatch\
     --partition cpu \
     --time 120 \
-    --mem 16G \
+    --mem 1G \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_MODEL_NAME,MIMIC_USER,MIMIC_PASSWORD, \
     --output=/scratch/users/%u/logs/download_mimic/%j.out \

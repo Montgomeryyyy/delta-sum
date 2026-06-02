@@ -8,11 +8,11 @@ batch_size: 16
 generation:
   max_new_tokens: 1024
   use_cache: true
-  temperature: 0.6
+  temperature: 1.0
   top_p: 0.95
-  top_k: 20
-  min_p: 0.0
-  repetition_penalty: 1.0
+  top_k: 64
+  # min_p: 0.0
+  # repetition_penalty: 1.0
 
 post_processing:
   output_format: ???

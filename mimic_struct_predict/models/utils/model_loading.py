@@ -156,7 +156,13 @@ def load_model_and_tokenizer(
         attn_implementation=getattr(model_config, "attn_implementation", None),
     )
 
-    if model.config.pad_token_id is None:
+    if hasattr(model.config, "text_config"):
+        model.config.pad_token_id = (
+            model.config.text_config.pad_token_id
+            if model.config.text_config.pad_token_id is not None
+            else model.config.text_config.eos_token_id
+        )
+    elif model.config.pad_token_id is None:
         model.config.pad_token_id = model.config.eos_token_id
 
     adapter_path = getattr(model_config, "adapter_path", None)

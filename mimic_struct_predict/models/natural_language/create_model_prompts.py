@@ -13,22 +13,22 @@ from mimic_struct_predict.models.utils import load_tokenizer
 
 log = logging.getLogger(__name__)
 
-
 SYSTEM_TEMPLATE = """You are a clinical AI forecaster.
-You will be given a patient's historical EHR up to the present moment.
-The outcome event has not happened yet in the EHR.
-Your job is to forecast if it will happen in the future based on the patient's past medical history.
+You will be given a patient's historical Electronic Health Record (EHR) up to the present moment.
+Your task is to forecast whether a specific clinical outcome will happen in the future based on this past medical history.
 
 {reasoning_instructions}
-"""
+"""  # noqa: E501
 
 DIRECT_INSTRUCTIONS = """Do not explain your reasoning. Output only your final answer between <answer> and </answer>."""
 
-THINKING_INSTRUCTIONS = """Show your step-by-step work between <think> and </think>
-Provide your final answer between <answer> and </answer>
-It is critical you adhere to a response length (including thinking) of {max_tokens} tokens or your response will fail.
-Limit your thinking process to a maximum of 3-4 bullet points or short paragraphs. Do not over-analyze or ramble.
-"""
+THINKING_INSTRUCTIONS = """CRITICAL OUTPUT FORMAT:
+1. You must show your thinking.
+2. Keep your thinking exceptionally brief: exactly 2-3 bullet points highlighting the primary risk drivers. Do not ramble.
+3. Provide your final answer at the very end between <answer> and </answer> tags.
+4. Total output must be highly concise to fit strict token constraints of {max_tokens} max tokens.
+5. If the final answer is not contained within {max_tokens} tokens the output is invalid.
+"""  # noqa: E501
 
 USER_TEMPLATE = """# Prediction Task
 {task_description}
