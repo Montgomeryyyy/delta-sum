@@ -12,18 +12,16 @@ if [ -z "$HF_MODEL_NAME" ]; then
 fi
 
 # ---- Internal Script Variables (No export needed) ----
-DATASET_NAME="mimiciv"
-DATASET_NAME_ED="mimic-iv-ed"
-MIMIC_VERSION="2.2"
-
-PHYSIONET_URL="https://physionet.org/files"
-
 DATA_DIR="${SCRATCH_DIR}/data"
 TRAINING_DIR="${SCRATCH_DIR}/training"
 INFERENCE_DIR="${SCRATCH_DIR}/inference"
 
 PRETRAINED_MODEL_PATH="${SCRATCH_DIR}/hf_models/${HF_MODEL_NAME}"
 
+MIMIC_VERSION="2.2"
+# DATASET_NAME="mimic-iv-demo"
+# MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic_demo"
+DATASET_NAME="mimiciv"
 MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
 MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
 MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"

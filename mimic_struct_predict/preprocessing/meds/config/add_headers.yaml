@@ -27,3 +27,7 @@ stages:
   - add_delta_rows:
       header: "## Delta"
       delimiter: ${delimiter}
+
+parallelize:
+  n_workers: ${oc.env:N_WORKERS,1}
+  launcher: "joblib"

@@ -79,3 +79,7 @@ stages:
       - "Diagnosis"
       - "Diagnosis Related Group"
       - "Hcpcs Billing Item"
+
+parallelize:
+  n_workers: ${oc.env:N_WORKERS,1}
+  launcher: "joblib"

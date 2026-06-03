@@ -18,7 +18,7 @@ dependencies = [
     "meds~=0.4.0",
     "meds-extract>=0.3.0",
     "meds-tab>=0.2.0",
-    "meds-transforms~=0.5.0",
+    "meds-transforms[local-parallelism]~=0.5.0",
     "netcal>=1.3.5",
     "nvidia-ml-py>=13.595.45",
     "peft>=0.18.1",
@@ -39,6 +39,7 @@ dependencies = [
     "flash-attn>=2.8.3",
     "causal-conv1d>=1.6.2.post1",
     "flash-linear-attention>=0.5.0",
+    "physionet>=0.1.5",
 ]
 
 [build-system]
@@ -55,6 +56,7 @@ add_delta_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_delta_r
 merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age_column.merge_age_column:merge_age_column"
 
 [project.scripts]
+physionet_download = "mimic_struct_predict.preprocessing.meds.physionet_download:main"
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 
 meds_tab_inference = "mimic_struct_predict.models.tabular.inference:main"
@@ -110,7 +112,8 @@ files = ["mimic_struct_predict"]
 exclude = [
     "^tests/",
     "^data/",
-    "^output/"
+    "^output/",
+    "mimic_struct_predict/preprocessing/meds/physionet_download.py"
 ]
 
 [tool.pytest.ini_options]

@@ -16,16 +16,9 @@ fi
 mkdir -p "$MIMICIV_RAW_DIR"
 
 # Download main MIMIC-IV demo dataset
+rm -rf ${MIMICIV_RAW_DIR}
 echo "Starting download for ${DATASET_NAME}..."
-cd "$MIMICIV_RAW_DIR" && \
-    wget -q -r -N -c -np --user "$MIMIC_USER" --password "$MIMIC_PASSWORD" \
-        --no-check-certificate --accept gz,csv --reject "index.html*" -nH --cut-dirs=3 \
-        "${PHYSIONET_URL}/${DATASET_NAME}/${MIMIC_VERSION}/"
-echo "Downloaded ${DATASET_NAME} v${MIMIC_VERSION} to ${MIMICIV_RAW_DIR}"
-
-# Download MIMIC-IV ED demo dataset
-echo "Starting download for ${DATASET_NAME_ED}..."
-wget -q -r -N -c -np --user "$MIMIC_USER" --password "$MIMIC_PASSWORD" \
-    --no-check-certificate --accept gz,csv --reject "index.html*" -nH --cut-dirs=3 \
-    "${PHYSIONET_URL}/${DATASET_NAME_ED}/${MIMIC_VERSION}/"
-echo "Downloaded ${DATASET_NAME_ED} v${MIMIC_VERSION} to ${MIMICIV_RAW_DIR}"
+uv run physionet_download \
+    raw_mimic_dir="${MIMICIV_RAW_DIR}" \
+    mimic_version="${MIMIC_VERSION}" \
+    do_demo=true \

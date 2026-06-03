@@ -26,8 +26,8 @@ bash scripts/download_hf_model.sh
 ```
 sbatch\
     --partition cpu \
-    --time 120 \
-    --mem 1G \
+    --time 600 \
+    --mem 2G \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_MODEL_NAME,MIMIC_USER,MIMIC_PASSWORD, \
     --output=/scratch/users/%u/logs/download_mimic/%j.out \
@@ -35,10 +35,12 @@ sbatch\
 
 sbatch\
     --partition cpu \
-    --mem 8000 \
-    --time 5 \
+    --time 600 \
+    --ntasks=1 \
+    --cpus-per-task=32 \
+    --mem=256G \
     --chdir $(pwd) \
-    --get-user-env \
+    --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/meds-dataset/%j.out \
     scripts/meds-dataset.sh
 
@@ -100,7 +102,7 @@ sbatch \
 
 bash scripts/trackio.sh
 
-srun -p cpu --time 120 --mem=8G --pty /bin/bash -l
+srun -p cpu --time 240 --mem=8G --pty /bin/bash -l
 
 srun --partition biomed_a100_gpu --gres=gpu:1 --time 20 --mem=8G --pty /bin/bash -l
 module load cuda/12.2.1-gcc-13.2.0
