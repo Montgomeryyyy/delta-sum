@@ -23,9 +23,9 @@ Your task is to forecast whether a specific clinical outcome will happen in the 
 DIRECT_INSTRUCTIONS = """Do not explain your reasoning. Output only your final answer between <answer> and </answer>."""
 
 THINKING_INSTRUCTIONS = """CRITICAL OUTPUT FORMAT:
-1. You must show your thinking.
+1. You must show your thinking between <think> and </think> tags.
 2. Keep your thinking exceptionally brief: exactly 2-3 bullet points highlighting the primary risk drivers. Do not ramble.
-3. Provide your final answer at the very end between <answer> and </answer> tags.
+3. Provide your final answer in quotes at the very end between <answer> and </answer> tags.
 4. Total output must be highly concise to fit strict token constraints of {max_tokens} max tokens.
 5. If the final answer is not contained within {max_tokens} tokens the output is invalid.
 """  # noqa: E501
@@ -49,19 +49,15 @@ The most recent batch of events at the present moment.
 """  # noqa: E501
 
 YES_NO_FORMAT_INSTRUCTIONS = """Predict yes or no if the target event will occur.
-Provide your final answer at the very end of your response between <answer> and </answer> tags.
+Provide your final answer in quotes at the very end of your response between <answer> and </answer> tags.
 It must be exactly one of the following:
-<answer>
-Yes
-</answer>
+<answer>"Yes"</answer>
 OR
-<answer>
-No
-</answer>
+<answer>"No"</answer>
 """  # noqa: E501
 
 PROBABILITY_FORMAT_INSTRUCTIONS = """Predict the probability of the target event occurring.
-Provide your final answer at the very end of your response between <answer> and </answer> tags.
+Provide your final answer at the very end of your response between <answer> and </answer> tags with no trailing whitespace.
 It must be a single decimal value representing the probability of the event occurring (between 0.0 and 1.0).
 Example format:
 <answer>

@@ -5,10 +5,10 @@ defaults:
 
 generation:
   stop_strings:
-    - "<answer>\nYes"
-    - "<answer>\nNo"
+    - '<answer>"Yes'
+    - '<answer>"No'
   output_logits: true
 
 post_processing:
   output_format: "yes_no"
-  regex_pattern: "<answer>\n(Yes|No)$"
+  regex_pattern: '<answer>"(Yes|No)$'

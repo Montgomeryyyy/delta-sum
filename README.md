@@ -14,7 +14,7 @@ uv sync
 export MIMIC_USER=
 export MIMIC_PASSWORD=
 export SCRATCH_DIR=/scratch$(pwd)
-export HF_MODEL_NAME=google/gemma-4-E4B-it
+export HF_MODEL_NAME=Qwen/Qwen3-8B
 source scripts/config.sh
 ```
 Run in interactive shell
@@ -46,6 +46,17 @@ sbatch\
 
 sbatch\
     --partition cpu \
+    --time 10 \
+    --ntasks=1 \
+    --cpus-per-task=2 \
+    --mem=32G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --output=/scratch/users/%u/logs/meds-dataset/%j.out \
+    scripts/meds-dataset.sh
+
+sbatch\
+    --partition cpu \
     --mem 16G \
     --time 5 \
     --chdir $(pwd) \
@@ -59,15 +70,15 @@ sbatch \
     --nodes=1 \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
-    --mem=32G \
-    --time 20 \
+    --mem=8G \
+    --time 40 \
     --chdir $(pwd) \
     --get-user-env \
     --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
     scripts/natural_language_inference.sh \
     --config-name inference_thinking_yes_no.yaml \
     --dataset-name thinking_yes_no \
-    --split tuning
+    --split train_copy
 
 sbatch \
     --partition biomed_a100_gpu \

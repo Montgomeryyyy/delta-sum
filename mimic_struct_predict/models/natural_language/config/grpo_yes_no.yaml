@@ -18,8 +18,8 @@ tracking:
   trackio_space_id: null
 
 lora:
-  r: 32
-  lora_alpha: 64
+  r: 16
+  lora_alpha: 32
   bias: "none"
   task_type: "CAUSAL_LM"
   target_modules: "all-linear"
@@ -32,10 +32,8 @@ reward:
   # <think>
   # ...
   # </think>
-  # <answer>
-  # Yes|No
-  # </answer>
-  regex_pattern: '^<think>[\s\S]*?</think>[\s\S]*?<answer>\n(Yes|No)\n</answer>$'
+  # <answer>"Yes|No"</answer>
+  regex_pattern: '^<think>[\s\S]*?</think>[\s\S]*?<answer>"(Yes|No)"</answer>$'
 
 split_names:
   train: train
@@ -44,7 +42,7 @@ split_names:
 brier_loss: false
 
 training:
-  # SFTTrainer parameters
+  # GRPOTrainer parameters
   ## Parameters that control the data preprocessing
   remove_unused_columns: false
   num_generations : 8
@@ -55,13 +53,13 @@ training:
     temperature: 0.6
     top_p: 0.95
     top_k: 20
-    min_p: 0
+    min_p: 0.0
     max_tokens: 1024
   ## Parameters that control generation acceleration powered by vLLM
   use_vllm: true
   vllm_mode: "colocate"
   ## Parameters that control colocated vLLM execution (only used when `vllm_mode` is `"colocate"`)
-  vllm_gpu_memory_utilization: 0.10
+  vllm_gpu_memory_utilization: 0.30
   vllm_max_model_length: 5120
   ## Parameters that control the training
   beta: 0.0
@@ -70,10 +68,10 @@ training:
   num_completions_to_print: 0
   # TrainingArguments parameters
   ## Training Duration and Batch Size
-  per_device_train_batch_size: 16
-  num_train_epochs : 5
+  per_device_train_batch_size: 4
+  num_train_epochs : 10
   ## Learning Rate & Scheduler
-  learning_rate: 5e-5
+  learning_rate: 1e-5
   lr_scheduler_type: constant_with_warmup
   warmup_steps: 0.1
   ## Optimizer
@@ -85,13 +83,13 @@ training:
   bf16: true
   ## Logging & Monitoring Training
   logging_strategy: steps
-  logging_steps: 0.005
+  logging_steps: 2
   ## Logging
   disable_tqdm: True
   ## Evaluation
   eval_strategy: steps
   eval_steps: 0.025
-  per_device_eval_batch_size: 32
+  per_device_eval_batch_size: 16
   ## Checkpointing & Saving
   save_strategy: steps
   save_steps: 0.025  # Must match eval_steps for load_best_model_at_end to work correctly

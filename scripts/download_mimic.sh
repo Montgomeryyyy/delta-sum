@@ -12,6 +12,9 @@ if [ -z "$MIMIC_USER" ] || [ -z "$MIMIC_PASSWORD" ]; then
     exit 1
 fi
 
+DATASET_NAME="mimiciv"
+MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
+
 # --- Main Download Process ---
 mkdir -p "$MIMICIV_RAW_DIR"
 
@@ -21,4 +24,4 @@ echo "Starting download for ${DATASET_NAME}..."
 uv run physionet_download \
     raw_mimic_dir="${MIMICIV_RAW_DIR}" \
     mimic_version="${MIMIC_VERSION}" \
-    do_demo=true \
+    do_demo=false
