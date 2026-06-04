@@ -10,6 +10,7 @@ split: ???
 tasks: null
 
 batch_size: 24
+save_every_n_batches: 5
 num_workers: 1
 
 generation:

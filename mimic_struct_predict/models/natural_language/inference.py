@@ -275,12 +275,20 @@ def main(cfg: DictConfig) -> None:
 
         # Batch wise inference and streaming results to Parquet to avoid memory issues with large datasets
         # and allow for partial results to be saved even if the process is interrupted.
-        writer = None
-        out_file_path = out_dir / cfg.split / task_dir.name / "results.parquet"
-        out_file_path.parent.mkdir(parents=True, exist_ok=True)
-        log.info(f"Running inference and streaming to {out_file_path}")
+        inference_dir = out_dir / cfg.split / task_dir.name
+        inference_dir.mkdir(parents=True, exist_ok=True)
+        log.info(f"Running inference and streaming to {inference_dir}")
+
+        accumulated_batches = []
         try:
             for i in tqdm(range(0, len(dataset), cfg.batch_size)):
+                chunk_index = i // (cfg.batch_size * cfg.save_every_n_batches)
+                chunk_file_path = inference_dir / f"chunk_{chunk_index:06d}.parquet"
+
+                # Auto-resume: Skip if this chunk file already exists on disk
+                if chunk_file_path.exists():
+                    continue
+
                 batch = dataset[i : i + cfg.batch_size]
                 results = batch_inference(
                     batch_texts=batch["prompt"],
@@ -292,18 +300,18 @@ def main(cfg: DictConfig) -> None:
                 for key, values in results.items():
                     batch[key] = values
 
-                table = pa.Table.from_pydict(batch)
-                if writer is None:
-                    writer = pq.ParquetWriter(out_file_path, table.schema)
-                writer.write_table(table)
+                accumulated_batches.append(pa.Table.from_pydict(batch))
+
+                # Flush to disk when we hit our interval OR reached the end of the dataset
+                if len(accumulated_batches) == cfg.save_every_n_batches or (i + cfg.batch_size) >= len(dataset):
+                    # Concatenate accumulated tables into one larger chunk
+                    chunk_table = pa.concat_tables(accumulated_batches)
+                    pq.write_table(chunk_table, chunk_file_path)
+
+                    # Reset RAM buffer
+                    accumulated_batches = []
 
         except Exception as e:
             log.error(f"Error processing task {task_dir.name} at batch index {i}: {e}", exc_info=True)
-
-        finally:
-            # Ensure the Parquet file is properly finalized and closed,
-            # even if an exception was raised during the loop.
-            if writer is not None:
-                writer.close()
 
     log.info("Inference Complete!")
