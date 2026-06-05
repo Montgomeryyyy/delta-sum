@@ -8,14 +8,15 @@ output_dir: ???          # Required: directory to save outputs
 tasks: null # If null or empty, will run on all tasks in the dataset
 seed: 42
 
+run_dir: "${output_dir}/${now:%Y%m%d_%H%M%S}"
+
 hydra:
   run:
-    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+    dir: ${run_dir}
 
 tracking:
-  report_to: trackio
-  project: mimic-struct-predict-grpo
-  trackio_space_id: null
+  report_to: tensorboard
+  logging_dir: ${run_dir}
 
 lora:
   r: 16
@@ -60,7 +61,7 @@ training:
   vllm_mode: "colocate"
   ## Parameters that control colocated vLLM execution (only used when `vllm_mode` is `"colocate"`)
   vllm_gpu_memory_utilization: 0.30
-  vllm_max_model_length: 5120
+  vllm_max_model_length: 5632 # prompt + EHR + new tokens = ~512 + 4096 + 1024
   ## Parameters that control the training
   beta: 0.0
   ## Parameters that control the logging
@@ -68,33 +69,35 @@ training:
   num_completions_to_print: 0
   # TrainingArguments parameters
   ## Training Duration and Batch Size
-  per_device_train_batch_size: 4
-  num_train_epochs : 10
+  per_device_train_batch_size: 8
+  num_train_epochs: 5
+  # max_steps : 300
   ## Learning Rate & Scheduler
   learning_rate: 1e-5
   lr_scheduler_type: constant_with_warmup
-  warmup_steps: 0.1
+  warmup_steps: 0.05
   ## Optimizer
   optim: adamw_torch
   weight_decay: 0.01
   ## Regularization & Training Stability
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 1
   ## Mixed Precision Training
   bf16: true
   ## Logging & Monitoring Training
   logging_strategy: steps
-  logging_steps: 2
+  logging_steps: 1
   ## Logging
-  disable_tqdm: True
+  disable_tqdm: False
   ## Evaluation
   eval_strategy: steps
-  eval_steps: 0.025
-  per_device_eval_batch_size: 16
+  eval_steps: 0.1
+  per_device_eval_batch_size: 8
   ## Checkpointing & Saving
   save_strategy: steps
-  save_steps: 0.025  # Must match eval_steps for load_best_model_at_end to work correctly
+  save_steps: 0.1  # Must match eval_steps for load_best_model_at_end to work correctly
   save_total_limit: 1
   ## Best Model Tracking
   load_best_model_at_end: true
+  # TODO: Fix this
   metric_for_best_model: eval_loss
   greater_is_better: false

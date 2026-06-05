@@ -6,9 +6,9 @@ set -e
 module load cuda/12.2.1-gcc-13.2.0
 
 # Print GPU status at launch
+echo "Running on ${HOSTNAME}"
 nvidia-smi
 nvcc --version
-echo "Running on ${HOSTNAME}"
 
 # --- Get config ---
 source "./scripts/config.sh"

@@ -57,7 +57,7 @@ sbatch\
 
 sbatch\
     --partition cpu \
-    --mem 16G \
+    --mem 8G \
     --time 5 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_MODEL_NAME \
@@ -73,7 +73,7 @@ sbatch \
     --mem=8G \
     --time 40 \
     --chdir $(pwd) \
-    --get-user-env \
+    --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
     scripts/natural_language_inference.sh \
     --config-name inference_thinking_yes_no.yaml \
@@ -102,8 +102,8 @@ sbatch \
     --nodes=1 \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
-    --mem=16G \
-    --time 360 \
+    --mem=32G \
+    --time 240 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
@@ -111,9 +111,18 @@ sbatch \
     --config-name grpo_yes_no.yaml \
     --dataset-name thinking_yes_no
 
+sbatch\
+    --partition cpu \
+    --time 360 \
+    --mem 16G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --output=/scratch/users/%u/logs/trackio/%j.out \
+    scripts/trackio.sh
+
 bash scripts/trackio.sh
 
-srun -p cpu --time 240 --mem=8G --pty /bin/bash -l
+srun -p cpu --time 240 --mem=16G --cpus-per-task=2 --pty /bin/bash -l
 
 srun --partition biomed_a100_gpu --gres=gpu:1 --time 20 --mem=8G --pty /bin/bash -l
 module load cuda/12.2.1-gcc-13.2.0

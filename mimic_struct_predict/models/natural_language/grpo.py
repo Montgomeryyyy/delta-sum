@@ -7,6 +7,7 @@ Usage:
 """
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, List, Optional
@@ -14,12 +15,13 @@ from typing import Any, List, Optional
 import datasets
 import hydra
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig
 from transformers import AutoModelForCausalLM
 from trl import GRPOConfig, GRPOTrainer
 
 from mimic_struct_predict.models.utils.model_loading import load_model_and_tokenizer
+from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +38,20 @@ def _extract_answer(completion: str, pattern: re.Pattern) -> str | None:
     return match.group(1)
 
 
-def calc_accuracy_and_format_reward(
+def format_reward(
+    completions: list[str],
+    regex_pattern: re.Pattern,
+    *args: Any,
+    **kwargs: Any,
+) -> list[float]:
+    """
+    0 if match
+    -1 if not a match
+    """
+    return [-1.0 if _extract_answer(completion, regex_pattern) is None else 0.0 for completion in completions]
+
+
+def calc_accuracy(
     completions: list[str],
     boolean_value: list[bool],
     regex_pattern: re.Pattern,
@@ -49,7 +64,7 @@ def calc_accuracy_and_format_reward(
     and check correctness of rest of the completion format.
     Example regex "^<think>[\s\S]*?</think>[\s\S]*?<answer>\n(Yes|No)$"
 
-    If the format is invalid the reward is ``-1.0``
+    If the format is invalid the reward is ``0.0``
 
     Otherwise the reward is ``1.0`` if the answer is correct and ``0.0`` otherwise.
 
@@ -62,8 +77,8 @@ def calc_accuracy_and_format_reward(
     rewards = []
     for completion, label in zip(completions, boolean_value):
         extracted = _extract_answer(completion, regex_pattern)
-        if extracted is None or extracted not in {"Yes", "No"}:
-            rewards.append(-1.0)
+        if extracted is None:
+            rewards.append(0.0)
             continue
 
         answer = extracted == "Yes"
@@ -72,7 +87,7 @@ def calc_accuracy_and_format_reward(
     return rewards
 
 
-def calc_brier_and_format_reward(
+def calc_brier_reward(
     completions: list[str],
     boolean_value: list[bool],
     regex_pattern: re.Pattern,
@@ -85,7 +100,7 @@ def calc_brier_and_format_reward(
     and check correctness of rest of the completion format.
     Example regex: "^<think>[\s\S]*?</think>[\s\S]*?<answer>\s*?(0(?:\.\d+)?|1(?:\.0+)?)\s*?</answer>$"
 
-    If the format is invalid the reward is ``-1.0``
+    If the format is invalid the reward is ``0``
 
     Otherwise the reward is ``1 - brier_score`` where
     ``brier_score = (probability - target)^2`` and
@@ -99,16 +114,9 @@ def calc_brier_and_format_reward(
     for completion, label in zip(completions, boolean_value):
         extracted = _extract_answer(completion, regex_pattern)
         if extracted is None:
-            rewards.append(-1.0)
+            rewards.append(0.0)
             continue
-        try:
-            prob = float(extracted)
-        except ValueError:
-            rewards.append(-1.0)
-            continue
-        if not (0.0 <= prob <= 1.0):
-            rewards.append(-1.0)
-            continue
+        prob = float(extracted)
 
         target = 1.0 if label else 0.0
         brier_score = (prob - target) ** 2
@@ -175,12 +183,16 @@ def main(cfg: DictConfig) -> None:
     }
     log.info(f"Eval datasets: { {task: (len(ds), ds.column_names) for task, ds in eval_dict.items()} }")
 
+    tracking_dict = OmegaConf.to_container(cfg.get("tracking", {}), resolve=True)
+    if tracking_dict.get("report_to", "") == "tensorboard":
+        os.environ["TENSORBOARD_LOGGING_DIR"] = tracking_dict.pop("logging_dir", None)
+
     # --- GRPO config ---
     grpo_config = GRPOConfig(
         output_dir=str(run_output_dir),
         run_name=run_output_dir.name,
-        **cfg.get("tracking", {}),
-        **cfg.get("training", {}),
+        **tracking_dict,
+        **OmegaConf.to_container(cfg.get("training", {}), resolve=True),
     )
 
     print(grpo_config)
@@ -193,24 +205,25 @@ def main(cfg: DictConfig) -> None:
 
     regex_pattern = re.compile(cfg.reward.regex_pattern)
 
+    def _format_reward(completions: list[str], *args: Any, **kwargs: Any) -> list[float]:
+        return format_reward(completions, regex_pattern, *args, **kwargs)
+
     if cfg.reward.output_format == "yes_no_accuracy":
         log.info("Using accuracy-based reward for training")
 
-        def _calc_accuracy_and_format_reward(
-            completions: list[str], boolean_value: list[bool], *args: Any, **kwargs: Any
-        ) -> list[float]:
-            return calc_accuracy_and_format_reward(completions, boolean_value, regex_pattern, *args, **kwargs)
+        def _calc_accuracy(completions: list[str], boolean_value: list[bool], *args: Any, **kwargs: Any) -> list[float]:
+            return calc_accuracy(completions, boolean_value, regex_pattern, *args, **kwargs)
 
-        reward_func = _calc_accuracy_and_format_reward
+        reward_funcs = [_calc_accuracy, _format_reward]
     elif cfg.reward.output_format == "probability_brier":
         log.info("Using Brier score-based reward for training")
 
-        def _calc_brier_and_format_reward(
+        def _calc_brier_reward(
             completions: list[str], boolean_value: list[bool], *args: Any, **kwargs: Any
         ) -> list[float]:
-            return calc_brier_and_format_reward(completions, boolean_value, regex_pattern, *args, **kwargs)
+            return calc_brier_reward(completions, boolean_value, regex_pattern, *args, **kwargs)
 
-        reward_func = _calc_brier_and_format_reward
+        reward_funcs = [_calc_brier_reward, _format_reward]
     else:
         raise ValueError(f"Unknown reward format: {cfg.reward.output_format}")
 
@@ -221,7 +234,8 @@ def main(cfg: DictConfig) -> None:
         train_dataset=train_dataset,
         eval_dataset=eval_dict,
         peft_config=peft_config,
-        reward_funcs=reward_func,
+        reward_funcs=reward_funcs,
+        callbacks=[MultiGpuTensorBoardCallback],
     )
 
     # --- Train ---
