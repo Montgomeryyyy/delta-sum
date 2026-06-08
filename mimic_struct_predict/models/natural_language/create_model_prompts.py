@@ -1,4 +1,5 @@
 import logging
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -318,6 +319,7 @@ def main(cfg: DictConfig) -> None:
             remove_columns=["ehr_text"],
             batched=True,
             batch_size=cfg.tokenization.batch_size,
+            num_proc=os.cpu_count(),
         )
 
         task_to_datasets[task] = dataset
