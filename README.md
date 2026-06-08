@@ -57,8 +57,9 @@ sbatch\
 
 sbatch\
     --partition cpu \
-    --mem 8G \
-    --time 5 \
+    --mem 64G \
+    --cpus-per-task=32 \
+    --mem=256G \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
@@ -103,7 +104,7 @@ sbatch \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
     --mem=32G \
-    --time 240 \
+    --time 10 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
@@ -113,12 +114,12 @@ sbatch \
 
 sbatch \
     --partition biomed_a100_gpu \
-    --gres=gpu:2 \
+    --gres=gpu:8 \
     --nodes=1 \
     --ntasks-per-node=1 \
     --cpus-per-task=4 \
     --mem=32G \
-    --time 10 \
+    --time 600 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_MODEL_NAME \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \

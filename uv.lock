@@ -2590,6 +2590,7 @@ dependencies = [
     { name = "transformers" },
     { name = "trl", extra = ["vllm"] },
     { name = "vertexai" },
+    { name = "vllm" },
 ]
 
 [package.metadata]
@@ -2630,6 +2631,7 @@ requires-dist = [
     { name = "transformers", specifier = ">=5.5.0" },
     { name = "trl", extras = ["vllm"], specifier = ">=0.25.0" },
     { name = "vertexai", specifier = ">=1.71.1" },
+    { name = "vllm", specifier = ">=0.11.0" },
 ]
 
 [[package]]

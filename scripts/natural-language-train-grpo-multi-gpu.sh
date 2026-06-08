@@ -65,10 +65,14 @@ fi
 # Echo commands to stderr for debugging
 set -x
 
+# Training hangs if not disabled. Not 100% sure why
+export NCCL_P2P_DISABLE=1
+export NCCL_SHM_DISABLE=1
+
 uv run accelerate launch \
     --config_file mimic_struct_predict/models/natural_language/config/ddp_config.yaml \
     --no_python natural_language_grpo \
     --config-name "${CONFIG_NAME}" \
-    model.pretrained_model_name_or_path="${PRETRAINED_MODEL_PATH}" \
+    model="${PRETRAINED_MODEL_PATH}" \
     dataset_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/${PROMPT_DATASET_NAME}" \
     output_dir="${NATURAL_LANGUAGE_MODEL_DIR}/grpo/${PROMPT_DATASET_NAME}"

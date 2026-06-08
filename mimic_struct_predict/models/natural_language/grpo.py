@@ -17,10 +17,8 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig
-from transformers import AutoModelForCausalLM
 from trl import GRPOConfig, GRPOTrainer
 
-from mimic_struct_predict.models.utils.model_loading import load_model_and_tokenizer
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
 
 log = logging.getLogger(__name__)
@@ -161,13 +159,9 @@ def main(cfg: DictConfig) -> None:
     """Run GRPO training with thinking and accuracy rewards."""
     dataset_dir = Path(cfg.dataset_dir)
     run_output_dir = Path(HydraConfig.get().runtime.output_dir)
-    model_name = cfg.model.pretrained_model_name_or_path
 
-    log.info(f"Model: {model_name}")
+    log.info(f"Model: {cfg.model}")
     log.info(f"Output directory: {run_output_dir}")
-
-    # --- Load model and tokeniser ---
-    model, tokenizer = load_model_and_tokenizer(AutoModelForCausalLM, cfg.model, eval_mode=False, padding_side="left")
 
     # --- Load datasets ---
     train_dataset = datasets.load_from_disk(str(dataset_dir / cfg.split_names.train))
@@ -195,7 +189,7 @@ def main(cfg: DictConfig) -> None:
         **OmegaConf.to_container(cfg.get("training", {}), resolve=True),
     )
 
-    print(grpo_config)
+    log.info(grpo_config)
 
     # --- LoRA config ---
     peft_config = None
@@ -229,7 +223,7 @@ def main(cfg: DictConfig) -> None:
 
     # --- Create trainer ---
     trainer = MultiTaskGRPOTrainer(
-        model=model,
+        model=cfg.model,
         args=grpo_config,
         train_dataset=train_dataset,
         eval_dataset=eval_dict,
@@ -252,5 +246,4 @@ def main(cfg: DictConfig) -> None:
     # --- Save ---
     output_model_dir = run_output_dir / "final_model"
     trainer.save_model(str(output_model_dir))
-    tokenizer.save_pretrained(str(output_model_dir))
     log.info(f"Model saved to {output_model_dir}")

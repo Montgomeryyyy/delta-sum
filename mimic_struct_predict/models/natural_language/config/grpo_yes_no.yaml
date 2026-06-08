@@ -1,8 +1,4 @@
-model:
-  pretrained_model_name_or_path: ???
-  attn_implementation: flash_attention_2
-  dtype: bfloat16
-
+model: ???
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
 output_dir: ???          # Required: directory to save outputs
 tasks: null # If null or empty, will run on all tasks in the dataset
@@ -44,9 +40,13 @@ brier_loss: false
 
 training:
   # GRPOTrainer parameters
+  model_init_kwargs:
+    attn_implementation: flash_attention_2
+    dtype: bfloat16
   ## Parameters that control the data preprocessing
   remove_unused_columns: false
   num_generations : 8
+  num_generations_eval : 1
   max_completion_length: 1024
   shuffle_dataset: true
   ## Parameters that control generation
@@ -62,6 +62,7 @@ training:
   ## Parameters that control colocated vLLM execution (only used when `vllm_mode` is `"colocate"`)
   vllm_gpu_memory_utilization: 0.30
   vllm_max_model_length: 5632 # prompt + EHR + new tokens = ~512 + 4096 + 1024
+  vllm_tensor_parallel_size: 1
   ## Parameters that control the training
   beta: 0.0
   ## Parameters that control the logging
@@ -70,8 +71,8 @@ training:
   # TrainingArguments parameters
   ## Training Duration and Batch Size
   per_device_train_batch_size: 8
-  num_train_epochs: 5
-  # max_steps : 300
+  # num_train_epochs: 5
+  max_steps : 200
   ## Learning Rate & Scheduler
   learning_rate: 1e-5
   lr_scheduler_type: constant_with_warmup
@@ -80,7 +81,7 @@ training:
   optim: adamw_torch
   weight_decay: 0.01
   ## Regularization & Training Stability
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 4
   ## Mixed Precision Training
   bf16: true
   ## Logging & Monitoring Training
@@ -90,11 +91,11 @@ training:
   disable_tqdm: False
   ## Evaluation
   eval_strategy: steps
-  eval_steps: 0.1
+  eval_steps: 25
   per_device_eval_batch_size: 8
   ## Checkpointing & Saving
   save_strategy: steps
-  save_steps: 0.1  # Must match eval_steps for load_best_model_at_end to work correctly
+  save_steps: 25 # Must match eval_steps for load_best_model_at_end to work correctly
   save_total_limit: 1
   ## Best Model Tracking
   load_best_model_at_end: true
