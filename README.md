@@ -111,6 +111,22 @@ sbatch \
     --config-name grpo_yes_no.yaml \
     --dataset-name thinking_yes_no
 
+sbatch \
+    --partition biomed_a100_gpu \
+    --gres=gpu:2 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task=4 \
+    --mem=32G \
+    --time 10 \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
+    scripts/natural-language-train-grpo-multi-gpu.sh \
+    --config-name grpo_yes_no.yaml \
+    --dataset-name thinking_yes_no
+
+
 sbatch\
     --partition cpu \
     --time 360 \

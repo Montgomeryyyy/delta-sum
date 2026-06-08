@@ -1,6 +1,7 @@
 """Model and tokeniser loading utilities."""
 
 import logging
+import os
 from typing import Type
 
 import torch
@@ -148,10 +149,21 @@ def load_model_and_tokenizer(
                 f"quantisation with compute dtype {resolved_dtype}"
             )
 
+    local_rank = os.environ.get("LOCAL_RANK")
+
+    target_device_map: dict[str, int] | str | None
+    if local_rank is not None:
+        # Strict mapping for DDP: force this process to its assigned GPU
+        target_device_map = {"": int(local_rank)}
+        logger.info(f"DDP detected. Forcing model to cuda:{local_rank}")
+    else:
+        # Fallback for single-GPU or standard evaluation scripts
+        target_device_map = "auto" if device.type == "cuda" else None
+
     model = model_class.from_pretrained(
         model_config.pretrained_model_name_or_path,
         torch_dtype=resolved_dtype,
-        device_map="auto" if device.type == "cuda" else None,
+        device_map=target_device_map,
         quantization_config=quantization_config,
         attn_implementation=getattr(model_config, "attn_implementation", None),
     )
