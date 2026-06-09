@@ -96,9 +96,9 @@ training:
   ## Checkpointing & Saving
   save_strategy: steps
   save_steps: 25 # Must match eval_steps for load_best_model_at_end to work correctly
-  save_total_limit: 1
-  ## Best Model Tracking
-  load_best_model_at_end: true
-  # TODO: Fix this
-  metric_for_best_model: eval_loss
-  greater_is_better: false
+  # save_total_limit: 1
+  # ## Best Model Tracking
+  # load_best_model_at_end: true
+  # # TODO: Fix this
+  # metric_for_best_model: eval_loss
+  # greater_is_better: false

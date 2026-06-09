@@ -66,6 +66,6 @@ set -x
 
 uv run natural_language_grpo \
     --config-name "${CONFIG_NAME}" \
-    model="${PRETRAINED_MODEL_PATH}" \
+    model="${HF_MODEL_NAME}" \
     dataset_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/${PROMPT_DATASET_NAME}" \
     output_dir="${NATURAL_LANGUAGE_MODEL_DIR}/grpo/${PROMPT_DATASET_NAME}"

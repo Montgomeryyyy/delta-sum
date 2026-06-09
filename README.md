@@ -14,7 +14,6 @@ uv sync
 export MIMIC_USER=
 export MIMIC_PASSWORD=
 export SCRATCH_DIR=/scratch$(pwd)
-export HF_MODEL_NAME=Qwen/Qwen3-8B
 source scripts/config.sh
 ```
 Run in interactive shell
@@ -29,7 +28,7 @@ sbatch\
     --time 600 \
     --mem 2G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_MODEL_NAME,MIMIC_USER,MIMIC_PASSWORD, \
+    --export=SCRATCH_DIR,MIMIC_USER,MIMIC_PASSWORD, \
     --output=/scratch/users/%u/logs/download_mimic/%j.out \
     scripts/download_mimic.sh
 
@@ -40,7 +39,7 @@ sbatch\
     --cpus-per-task=32 \
     --mem=256G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/meds-dataset/%j.out \
     scripts/meds-dataset.sh
 
@@ -51,7 +50,7 @@ sbatch\
     --cpus-per-task=2 \
     --mem=32G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/meds-dataset/%j.out \
     scripts/meds-dataset.sh
 
@@ -61,7 +60,7 @@ sbatch\
     --cpus-per-task=32 \
     --mem=256G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
     scripts/natural-language-dataset-prompts.sh
 
@@ -74,7 +73,7 @@ sbatch \
     --mem=8G \
     --time 40 \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
     scripts/natural_language_inference.sh \
     --config-name inference_thinking_yes_no.yaml \
@@ -106,7 +105,7 @@ sbatch \
     --mem=32G \
     --time 10 \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
     scripts/natural_language_train_grpo.sh \
     --config-name grpo_yes_no.yaml \
@@ -121,7 +120,7 @@ sbatch \
     --mem=32G \
     --time 600 \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
     scripts/natural-language-train-grpo-multi-gpu.sh \
     --config-name grpo_yes_no.yaml \
@@ -133,13 +132,13 @@ sbatch\
     --time 360 \
     --mem 16G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_MODEL_NAME \
+    --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/trackio/%j.out \
     scripts/trackio.sh
 
 bash scripts/trackio.sh
 
-srun -p cpu --time 240 --mem=16G --cpus-per-task=2 --pty /bin/bash -l
+srun -p cpu --time 240 --mem=16G --cpus-per-task=1 --pty /bin/bash -l
 
 srun --partition biomed_a100_gpu --gres=gpu:1 --time 20 --mem=8G --pty /bin/bash -l
 module load cuda/12.2.1-gcc-13.2.0

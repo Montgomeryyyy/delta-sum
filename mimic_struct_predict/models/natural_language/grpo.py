@@ -6,7 +6,6 @@ Usage:
         output_dir=outputs/grpo
 """
 
-import logging
 import os
 import re
 from pathlib import Path
@@ -14,6 +13,9 @@ from typing import Any, List, Optional
 
 import datasets
 import hydra
+import transformers
+from accelerate import PartialState
+from accelerate.logging import get_logger
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig
@@ -21,7 +23,7 @@ from trl import GRPOConfig, GRPOTrainer
 
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 def _extract_answer(completion: str, pattern: re.Pattern) -> str | None:
@@ -157,6 +159,14 @@ class MultiTaskGRPOTrainer(GRPOTrainer):
 )
 def main(cfg: DictConfig) -> None:
     """Run GRPO training with thinking and accuracy rewards."""
+    # Check the state of the current process
+    state = PartialState()
+
+    # Force non-main processes to only output warnings/errors
+    if not state.is_main_process:
+        datasets.utils.logging.set_verbosity_warning()
+        transformers.utils.logging.set_verbosity_warning()
+
     dataset_dir = Path(cfg.dataset_dir)
     run_output_dir = Path(HydraConfig.get().runtime.output_dir)
 

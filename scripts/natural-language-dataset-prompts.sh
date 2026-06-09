@@ -4,7 +4,7 @@
 set -e
 
 # --- Get config ---
-source "./scripts/config.sh"
+source "./scripts/config_full.sh"
 
 # --- Execute Commands ---
 
@@ -16,14 +16,14 @@ uv run natural_language_create_task_ehr_texts \
     output_dir="${EHR_TEXT_DIR}"
 
 uv run natural_language_create_model_prompts \
-    model.pretrained_model_name_or_path="${PRETRAINED_MODEL_PATH}" \
+    model.pretrained_model_name_or_path="${HF_MODEL_NAME}" \
     tokenization.output_format=yes_no \
     tokenization.enable_thinking=true \
     data_dir="${EHR_TEXT_DIR}" \
     output_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/thinking_yes_no"
 
 uv run natural_language_create_model_prompts \
-    model.pretrained_model_name_or_path="${PRETRAINED_MODEL_PATH}" \
+    model.pretrained_model_name_or_path="${HF_MODEL_NAME}" \
     tokenization.output_format=probability \
     tokenization.enable_thinking=true \
     data_dir="${EHR_TEXT_DIR}" \

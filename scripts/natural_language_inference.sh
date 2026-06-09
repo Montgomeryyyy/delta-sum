@@ -15,7 +15,7 @@ source "./scripts/config.sh"
 
 # --- Parse CLI args ---
 SPLIT="held_out"
-MODEL_PATH="${PRETRAINED_MODEL_PATH}"
+MODEL_PATH="${HF_MODEL_NAME}"
 USAGE_STRING="Usage: $0 -d [dataset-name] -c [config-name]"
 
 
@@ -65,7 +65,7 @@ set -x
 # rm -rf ${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/thinking_yes_no
 
 # uv run natural_language_create_model_prompts \
-#     model.pretrained_model_name_or_path="${PRETRAINED_MODEL_PATH}" \
+#     model.pretrained_model_name_or_path="${MODEL_PATH}" \
 #     tokenization.output_format=yes_no \
 #     tokenization.enable_thinking=true \
 #     data_dir="${EHR_TEXT_DIR}" \
