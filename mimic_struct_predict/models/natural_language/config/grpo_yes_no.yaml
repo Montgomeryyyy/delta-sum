@@ -38,6 +38,8 @@ split_names:
 
 brier_loss: false
 
+max_eval_samples: 800 # per_device_eval_batch_size * num_gpus * num_eval_batches = 8 * 4 * 25
+
 training:
   # GRPOTrainer parameters
   model_init_kwargs:
@@ -81,7 +83,7 @@ training:
   optim: adamw_torch
   weight_decay: 0.01
   ## Regularization & Training Stability
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 8
   ## Mixed Precision Training
   bf16: true
   ## Logging & Monitoring Training
