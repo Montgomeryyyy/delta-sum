@@ -58,12 +58,10 @@ OR
 """  # noqa: E501
 
 PROBABILITY_FORMAT_INSTRUCTIONS = """Predict the probability of the target event occurring.
-Provide your final answer at the very end of your response between <answer> and </answer> tags with no trailing whitespace.
+Provide your final answer in quotes at the very end of your response between <answer> and </answer> tags.
 It must be a single decimal value representing the probability of the event occurring (between 0.0 and 1.0).
 Example format:
-<answer>
-0.85
-</answer>
+<answer>"0.85"</answer>
 """  # noqa: E501
 
 OUTPUT_NAME_TO_FORMAT_INSTRUCTIONS = {
