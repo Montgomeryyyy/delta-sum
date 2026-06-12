@@ -23,6 +23,19 @@ bash scripts/download_hf_model.sh
 ```
 
 ```
+sbatch \
+    --partition biomed_a100_gpu \
+    --gres=gpu:1 \
+    --nodes=1 \
+    --ntasks=6 \
+    --mem=64G \
+    --time 120 \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR \
+    --output=/scratch/users/%u/logs/setup_uv/%j.out \
+    scripts/setup_uv.sh
+
+
 sbatch\
     --partition cpu \
     --time 600 \
@@ -56,9 +69,30 @@ sbatch\
 
 sbatch\
     --partition cpu \
-    --mem 64G \
-    --cpus-per-task=32 \
+    --time 600 \
+    --nodes=1 \
+    --cpus-per-task=124 \
+    --mem=950G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR \
+    --output=/scratch/users/%u/logs/meds-tab/%j.out \
+    scripts/meds-tab.sh
+
+sbatch\
+    --partition cpu \
+    --cpus-per-task=8 \
     --mem=256G \
+    --time=15 \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR \
+    --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
+    scripts/natural-language-dataset-prompts.sh
+
+sbatch\
+    --partition cpu \
+    --cpus-per-task=4 \
+    --mem=32G \
+    --time=15 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
@@ -70,7 +104,7 @@ sbatch \
     --nodes=1 \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
-    --mem=8G \
+    --mem=16G \
     --time 40 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR \
@@ -78,7 +112,7 @@ sbatch \
     scripts/natural_language_inference.sh \
     --config-name inference_thinking_yes_no.yaml \
     --dataset-name thinking_yes_no \
-    --split train_copy
+    --split tuning
 
 sbatch \
     --partition biomed_a100_gpu \
@@ -102,8 +136,24 @@ sbatch \
     --nodes=1 \
     --ntasks-per-node=1 \
     --cpus-per-task=1 \
-    --mem=32G \
+    --mem=16G \
     --time 10 \
+    --chdir $(pwd) \
+    --get-user-env \
+    --output=/scratch/users/%u/logs/vllm_test/%j.out \
+    outputs/vllm_test.sh \
+    --config-name inference_thinking_probability.yaml \
+    --dataset-name thinking_probability \
+    --split tuning
+
+sbatch \
+    --partition biomed_a100_gpu \
+    --gres=gpu:1 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task=1 \
+    --mem=32G \
+    --time 15 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
@@ -113,11 +163,27 @@ sbatch \
 
 sbatch \
     --partition biomed_a100_gpu \
-    --gres=gpu:8 \
+    --gres=gpu:4 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task=8 \
+    --mem=128G \
+    --time 720 \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR \
+    --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
+    scripts/natural-language-train-grpo-multi-gpu.sh \
+    --config-name grpo_probability.yaml \
+    --dataset-name thinking_probability
+
+
+sbatch \
+    --partition biomed_a100_gpu \
+    --gres=gpu:4 \
     --nodes=1 \
     --ntasks-per-node=1 \
     --cpus-per-task=4 \
-    --mem=32G \
+    --mem=64G \
     --time 600 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR \
@@ -125,7 +191,6 @@ sbatch \
     scripts/natural-language-train-grpo-multi-gpu.sh \
     --config-name grpo_yes_no.yaml \
     --dataset-name thinking_yes_no
-
 
 sbatch\
     --partition cpu \
@@ -138,9 +203,11 @@ sbatch\
 
 bash scripts/trackio.sh
 
-srun -p cpu --time 240 --mem=16G --cpus-per-task=1 --pty /bin/bash -l
+srun -p cpu --time 240 --mem=8G --cpus-per-task=1 --pty /bin/bash -l
 
-srun --partition biomed_a100_gpu --gres=gpu:1 --time 20 --mem=8G --pty /bin/bash -l
+srun --partition biomed_a100_gpu --cpus-per-task=1 --gres=gpu:1 --time 20 --mem=16G --pty /bin/bash -l
+
+srun --partition biomed_a100_gpu --cpus-per-task=8 --gres=gpu:1 --time 20 --mem=64G --pty /bin/bash -l
 module load cuda/12.2.1-gcc-13.2.0
 ```
 
