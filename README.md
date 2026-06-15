@@ -27,9 +27,9 @@ sbatch \
     --partition biomed_a100_gpu \
     --gres=gpu:1 \
     --nodes=1 \
-    --ntasks=6 \
-    --mem=64G \
-    --time 120 \
+    --ntasks=96 \
+    --mem=512G \
+    --time 30 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/setup_uv/%j.out \
@@ -151,9 +151,9 @@ sbatch \
     --gres=gpu:1 \
     --nodes=1 \
     --ntasks-per-node=1 \
-    --cpus-per-task=1 \
-    --mem=32G \
-    --time 15 \
+    --cpus-per-task=4 \
+    --mem=8G \
+    --time 60 \
     --chdir $(pwd) \
     --export=SCRATCH_DIR \
     --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \

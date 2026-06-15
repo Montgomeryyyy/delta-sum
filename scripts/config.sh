@@ -1,13 +1,9 @@
 # config.sh - Shared project configuration
 # NOTE: This script must be SOURCED, not executed: source config.sh
 
-# ---- Check SCRATCH_DIR and HF_MODEL_NAME already defined ----
+# ---- Check SCRATCH_DIR already defined ----
 if [ -z "$SCRATCH_DIR" ]; then
     echo "Error: SCRATCH_DIR environment variable must be set." >&2
-    return 1
-fi
-if [ -z "$HF_MODEL_NAME" ]; then
-    echo "Error: HF_MODEL_NAME environment variable must be set." >&2
     return 1
 fi
 
@@ -16,7 +12,7 @@ DATA_DIR="${SCRATCH_DIR}/data"
 TRAINING_DIR="${SCRATCH_DIR}/training"
 INFERENCE_DIR="${SCRATCH_DIR}/inference"
 
-PRETRAINED_MODEL_PATH="${SCRATCH_DIR}/hf_models/${HF_MODEL_NAME}"
+HF_MODEL_NAME="Qwen/Qwen3-8B"
 
 MIMIC_VERSION="2.2"
 DATASET_NAME="mimic-iv-demo"
@@ -38,10 +34,15 @@ NATURAL_LANGUAGE_INFERENCE_DIR="${INFERENCE_DIR}/natural_language"
 
 STRUCTURED_INPUT_DATA_DIR="${DATA_DIR}/MEDS_cohort_with_headers_and_quantiles"
 
+MEDS_TAB_OUTPUT_DATA_DIR="${DATA_DIR}/MEDS_tab"
+MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
+
 # ---- Enviorment Variables ----
-export HF_HOME="${SCRATCH_DIR}/.cache/hf"
+CACHE_DIR="${SCRATCH_DIR}/../.cache"
+export HF_HOME="${CACHE_DIR}/hf"
+export UV_CACHE_DIR="${CACHE_DIR}/uv"
+export VLLM_CACHE_ROOT="${CACHE_DIR}/vllm"
+export TRITON_CACHE_DIR="${CACHE_DIR}/triton"
+
 export TRACKIO_DIR="${TRAINING_DIR}/trackio"
-export UV_CACHE_DIR="${SCRATCH_DIR}/../.cache/uv"
-export VLLM_CACHE_ROOT="${SCRATCH_DIR}/../.cache/vllm"
-export TRITON_CACHE_DIR="${SCRATCH_DIR}/../.cache/triton"
 export UV_PROJECT_ENVIRONMENT="${SCRATCH_DIR}/.venv"

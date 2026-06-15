@@ -9,10 +9,13 @@ Usage:
 import os
 import re
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import datasets
+import GPUtil
 import hydra
+import torch
+import torch.nn as nn
 import transformers
 from accelerate import PartialState
 from accelerate.logging import get_logger
@@ -79,9 +82,11 @@ def calc_accuracy(
         extracted = _extract_answer(completion, regex_pattern)
         if extracted is None:
             rewards.append(0.0)
+            log.info(f"Wrong Format: {completion[-30:]}")
             continue
 
         answer = extracted == "Yes"
+        log.info(f"{answer}, {label}, {completion[-30:]}")
         rewards.append(1.0 if answer == label else 0.0)
 
     return rewards
@@ -175,23 +180,23 @@ def main(cfg: DictConfig) -> None:
 
     # --- Load datasets ---
     train_dataset = datasets.load_from_disk(str(dataset_dir / cfg.split_names.train))
-    train_dataset = train_dataset
+    train_dataset = train_dataset.select(range(4))
     log.info(
         f"Combined train dataset has {len(train_dataset)} examples and the following columns:"
         f" {train_dataset.column_names}"
     )
 
-    eval_dict = {}
-    for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir():
-        if eval_task_dir.is_dir():
-            full_ds = datasets.load_from_disk(str(eval_task_dir))
-            if len(full_ds) > cfg.max_eval_samples:
-                subsampled_ds = full_ds.shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
-                eval_dict[eval_task_dir.name] = subsampled_ds
-            else:
-                eval_dict[eval_task_dir.name] = full_ds
+    # eval_dict = {}
+    # for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir():
+    #     if eval_task_dir.is_dir():
+    #         full_ds = datasets.load_from_disk(str(eval_task_dir))
+    #         if len(full_ds) > cfg.max_eval_samples:
+    #             subsampled_ds = full_ds.shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
+    #             eval_dict[eval_task_dir.name] = subsampled_ds
+    #         else:
+    #             eval_dict[eval_task_dir.name] = full_ds
 
-    log.info(f"Eval datasets: { {task: (len(ds), ds.column_names) for task, ds in eval_dict.items()} }")
+    # log.info(f"Eval datasets: { {task: (len(ds), ds.column_names) for task, ds in eval_dict.items()} }")
 
     tracking_dict = OmegaConf.to_container(cfg.get("tracking", {}), resolve=True)
     if tracking_dict.get("report_to", "") == "tensorboard":
@@ -237,16 +242,59 @@ def main(cfg: DictConfig) -> None:
     else:
         raise ValueError(f"Unknown reward format: {cfg.reward.output_format}")
 
+    class DebugGRPOTrainer(MultiTaskGRPOTrainer):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.isfirst: bool = True
+
+        def training_step(
+            self, model: nn.Module, inputs: Union[Dict[str, Any], List[Any]], *args: Any, **kwargs: Any
+        ) -> torch.Tensor:
+            if self.isfirst:
+                log.info("\n--- DEBUG: Batch Check ---")
+                log.info(f"Inputs Type: {type(inputs)}")
+
+                # If it's a standard dictionary of tensors
+                if isinstance(inputs, dict):
+                    for key, value in inputs.items():
+                        if hasattr(value, "shape"):
+                            log.info(f"Key: {key:<20} Shape: {value.shape}")
+                        else:
+                            log.info(f"Key: {key:<20} Type: {type(value)}")
+
+                # If it's a list (which is causing your error)
+                elif isinstance(inputs, list):
+                    log.info(f"Batch Size (List Length): {len(inputs)}")
+                    if len(inputs) > 0:
+                        log.info(f"First element type: {type(inputs[0])}")
+                        # If the list contains dictionaries, let's peek at the keys
+                        if isinstance(inputs[0], dict):
+                            log.info(f"First element keys: {list(inputs[0].keys())}")
+
+                log.info("--------------------------\n")
+                self.isfirst = False
+
+            # Continue with the normal training step
+            return super().training_step(model, inputs, *args, **kwargs)
+
     # --- Create trainer ---
-    trainer = MultiTaskGRPOTrainer(
+    trainer = DebugGRPOTrainer(
         model=cfg.model,
         args=grpo_config,
         train_dataset=train_dataset,
-        eval_dataset=eval_dict,
+        # eval_dataset=eval_dict,
         peft_config=peft_config,
         reward_funcs=reward_funcs,
         callbacks=[MultiGpuTensorBoardCallback],
     )
+
+    # # 2. Grab the PeftModel out of the trainer
+    peft_model = trainer.model
+    print(peft_model.base_model.config._attn_implementation)
+    print(peft_model.print_trainable_parameters())
+    print("Base model dtype:", peft_model.base_model.dtype)
+
+    log.info(GPUtil.showUtilization())
 
     # --- Train ---
     log.info("Starting GRPO training...")

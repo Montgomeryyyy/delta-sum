@@ -1,8 +1,9 @@
-model: ???
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
 output_dir: ???          # Required: directory to save outputs
 tasks: null # If null or empty, will run on all tasks in the dataset
 seed: 42
+
+model: ???
 
 run_dir: "${output_dir}/${now:%Y%m%d_%H%M%S}"
 
@@ -15,8 +16,8 @@ tracking:
   logging_dir: ${run_dir}
 
 lora:
-  r: 16
-  lora_alpha: 32
+  r: 32
+  lora_alpha: 64
   bias: "none"
   task_type: "CAUSAL_LM"
   target_modules: "all-linear"
@@ -38,7 +39,7 @@ split_names:
 
 brier_loss: false
 
-max_eval_samples: 800 # per_device_eval_batch_size * num_gpus * num_eval_batches = 8 * 4 * 25
+# max_eval_samples: 800 # per_device_eval_batch_size * num_gpus * num_eval_batches = 8 * 4 * 25
 
 training:
   # GRPOTrainer parameters
@@ -47,7 +48,6 @@ training:
     dtype: bfloat16
   ## Parameters that control the data preprocessing
   remove_unused_columns: false
-  num_generations : 8
   num_generations_eval : 1
   max_completion_length: 1024
   shuffle_dataset: true
@@ -57,7 +57,9 @@ training:
     top_p: 0.95
     top_k: 20
     min_p: 0.0
-    max_tokens: 1024
+    # use_cache: true
+  # max_tokens: 1024
+  # use_cache: true
   ## Parameters that control generation acceleration powered by vLLM
   use_vllm: true
   vllm_mode: "colocate"
@@ -72,18 +74,17 @@ training:
   num_completions_to_print: 0
   # TrainingArguments parameters
   ## Training Duration and Batch Size
-  per_device_train_batch_size: 8
-  # num_train_epochs: 5
+  # num_train_epochs: 100
   max_steps : 200
   ## Learning Rate & Scheduler
-  learning_rate: 1e-5
+  learning_rate: 5e-6
   lr_scheduler_type: constant_with_warmup
-  warmup_steps: 0.05
+  warmup_ratio: 0
   ## Optimizer
   optim: adamw_torch
-  weight_decay: 0.01
+  weight_decay: 0.0
   ## Regularization & Training Stability
-  gradient_accumulation_steps: 8
+  # gradient_accumulation_steps: 1
   ## Mixed Precision Training
   bf16: true
   ## Logging & Monitoring Training
@@ -92,9 +93,9 @@ training:
   ## Logging
   disable_tqdm: False
   ## Evaluation
-  eval_strategy: steps
-  eval_steps: 25
-  per_device_eval_batch_size: 8
+  # eval_strategy: steps
+  # eval_steps: 25
+  # per_device_eval_batch_size: 8
   ## Checkpointing & Saving
   save_strategy: steps
   save_steps: 25 # Must match eval_steps for load_best_model_at_end to work correctly
@@ -104,3 +105,12 @@ training:
   # # TODO: Fix this
   # metric_for_best_model: eval_loss
   # greater_is_better: false
+  torch_compile: false
+  use_liger_kernel: false
+  logging_first_step: true
+  dataloader_num_workers: 4
+
+  num_generations : 16
+  # steps_per_generation: 1
+  gradient_accumulation_steps: 8
+  per_device_train_batch_size: 8
