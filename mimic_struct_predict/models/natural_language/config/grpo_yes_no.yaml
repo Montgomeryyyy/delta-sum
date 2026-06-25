@@ -39,25 +39,23 @@ split_names:
 
 brier_loss: false
 
-# max_eval_samples: 800 # per_device_eval_batch_size * num_gpus * num_eval_batches = 8 * 4 * 25
+max_eval_samples: 1000
 
 training:
   # GRPOTrainer parameters
   model_init_kwargs:
     attn_implementation: flash_attention_2
-    dtype: bfloat16
+    dtype: float16
   ## Parameters that control the data preprocessing
   remove_unused_columns: false
   num_generations_eval : 1
   max_completion_length: 1024
   shuffle_dataset: true
   ## Parameters that control generation
-  generation_kwargs:
-    temperature: 0.6
-    top_p: 0.95
-    top_k: 20
-    min_p: 0.0
-    # use_cache: true
+  temperature: 1.0
+  top_p: 1.0
+  min_p: null
+  top_k: 0
   # max_tokens: 1024
   # use_cache: true
   ## Parameters that control generation acceleration powered by vLLM
@@ -74,43 +72,49 @@ training:
   num_completions_to_print: 0
   # TrainingArguments parameters
   ## Training Duration and Batch Size
-  # num_train_epochs: 100
-  max_steps : 200
+  num_train_epochs: 1
+  # max_steps : 100
   ## Learning Rate & Scheduler
-  learning_rate: 5e-6
+  learning_rate: 1e-5
   lr_scheduler_type: constant_with_warmup
-  warmup_ratio: 0
+  # warmup_ratio: 0.05
+  warmup_steps: 10
   ## Optimizer
   optim: adamw_torch
-  weight_decay: 0.0
+  # weight_decay: 0.0
   ## Regularization & Training Stability
   # gradient_accumulation_steps: 1
   ## Mixed Precision Training
-  bf16: true
+  bf16: false
+  fp16: true
   ## Logging & Monitoring Training
   logging_strategy: steps
   logging_steps: 1
   ## Logging
   disable_tqdm: False
   ## Evaluation
-  # eval_strategy: steps
-  # eval_steps: 25
-  # per_device_eval_batch_size: 8
+  eval_strategy: "steps"
+  eval_steps: 10
+  per_device_eval_batch_size: 8
   ## Checkpointing & Saving
-  save_strategy: steps
-  save_steps: 25 # Must match eval_steps for load_best_model_at_end to work correctly
-  # save_total_limit: 1
+  save_strategy: "steps"
+  save_steps: 10 # Must match eval_steps for load_best_model_at_end to work correctly
+  save_total_limit: 1
   # ## Best Model Tracking
   # load_best_model_at_end: true
   # # TODO: Fix this
-  # metric_for_best_model: eval_loss
-  # greater_is_better: false
+  metric_for_best_model: eval_reward
+  greater_is_better: true
   torch_compile: false
   use_liger_kernel: false
   logging_first_step: true
   dataloader_num_workers: 4
 
-  num_generations : 16
+  num_generations : 8
   # steps_per_generation: 1
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 16
   per_device_train_batch_size: 8
+
+  vllm_importance_sampling_correction: true
+  vllm_importance_sampling_mode: token_truncate
+  loss_type: "dapo"

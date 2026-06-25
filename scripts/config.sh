@@ -12,7 +12,7 @@ DATA_DIR="${SCRATCH_DIR}/data"
 TRAINING_DIR="${SCRATCH_DIR}/training"
 INFERENCE_DIR="${SCRATCH_DIR}/inference"
 
-HF_MODEL_NAME="Qwen/Qwen3-8B"
+HF_MODEL_NAME="${SCRATCH_DIR}/hf_models/Qwen/Qwen3-0.6B"
 
 MIMIC_VERSION="2.2"
 DATASET_NAME="mimic-iv-demo"
