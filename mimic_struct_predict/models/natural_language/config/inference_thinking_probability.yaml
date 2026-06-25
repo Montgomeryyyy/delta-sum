@@ -3,10 +3,11 @@ defaults:
   - inference_thinking
   - _self_
 
-generation:
-  stop_strings:
-    - "</answer>"
+sampling_params:
+  stop:
+    - '"</answer>'
+  include_stop_str_in_output: True
 
 post_processing:
   output_format: probability
-  regex_pattern: '(?<=<answer>)([\s\S]*?)(?=</answer>)'
+  regex_pattern: '<answer>"(0(?:\.\d+)?|1(?:\.0+)?)"</answer>$'

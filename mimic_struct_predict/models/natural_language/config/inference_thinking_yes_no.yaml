@@ -3,11 +3,12 @@ defaults:
   - inference_thinking
   - _self_
 
-generation:
-  stop_strings:
+sampling_params:
+  stop:
     - '<answer>"Yes'
     - '<answer>"No'
-  output_logits: true
+  include_stop_str_in_output: True
+  logprobs: -1
 
 post_processing:
   output_format: "yes_no"

@@ -1,167 +1,75 @@
-"""HuggingFace LLM inference datasets with shard-sharding.
-Probability extraction supports two modes:
-1. yes_no: Model is prompted to end with "Yes" or "No". We extract the logits for these tokens
-and compute probability from them.
-2. probability: Model is prompted to include a probability in its output, which we extract using a regex.
+"""HuggingFace vLLM inference datasets with dataset sharding.
+Probability extraction modes:
+1. yes_no: Model outputs "Yes" or "No". Extracts logits to compute probability.
+2. probability: Model outputs a probability, extracted via regex.
 """
 
 import logging
 import re
-import time
 from pathlib import Path
-from typing import Any, Callable
 
 import datasets
 import hydra
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-import torch
-import torch.nn.functional as F
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tqdm import tqdm
-from transformers import (
-    AutoModelForCausalLM,
-    PreTrainedModel,
-    PreTrainedTokenizerBase,
-)
-from transformers.generation import GenerateDecoderOnlyOutput
-
-from mimic_struct_predict.models.utils import (
-    load_model_and_tokenizer,
-)
+from transformers import AutoTokenizer
+from vllm import LLM, SamplingParams
+from vllm.outputs import CompletionOutput
 
 log = logging.getLogger(__name__)
 
 
 def extract_yes_no_logit_probabilities(
-    outputs: GenerateDecoderOnlyOutput,
-    len_inputs: int,
-    tokenizer: PreTrainedTokenizerBase,
-    pad_token_id: int,
+    completion_output: CompletionOutput,
     yes_token_id: int,
     no_token_id: int,
     regex_pattern: re.Pattern,
     default_prob: float = 0.5,
-) -> tuple[list[str], list[float], list[bool]]:
-    """
-    This works on the assumption that the stop string ends with Yes or No
-    So the index of last non-padding token in row of new_tokens is the Yes/No idx.
-    """
-    new_tokens = outputs.sequences[:, len_inputs:]
-    completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
+) -> tuple[float, bool]:
+    """Extract probability of 'Yes' vs 'No' from logits, assuming the output ends with 'Yes' or 'No'."""
+    if re.search(regex_pattern, completion_output.text) is None:
+        return default_prob, False
 
-    format_adherence = [re.search(regex_pattern, completion) is not None for completion in completions]
+    if completion_output.logprobs is None or len(completion_output.logprobs) == 0:
+        raise ValueError("No logprobs found in completion_output. Make sure `logprobs` is set to -1 in SamplingParams.")
 
-    # outputs.logits is a tuple of (B, vocab_size) tensors, one per new token step.
-    # Stack into (B, T_new, vocab_size), then pick the relevant step per sample.
-    stacked_logits = torch.stack(outputs.logits, dim=1)  # (B, T_new, vocab_size)
+    last_logprobs = completion_output.logprobs[-1]
+    yes_logprob_obj = last_logprobs.get(yes_token_id)
+    no_logprob_obj = last_logprobs.get(no_token_id)
 
-    # Mask to non-padded tokens
-    new_tokens_mask = new_tokens != pad_token_id  # (B, T_new)
+    if yes_logprob_obj is None or no_logprob_obj is None:
+        raise ValueError("Yes or No token ID was not found in logprobs.")
 
-    if not new_tokens_mask.any(dim=1).all():
-        log.warning("Some sequences are entirely padding tokens")
+    # P(Yes) = p_yes / (p_yes + p_no) = 1 / (1 + (p_no / p_yes)) = 1 / (1 + exp(L_no - L_yes))
+    prob_yes = 1 / (1 + np.exp(yes_logprob_obj.logprob - no_logprob_obj.logprob))
 
-    # Find the last non-padded token per sequence: flip so the last True becomes the
-    # 1st then argmax finds it; subtract from (T_new - 1) to convert back to
-    # the original index.
-    yes_no_step_indices = new_tokens_mask.shape[1] - 1 - new_tokens_mask.int().flip(dims=[1]).argmax(dim=1)  # (B,)
-
-    yes_no_logits = stacked_logits[torch.arange(stacked_logits.shape[0]), yes_no_step_indices]  # (B, vocab_size)]
-
-    target_logits = yes_no_logits[:, [yes_token_id, no_token_id]]
-
-    # Softmax over just these two options
-    probs = F.softmax(target_logits, dim=-1)
-
-    # When format adherence is 0, we have no confidence in the model's output, so we can set probability to default_prob
-    # in those cases.
-    probs = torch.where(
-        torch.tensor(format_adherence, device=probs.device).unsqueeze(1),
-        probs,
-        torch.tensor([[default_prob, 1 - default_prob]], device=probs.device),
-    )
-
-    # Return probability of Yes (index 0)
-    return completions, probs[:, 0].tolist(), format_adherence
+    return float(prob_yes), True
 
 
 def extract_probability_by_regex(
-    outputs: GenerateDecoderOnlyOutput,
-    len_inputs: int,
-    tokenizer: PreTrainedTokenizerBase,
+    output: CompletionOutput,
     regex_pattern: re.Pattern,
     default_prob: float,
-) -> tuple[list[str], list[float], list[bool]]:
+) -> tuple[float, bool]:
+    """Extract probability from text using a regular expression."""
     # Extract sequences and logits
-    new_tokens = outputs.sequences[:, len_inputs:]
-    completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
 
-    probability = [default_prob] * len(completions)
-    format_adherence = [False] * len(completions)
+    match = re.search(regex_pattern, output.text)
+    probability, format_adherence = default_prob, False
+    if match:
+        try:
+            # Strip whitespace and convert to float
+            prob_str = match.group(1).strip()
+            probability = float(prob_str)
+            format_adherence = True
+        except (ValueError, IndexError):
+            pass  # Keep default probability and format adherence False if conversion fails
 
-    for idx, completion in enumerate(completions):
-        match = re.search(regex_pattern, completion)
-        if match:
-            try:
-                # Strip whitespace and convert to float
-                prob_str = match.group(1).strip()
-                probability[idx] = float(prob_str)
-                format_adherence[idx] = True
-            except (ValueError, IndexError):
-                pass  # Keep default probability and format adherence False if conversion fails
-
-    return completions, probability, format_adherence
-
-
-def batch_inference(
-    batch_texts: list[str],
-    model: PreTrainedModel,
-    tokenizer: PreTrainedTokenizerBase,
-    generation_config: DictConfig,
-    post_processing_func: Callable[[GenerateDecoderOnlyOutput, int], tuple[list[str], list[float], list[bool]]],
-) -> dict[str, list]:
-    """Run inference on a batch of texts by
-    - Tokenizing the input texts with appropriate padding and truncation
-    - Generating continuations using the model's generate method
-    - Post-processing the generated tokens to extract compute probabilities,
-    and check format adherence
-    - Measuring latency for the batch and computing average latency per sample
-    """
-    start_time = time.perf_counter()
-
-    inputs = tokenizer(
-        batch_texts,
-        truncation=False,
-        padding="longest",
-        padding_side="left",
-        pad_to_multiple_of=64,
-        return_tensors="pt",
-    ).to(model.device)
-
-    log.info(f"shape {inputs['input_ids'].shape}")
-
-    # Forward pass to get logits for the next token
-    with torch.inference_mode():
-        outputs = model.generate(
-            **inputs,
-            tokenizer=tokenizer,  # Pass tokenizer for handling of stopping criteria
-            return_dict_in_generate=True,
-            pad_token_id=model.config.pad_token_id,
-            **generation_config,
-        )
-
-    completions, probabilities, format_adherence = post_processing_func(outputs, inputs["input_ids"].shape[1])
-    end_time = time.perf_counter()
-    sample_latency = (end_time - start_time) / len(batch_texts)
-
-    return {
-        "completion": completions,
-        "probability": list(probabilities),
-        "format_adherence": list(format_adherence),
-        "sample_latency": [sample_latency] * len(batch_texts),
-    }
+    return probability, format_adherence
 
 
 @hydra.main(
@@ -170,31 +78,7 @@ def batch_inference(
     config_name="inference_direct",
 )
 def main(cfg: DictConfig) -> None:
-    """
-    Run zero-shot LLM inference on natural language EHR datasets with shard-sharding.
-    Hydra config controls dataset location, model/config selection, and generation parameters.
-
-    Steps:
-    1. Discover shards based on dataset_dir, split, and optional task filtering.
-    2. Load model and tokenizer
-    3. For each shard:
-        a. Load shard data
-        b. Create prompts from EHR text and task descriptions.
-        c. Tokenize prompts and prepare DataLoader.
-        d. Run batch inference to get completions and probabilities.
-        e. Combine results and save to output directory.
-
-    Returns dataset with columns:
-        - subject_id: The patient identifier.
-        - prediction_id: The unique identifier for the prediction instance.
-        - task: The clinical prediction task (e.g. mortality, length of stay).
-        - boolean_label: The ground truth label for the prediction task.
-        - prompt: The generated prompt for the model.
-        - completion: The model's generated completion.
-        - probability: The computed probability of "Yes" at the final token.
-        - sample_latency: Time taken for generation per sample.
-        - format_adherence: Whether the model's final token was is expected yes or no token.
-    """
+    """Run LLM inference and process outputs into Parquet chunks."""
 
     log.info("Starting LLM Inference")
     hydra_cfg = HydraConfig.get()
@@ -204,52 +88,47 @@ def main(cfg: DictConfig) -> None:
     log.info(f"Output directory: {out_dir}")
 
     # 2. Load model and tokenizer once
-    log.info("Loading model and tokenizer...")
-    model, tokenizer = load_model_and_tokenizer(
-        model_class=AutoModelForCausalLM,
-        model_config=cfg.model,
-        eval_mode=True,
-        padding_side="left",
-    )
-    model = torch.compile(model, dynamic=True)
+    log.info("Loading model...")
+    llm = LLM(**cfg.model)
 
-    regex_pattern = re.compile(cfg.post_processing.regex_pattern)
+    sampling_params = SamplingParams(**cfg.sampling_params)
 
-    if cfg.post_processing.output_format == "probability":
-
-        def _post_processing_func_prob(outputs: Any, len_inputs: int) -> tuple[list[str], list[float], list[bool]]:
-            return extract_probability_by_regex(
-                outputs, len_inputs, tokenizer, regex_pattern, cfg.post_processing.default_prob
-            )
-
-        post_processing_func = _post_processing_func_prob
-    elif cfg.post_processing.output_format == "yes_no":
+    if cfg.post_processing.output_format == "yes_no":
+        tokenizer = AutoTokenizer.from_pretrained(cfg.model.model)
         yes_token_id = tokenizer("Yes", add_special_tokens=False).input_ids[-1]
         no_token_id = tokenizer("No", add_special_tokens=False).input_ids[-1]
-        print(tokenizer.pad_token_id, tokenizer.eos_token_id, model.config.pad_token_id, model.config.eos_token_id)
-
-        if not cfg.generation.get("output_logits", False):
+        if sampling_params.logprobs != -1:
             raise ValueError(
-                "For yes/no output format, generation_config.output_logits must be set to True to access"
-                "logits for probability extraction."
+                "For yes_no output format, `logprobs` must be set to -1 (whole vocab) "
+                "in `sampling_params` to guarantee yes and no token log probabilities are extracted."
             )
 
-        def _post_processing_func_yes_no(outputs: Any, len_inputs: int) -> tuple[list[str], list[float], list[bool]]:
+    # Pre-compile regex and configure the processing function to avoid inner-loop overhead
+    compiled_regex = re.compile(cfg.post_processing.regex_pattern)
+
+    if cfg.post_processing.output_format == "yes_no":
+
+        def process_output(comp_output: CompletionOutput) -> tuple[float, bool]:
             return extract_yes_no_logit_probabilities(
-                outputs,
-                len_inputs,
-                tokenizer,
-                pad_token_id=tokenizer.pad_token_id,
-                yes_token_id=yes_token_id,
-                no_token_id=no_token_id,
-                regex_pattern=regex_pattern,
-                default_prob=cfg.post_processing.default_prob,
+                comp_output,
+                yes_token_id,
+                no_token_id,
+                compiled_regex,
+                cfg.post_processing.default_prob,
             )
+    elif cfg.post_processing.output_format == "probability":
 
-        post_processing_func = _post_processing_func_yes_no
-
+        def process_output(comp_output: CompletionOutput) -> tuple[float, bool]:
+            return extract_probability_by_regex(
+                comp_output,
+                compiled_regex,
+                cfg.post_processing.default_prob,
+            )
     else:
-        raise ValueError(f"Unsupported output format: {cfg.post_processing.output_format}")
+        raise NotImplementedError(
+            f"Post_processing format {cfg.post_processing.output_format} is not supported "
+            "please choose 'probability' or 'yes_no'"
+        )
 
     for task_dir in dataset_dir.iterdir():
         if not task_dir.is_dir():
@@ -260,18 +139,9 @@ def main(cfg: DictConfig) -> None:
             continue
 
         log.info(f"Processing Task: [{task_name}]")
-        dataset = datasets.load_from_disk(str(task_dir))
+        # TODO: Remove when running on full dataset
+        dataset = datasets.load_from_disk(str(task_dir)).select(range(1000))
         log.info(f"Loaded {len(dataset)} examples from task directory.")
-
-        # Sort to minimize padding within batches
-        dataset = dataset.map(
-            lambda batch: {"length": [len(prompt) for prompt in batch]},
-            input_columns=["prompt"],
-            batched=True,
-            num_proc=cfg.num_workers,
-        )
-        dataset = dataset.sort("length", reverse=True)
-        dataset = dataset.remove_columns("length")
 
         # Batch wise inference and streaming results to Parquet to avoid memory issues with large datasets
         # and allow for partial results to be saved even if the process is interrupted.
@@ -279,37 +149,36 @@ def main(cfg: DictConfig) -> None:
         inference_dir.mkdir(parents=True, exist_ok=True)
         log.info(f"Running inference and streaming to {inference_dir}")
 
-        accumulated_batches = []
         try:
-            for i in tqdm(range(0, len(dataset), cfg.batch_size)):
-                chunk_index = i // (cfg.batch_size * cfg.save_every_n_batches)
+            for i in tqdm(range(0, len(dataset), cfg.chunk_size)):
+                chunk_index = i // (cfg.chunk_size)
                 chunk_file_path = inference_dir / f"chunk_{chunk_index:06d}.parquet"
 
                 # Auto-resume: Skip if this chunk file already exists on disk
                 if chunk_file_path.exists():
                     continue
 
-                batch = dataset[i : i + cfg.batch_size]
-                results = batch_inference(
-                    batch_texts=batch["prompt"],
-                    model=model,
-                    tokenizer=tokenizer,
-                    generation_config=cfg.generation,
-                    post_processing_func=post_processing_func,
+                chunk = dataset[i : i + cfg.chunk_size]
+                prompts = chunk["prompt"]
+                outputs = llm.generate(prompts, sampling_params)
+
+                probs, format_adherences = [], []
+                for request_output in outputs:
+                    completion_output = request_output.outputs[0]
+                    prob, format_adherence = process_output(completion_output)
+                    probs.append(prob)
+                    format_adherences.append(format_adherence)
+
+                table = pa.Table.from_pydict(
+                    {
+                        "prompt": prompts,
+                        "boolean_value": chunk["boolean_value"],
+                        "completion": [request_output.outputs[0].text for request_output in outputs],
+                        "prob": probs,
+                        "format_adherence": format_adherences,
+                    }
                 )
-                for key, values in results.items():
-                    batch[key] = values
-
-                accumulated_batches.append(pa.Table.from_pydict(batch))
-
-                # Flush to disk when we hit our interval OR reached the end of the dataset
-                if len(accumulated_batches) == cfg.save_every_n_batches or (i + cfg.batch_size) >= len(dataset):
-                    # Concatenate accumulated tables into one larger chunk
-                    chunk_table = pa.concat_tables(accumulated_batches)
-                    pq.write_table(chunk_table, chunk_file_path)
-
-                    # Reset RAM buffer
-                    accumulated_batches = []
+                pq.write_table(table, chunk_file_path)
 
         except Exception as e:
             log.error(f"Error processing task {task_dir.name} at batch index {i}: {e}", exc_info=True)
