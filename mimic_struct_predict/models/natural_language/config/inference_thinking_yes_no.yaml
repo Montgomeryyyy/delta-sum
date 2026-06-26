@@ -8,7 +8,7 @@ sampling_params:
     - '<answer>"Yes'
     - '<answer>"No'
   include_stop_str_in_output: True
-  logprobs: -1
+  logprobs: 20
 
 post_processing:
   output_format: "yes_no"

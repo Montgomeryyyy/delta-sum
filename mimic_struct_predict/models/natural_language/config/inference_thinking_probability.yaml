@@ -10,4 +10,4 @@ sampling_params:
 
 post_processing:
   output_format: probability
-  regex_pattern: '<answer>"(0(?:\.\d+)?|1(?:\.0+)?)"</answer>$'
+  regex_pattern: '<answer>"?(0(?:\.\d+)?|1(?:\.0+)?)"?</answer>$'

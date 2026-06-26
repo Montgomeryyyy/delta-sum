@@ -14,10 +14,11 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
+from vllm.logprobs import Logprob
 from vllm.outputs import CompletionOutput
 
 log = logging.getLogger(__name__)
@@ -41,11 +42,16 @@ def extract_yes_no_logit_probabilities(
     yes_logprob_obj = last_logprobs.get(yes_token_id)
     no_logprob_obj = last_logprobs.get(no_token_id)
 
-    if yes_logprob_obj is None or no_logprob_obj is None:
-        raise ValueError("Yes or No token ID was not found in logprobs.")
+    # In empircal testing always returned as option 1 and 2
+    if yes_logprob_obj is None:
+        log.info("Yes log_prob not returned in top k so setting to 0")
+        yes_logprob_obj = Logprob(logprob=0.0)
+    if no_logprob_obj is None:
+        log.info("No log_prob not returned in top k so setting to 0")
+        no_logprob_obj = Logprob(logprob=0.0)
 
     # P(Yes) = p_yes / (p_yes + p_no) = 1 / (1 + (p_no / p_yes)) = 1 / (1 + exp(L_no - L_yes))
-    prob_yes = 1 / (1 + np.exp(yes_logprob_obj.logprob - no_logprob_obj.logprob))
+    prob_yes = 1 / (1 + np.exp(no_logprob_obj.logprob - yes_logprob_obj.logprob))
 
     return float(prob_yes), True
 
@@ -90,23 +96,20 @@ def main(cfg: DictConfig) -> None:
     # 2. Load model and tokenizer once
     log.info("Loading model...")
     llm = LLM(**cfg.model)
+    sampling_params = SamplingParams(**OmegaConf.to_container(cfg.sampling_params, resolve=True))
 
-    sampling_params = SamplingParams(**cfg.sampling_params)
+    compiled_regex = re.compile(cfg.post_processing.regex_pattern)
 
     if cfg.post_processing.output_format == "yes_no":
         tokenizer = AutoTokenizer.from_pretrained(cfg.model.model)
         yes_token_id = tokenizer("Yes", add_special_tokens=False).input_ids[-1]
         no_token_id = tokenizer("No", add_special_tokens=False).input_ids[-1]
-        if sampling_params.logprobs != -1:
+        logprobs = getattr(sampling_params, "logprobs", None)
+        if logprobs is None or logprobs <= 0:
             raise ValueError(
-                "For yes_no output format, `logprobs` must be set to -1 (whole vocab) "
-                "in `sampling_params` to guarantee yes and no token log probabilities are extracted."
+                "For yes_no output format, `logprobs` must be set to > 0 (large the safer but more memory intenstive) "
+                "in `sampling_params` to extract relative yes and no token probabilities."
             )
-
-    # Pre-compile regex and configure the processing function to avoid inner-loop overhead
-    compiled_regex = re.compile(cfg.post_processing.regex_pattern)
-
-    if cfg.post_processing.output_format == "yes_no":
 
         def process_output(comp_output: CompletionOutput) -> tuple[float, bool]:
             return extract_yes_no_logit_probabilities(
@@ -140,7 +143,7 @@ def main(cfg: DictConfig) -> None:
 
         log.info(f"Processing Task: [{task_name}]")
         # TODO: Remove when running on full dataset
-        dataset = datasets.load_from_disk(str(task_dir)).select(range(1000))
+        dataset = datasets.load_from_disk(str(task_dir)).select(range(2_000))
         log.info(f"Loaded {len(dataset)} examples from task directory.")
 
         # Batch wise inference and streaming results to Parquet to avoid memory issues with large datasets
@@ -151,6 +154,7 @@ def main(cfg: DictConfig) -> None:
 
         try:
             for i in tqdm(range(0, len(dataset), cfg.chunk_size)):
+                log.info(f"Processing Chunk {i + 1}")
                 chunk_index = i // (cfg.chunk_size)
                 chunk_file_path = inference_dir / f"chunk_{chunk_index:06d}.parquet"
 
@@ -162,18 +166,18 @@ def main(cfg: DictConfig) -> None:
                 prompts = chunk["prompt"]
                 outputs = llm.generate(prompts, sampling_params)
 
-                probs, format_adherences = [], []
-                for request_output in outputs:
-                    completion_output = request_output.outputs[0]
-                    prob, format_adherence = process_output(completion_output)
+                probs, format_adherences, completions = [], [], []
+                for request_output in tqdm(outputs, desc="Post processing"):
+                    prob, format_adherence = process_output(request_output.outputs[0])
                     probs.append(prob)
                     format_adherences.append(format_adherence)
+                    completions.append(request_output.outputs[0].text)
 
                 table = pa.Table.from_pydict(
                     {
                         "prompt": prompts,
                         "boolean_value": chunk["boolean_value"],
-                        "completion": [request_output.outputs[0].text for request_output in outputs],
+                        "completion": completions,
                         "prob": probs,
                         "format_adherence": format_adherences,
                     }
@@ -183,4 +187,4 @@ def main(cfg: DictConfig) -> None:
         except Exception as e:
             log.error(f"Error processing task {task_dir.name} at batch index {i}: {e}", exc_info=True)
 
-    log.info("Inference Complete!")
+    log.info(f"Inference Complete! Outputs saved to {out_dir}")

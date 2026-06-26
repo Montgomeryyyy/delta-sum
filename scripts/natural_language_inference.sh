@@ -11,7 +11,7 @@ nvidia-smi
 nvcc --version
 
 # --- Get config ---
-source "./scripts/config.sh"
+source "./scripts/config_full.sh"
 
 # --- Parse CLI args ---
 SPLIT="held_out"
@@ -73,7 +73,7 @@ set -x
 
 uv run natural_language_inference \
     --config-name "${CONFIG_NAME}" \
-    model.pretrained_model_name_or_path="${MODEL_PATH}" \
+    model.model="${MODEL_PATH}" \
     dataset_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/${PROMPT_DATASET_NAME}" \
     output_dir="${NATURAL_LANGUAGE_INFERENCE_DIR}/${PROMPT_DATASET_NAME}" \
     split="${SPLIT}"
