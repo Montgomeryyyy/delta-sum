@@ -19,19 +19,49 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 from vllm.logprobs import Logprob
-from vllm.outputs import CompletionOutput
+from vllm.outputs import RequestOutput
 
 log = logging.getLogger(__name__)
 
 
+def extract_yes_no_self_consistency_probabilities(
+    request_output: RequestOutput,
+    regex_pattern: re.Pattern,
+    default_prob: float = 0.5,
+) -> tuple[float, bool]:
+    """Extract probability of 'Yes' vs 'No' using self-consistency over multiple sampled completions."""
+
+    yes_count, total_count = 0, 0
+    for completion_output in request_output.outputs:
+        match = re.search(regex_pattern, completion_output.text)
+        if match is None:
+            continue
+
+        try:
+            extracted_value = match.group(1).strip()
+            if extracted_value == "Yes":
+                yes_count += 1
+        except IndexError:
+            if match.group(0).strip().endswith("Yes"):
+                yes_count += 1
+
+        total_count += 1
+
+    if total_count == 0:
+        return default_prob, False
+
+    return yes_count / total_count, True
+
+
 def extract_yes_no_logit_probabilities(
-    completion_output: CompletionOutput,
+    request_output: RequestOutput,
     yes_token_id: int,
     no_token_id: int,
     regex_pattern: re.Pattern,
     default_prob: float = 0.5,
 ) -> tuple[float, bool]:
     """Extract probability of 'Yes' vs 'No' from logits, assuming the output ends with 'Yes' or 'No'."""
+    completion_output = request_output.outputs[0]
     if re.search(regex_pattern, completion_output.text) is None:
         return default_prob, False
 
@@ -57,14 +87,14 @@ def extract_yes_no_logit_probabilities(
 
 
 def extract_probability_by_regex(
-    output: CompletionOutput,
+    request_output: RequestOutput,
     regex_pattern: re.Pattern,
     default_prob: float,
 ) -> tuple[float, bool]:
     """Extract probability from text using a regular expression."""
     # Extract sequences and logits
-
-    match = re.search(regex_pattern, output.text)
+    completion_output = request_output.outputs[0]
+    match = re.search(regex_pattern, completion_output.text)
     probability, format_adherence = default_prob, False
     if match:
         try:
@@ -111,7 +141,7 @@ def main(cfg: DictConfig) -> None:
                 "in `sampling_params` to extract relative yes and no token probabilities."
             )
 
-        def process_output(comp_output: CompletionOutput) -> tuple[float, bool]:
+        def process_output(comp_output: RequestOutput) -> tuple[float, bool]:
             return extract_yes_no_logit_probabilities(
                 comp_output,
                 yes_token_id,
@@ -119,9 +149,17 @@ def main(cfg: DictConfig) -> None:
                 compiled_regex,
                 cfg.post_processing.default_prob,
             )
+    elif cfg.post_processing.output_format == "yes_no_self_consistency":
+
+        def process_output(comp_output: RequestOutput) -> tuple[float, bool]:
+            return extract_yes_no_self_consistency_probabilities(
+                comp_output,
+                compiled_regex,
+                cfg.post_processing.default_prob,
+            )
     elif cfg.post_processing.output_format == "probability":
 
-        def process_output(comp_output: CompletionOutput) -> tuple[float, bool]:
+        def process_output(comp_output: RequestOutput) -> tuple[float, bool]:
             return extract_probability_by_regex(
                 comp_output,
                 compiled_regex,
@@ -168,7 +206,7 @@ def main(cfg: DictConfig) -> None:
 
                 probs, format_adherences, completions = [], [], []
                 for request_output in tqdm(outputs, desc="Post processing"):
-                    prob, format_adherence = process_output(request_output.outputs[0])
+                    prob, format_adherence = process_output(request_output)
                     probs.append(prob)
                     format_adherences.append(format_adherence)
                     completions.append(request_output.outputs[0].text)
