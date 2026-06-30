@@ -16,8 +16,8 @@ tracking:
   logging_dir: ${run_dir}
 
 lora:
-  r: 32
-  lora_alpha: 64
+  r: 16
+  lora_alpha: 32
   bias: "none"
   task_type: "CAUSAL_LM"
   target_modules: "all-linear"
