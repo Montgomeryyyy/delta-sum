@@ -6,17 +6,12 @@ from typing import Any, List, Optional
 
 import datasets
 import hydra
-import pandas as pd
 import torch
 import torch.nn.functional as F
-import trackio
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback
 from trl import SFTConfig, SFTTrainer
-
-from mimic_struct_predict.models.utils.model_loading import load_model_and_tokenizer
 
 log = logging.getLogger(__name__)
 
@@ -62,79 +57,6 @@ def create_expected_brier_loss(digit_token_ids: list[int], true_label_token_id: 
     return expected_brier_loss_func
 
 
-class TrackioTableCallback(TrainerCallback):
-    def __init__(
-        self,
-        tokenizer: AutoTokenizer,
-        eval_dataset_dict: dict[str, datasets.Dataset],
-        batch_size: int,
-        random_seed: int = 42,
-    ):
-        self.tokenizer = tokenizer
-
-        self.task_data = {}
-        for task_name, dataset in eval_dataset_dict.items():
-            # Shuffle, select the batch, and extract just the list of string prompts
-            sampled_subset = dataset.shuffle(seed=random_seed).select(range(batch_size))
-            self.task_data[task_name] = {
-                "prompts": list(sampled_subset["prompt"]),
-                "ground_truths": list(sampled_subset["boolean_value"]),
-            }
-
-    def on_evaluate(self, args: Any, state: Any, control: Any, model: Any, **kwargs: Any) -> None:
-        model.eval()
-        padding_side = self.tokenizer.padding_side
-        self.tokenizer.padding_side = "left"  # Ensure padding is on the left for generation
-
-        # Prepare lists to act as our table columns
-        all_prompts = []
-        all_completions = []
-        all_tasks = []
-        all_ground_truths = []
-
-        # Iterate over the pre-saved static prompts, NOT the state object
-        for task_name, data in self.task_data.items():
-            prompts = data["prompts"]
-            ground_truths = data["ground_truths"]
-            # 1. Tokenize the entire batch for this specific task
-            inputs = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(model.device)
-
-            with torch.no_grad():
-                # 2. Generate predictions for the batch
-                generated_ids = model.generate(
-                    **inputs,
-                    max_new_tokens=1,
-                )
-
-            # 3. Decode the batch
-            outputs = self.tokenizer.batch_decode(
-                generated_ids[:, inputs["input_ids"].size(-1) :], skip_special_tokens=True
-            )
-
-            # 4. Append data to our master columns
-            all_prompts.extend(prompts)
-            all_completions.extend(outputs)
-            # Create a list of the task name repeated for the size of the batch
-            all_tasks.extend([task_name] * len(prompts))
-            all_ground_truths.extend(ground_truths)
-
-        steps = [state.global_step] * len(all_prompts)
-
-        df = pd.DataFrame(
-            {
-                "step": steps,
-                "task": all_tasks,
-                "prompt": all_prompts,
-                "completion": all_completions,
-                "ground_truth": all_ground_truths,
-            }
-        )
-
-        trackio.log({"eval_completions": trackio.Table(dataframe=df)})
-
-        self.tokenizer.padding_side = padding_side  # Restore original padding side
-
-
 class MultiTaskSFTTrainer(SFTTrainer):
     def evaluate(
         self,
@@ -175,22 +97,20 @@ def main(cfg: DictConfig) -> None:
     """
     dataset_dir = Path(cfg.dataset_dir)
     run_output_dir = Path(HydraConfig.get().runtime.output_dir)
-    model_name = cfg.model.pretrained_model_name_or_path
 
-    log.info(f"Model: {model_name}")
+    log.info(f"Model: {cfg.model}")
     log.info(f"Output directory: {run_output_dir}")
 
-    # --- Load model and tokeniser ---
-    model, tokenizer = load_model_and_tokenizer(AutoModelForCausalLM, cfg.model, eval_mode=False, padding_side="right")
-
     # --- Load datasets ---
-    train_dataset = datasets.load_from_disk(str(dataset_dir / cfg.split_names.train))
+    train_dataset = datasets.load_from_disk(str(dataset_dir / cfg.split_names.train)).select(range(10000))
+    train_dataset = train_dataset.select_columns(["prompt", "completion"])
+
     log.info(
         f"Combined train dataset has {len(train_dataset)} examples and the following columns:"
         f" {train_dataset.column_names}"
     )
     eval_dict = {
-        eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir))
+        eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir)).select_columns(["prompt", "completion"])
         for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir()
         if eval_task_dir.is_dir()
     }
@@ -200,8 +120,7 @@ def main(cfg: DictConfig) -> None:
     sft_config = SFTConfig(
         output_dir=str(run_output_dir),
         run_name=run_output_dir.name,
-        **cfg.get("tracking", {}),
-        **cfg.get("training", {}),
+        **OmegaConf.to_container(cfg.get("training", {}), resolve=True),
     )
 
     # --- LoRA config ---
@@ -210,38 +129,35 @@ def main(cfg: DictConfig) -> None:
         log.info("Using LoRA for training")
         peft_config = LoraConfig(**cfg.get("lora", {}))
 
-    if cfg.brier_loss:
-        log.info("Using custom Brier loss for training")
-        digit_token_ids = [tokenizer.convert_tokens_to_ids(str(i)) for i in range(10)]
-        true_label_token_id = tokenizer.convert_tokens_to_ids("1")
-        custom_loss_func = create_expected_brier_loss(digit_token_ids, true_label_token_id)
+    # if cfg.brier_loss:
+    #     log.info("Using custom Brier loss for training")
+    #     digit_token_ids = [tokenizer.convert_tokens_to_ids(str(i)) for i in range(10)]
+    #     true_label_token_id = tokenizer.convert_tokens_to_ids("1")
+    #     custom_loss_func = create_expected_brier_loss(digit_token_ids, true_label_token_id)
 
     # --- Create trainer ---
     trainer = MultiTaskSFTTrainer(
-        model=model,
+        model=cfg.model,
         args=sft_config,
         train_dataset=train_dataset,
         eval_dataset=eval_dict,
         peft_config=peft_config,
-        callbacks=[TrackioTableCallback(tokenizer, eval_dict, batch_size=cfg.training.per_device_eval_batch_size)]
-        if cfg.tracking.report_to == "trackio"
-        else None,
-        compute_loss_func=custom_loss_func if cfg.brier_loss else None,
+        # compute_loss_func=custom_loss_func if cfg.brier_loss else None,
     )
 
     # --- Train ---
     log.info("Starting SFT training...")
-    train_result = trainer.train()
-    trainer.log_metrics("train", train_result.metrics)
-    trainer.save_metrics("train", train_result.metrics)
-    trainer.save_state()
+    trainer.train()
+    # trainer.log_metrics("train", train_result.metrics)
+    # trainer.save_metrics("train", train_result.metrics)
+    # trainer.save_state()
 
-    final_eval_metrics = trainer.evaluate()
-    trainer.log_metrics("eval", final_eval_metrics)
-    trainer.save_metrics("eval", final_eval_metrics)
+    # final_eval_metrics = trainer.evaluate()
+    # trainer.log_metrics("eval", final_eval_metrics)
+    # trainer.save_metrics("eval", final_eval_metrics)
 
-    # --- Save ---
-    output_model_dir = run_output_dir / "final_model"
-    trainer.save_model(str(output_model_dir))
-    tokenizer.save_pretrained(str(output_model_dir))
-    log.info(f"Model saved to {output_model_dir}")
+    # # --- Save ---
+    # output_model_dir = run_output_dir / "final_model"
+    # trainer.save_model(str(output_model_dir))
+    # # tokenizer.save_pretrained(str(output_model_dir))
+    # log.info(f"Model saved to {output_model_dir}")
