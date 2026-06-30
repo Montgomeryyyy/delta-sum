@@ -40,6 +40,7 @@ split_names:
 brier_loss: false
 
 max_eval_samples: 1000
+early_stopping_patience: 10
 
 training:
   # GRPOTrainer parameters

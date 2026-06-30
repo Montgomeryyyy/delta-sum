@@ -17,6 +17,7 @@ from accelerate.logging import get_logger
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig
+from transformers import EarlyStoppingCallback, TrainerCallback
 from trl import GRPOConfig, GRPOTrainer
 
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
@@ -234,6 +235,10 @@ def main(cfg: DictConfig) -> None:
     else:
         raise ValueError(f"Unknown reward format: {cfg.reward.output_format}")
 
+    callbacks: list[TrainerCallback] = [MultiGpuTensorBoardCallback()]
+    if getattr(cfg, "early_stopping_patience", None) is not None:
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=cfg.early_stopping_patience))
+
     # --- Create trainer ---
     trainer = MultiTaskGRPOTrainer(
         model=cfg.model,
@@ -242,7 +247,7 @@ def main(cfg: DictConfig) -> None:
         eval_dataset=eval_dict,
         peft_config=peft_config,
         reward_funcs=reward_funcs,
-        callbacks=[MultiGpuTensorBoardCallback],
+        callbacks=callbacks,
     )
 
     # --- Train ---
