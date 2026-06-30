@@ -258,6 +258,7 @@ def main(cfg: DictConfig) -> None:
     data_dir = Path(cfg.data_dir)
     output_dir = Path(cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    num_proc = int(os.environ.get("SLURM_CPUS_PER_TASK", str(os.cpu_count())))
 
     if cfg.model.is_gemini:
         if not cfg.tokenization.enable_thinking:
@@ -317,7 +318,7 @@ def main(cfg: DictConfig) -> None:
             remove_columns=["ehr_text"],
             batched=True,
             batch_size=cfg.tokenization.batch_size,
-            num_proc=os.cpu_count(),
+            num_proc=num_proc,
         )
 
         task_to_datasets[task] = dataset
@@ -341,8 +342,8 @@ def main(cfg: DictConfig) -> None:
                 seed=cfg.random_seed,
                 stopping_strategy="all_exhausted",  # Crucial for balancing train gradients
             )
-            train_dataset = train_dataset.shuffle(seed=cfg.random_seed)
             train_dataset.save_to_disk(str(output_dir / split))
+            train_dataset.cleanup_cache_files()
             log.info(f"Interleaved train dataset: {len(train_dataset)} examples saved to {output_dir / split}")
 
         else:
@@ -351,4 +352,5 @@ def main(cfg: DictConfig) -> None:
             for task, task_ds in task_to_datasets.items():
                 if split in task_ds and len(task_ds[split]) > 0:
                     task_ds[split].save_to_disk(str(output_dir / split / task))
+                    task_ds[split].cleanup_cache_files()
                     log.info(f"{task} dataset: {len(task_ds[split])} examples saved to {output_dir / split / task}")
