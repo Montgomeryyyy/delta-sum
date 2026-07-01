@@ -304,6 +304,22 @@ def main(cfg: DictConfig) -> None:
             log.warning(f"All splits empty for task {task}. Skipping task entirely.")
             continue
 
+        if cfg.train_split_name in dataset and cfg.get("balance_train_dataset", False):
+            train_ds = dataset[cfg.train_split_name]
+            pos_ds = train_ds.filter(lambda x: x["boolean_value"], num_proc=num_proc)
+            neg_ds = train_ds.filter(lambda x: not x["boolean_value"], num_proc=num_proc)
+
+            if len(neg_ds) > len(pos_ds):
+                log.info(
+                    f"Downsampling {task} {cfg.train_split_name} majority class from {len(neg_ds)} to {len(pos_ds)}"
+                )
+                neg_ds = neg_ds.shuffle(seed=cfg.random_seed).select(range(len(pos_ds)))
+                dataset[cfg.train_split_name] = datasets.concatenate_datasets([pos_ds, neg_ds]).shuffle(
+                    seed=cfg.random_seed
+                )
+            else:
+                log.info(f"Skipping downsampling for {task} {cfg.train_split_name} (negative class is not majority)")
+
         dataset = dataset.map(
             lambda ehr_texts, boolean_values: {
                 "prompt": ehr_text_to_prompts(
