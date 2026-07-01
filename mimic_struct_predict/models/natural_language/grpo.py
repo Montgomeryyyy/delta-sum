@@ -13,6 +13,7 @@ from typing import Any, List, Optional
 
 import datasets
 import hydra
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
@@ -166,6 +167,8 @@ class MultiTaskGRPOTrainer(GRPOTrainer):
 )
 def main(cfg: DictConfig) -> None:
     """Run GRPO training with thinking and accuracy rewards."""
+    Accelerator()
+
     dataset_dir = Path(cfg.dataset_dir)
     run_output_dir = Path(HydraConfig.get().runtime.output_dir)
 
