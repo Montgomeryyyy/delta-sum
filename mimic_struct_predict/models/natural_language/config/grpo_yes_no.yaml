@@ -16,8 +16,8 @@ tracking:
   logging_dir: ${run_dir}
 
 lora:
-  r: 16
-  lora_alpha: 32
+  r: 32
+  lora_alpha: 64
   bias: "none"
   task_type: "CAUSAL_LM"
   target_modules: "all-linear"
@@ -39,7 +39,7 @@ split_names:
 
 brier_loss: false
 
-max_eval_samples: 1000
+max_eval_samples: 10000
 early_stopping_patience: 10
 
 training:
@@ -63,7 +63,7 @@ training:
   use_vllm: true
   vllm_mode: "colocate"
   ## Parameters that control colocated vLLM execution (only used when `vllm_mode` is `"colocate"`)
-  vllm_gpu_memory_utilization: 0.30
+  vllm_gpu_memory_utilization: 0.35
   vllm_max_model_length: 5632 # prompt + EHR + new tokens = ~512 + 4096 + 1024
   vllm_tensor_parallel_size: 1
   ## Parameters that control the training
@@ -78,8 +78,8 @@ training:
   ## Learning Rate & Scheduler
   learning_rate: 1e-5
   lr_scheduler_type: constant_with_warmup
-  # warmup_ratio: 0.05
-  warmup_steps: 10
+  warmup_ratio: 0.01
+  # warmup_steps: 10
   ## Optimizer
   optim: adamw_torch
   # weight_decay: 0.0
@@ -102,8 +102,7 @@ training:
   save_steps: 10 # Must match eval_steps for load_best_model_at_end to work correctly
   save_total_limit: 1
   # ## Best Model Tracking
-  # load_best_model_at_end: true
-  # # TODO: Fix this
+  load_best_model_at_end: true
   metric_for_best_model: eval_reward
   greater_is_better: true
   torch_compile: false

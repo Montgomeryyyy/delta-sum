@@ -8,7 +8,7 @@ random_seed: 42
 
 splits_to_process: ["train", "tuning", "held_out"]
 train_split_name: train
-balance_train_dataset: false
+balance_train_dataset: true
 
 model:
   is_gemini: false
