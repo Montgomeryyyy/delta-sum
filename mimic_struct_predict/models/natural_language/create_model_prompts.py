@@ -57,6 +57,14 @@ OR
 <answer>"No"</answer>
 """  # noqa: E501
 
+YES_NO_DIRECT_FORMAT_INSTRUCTIONS = """Predict yes or no if the target event will occur.
+Provide your final answer.
+It must be exactly one of the following:
+Yes
+OR
+No
+"""
+
 PROBABILITY_FORMAT_INSTRUCTIONS = """Predict the probability of the target event occurring.
 Provide your final answer in quotes at the very end of your response between <answer> and </answer> tags.
 It must be a single decimal value representing the probability of the event occurring (between 0.0 and 1.0).
@@ -66,6 +74,7 @@ Example format:
 
 OUTPUT_NAME_TO_FORMAT_INSTRUCTIONS = {
     "yes_no": YES_NO_FORMAT_INSTRUCTIONS,
+    "yes_no_direct": YES_NO_DIRECT_FORMAT_INSTRUCTIONS,
     "probability": PROBABILITY_FORMAT_INSTRUCTIONS,
 }
 
@@ -194,9 +203,7 @@ def create_prompts_from_ehr_texts(
         ]
         if not enable_thinking:
             # Add generation prompt to guide the model to output in the correct format for direct prompt
-            messages.append(
-                {"role": "assistant", "content": "<answer>\n" if output_format == "yes_no" else "<answer>\n0."}
-            )
+            messages.append({"role": "assistant", "content": "0." if output_format == "probability" else ""})
 
         batch_messages.append(messages)
 
@@ -241,7 +248,7 @@ def ehr_text_to_prompts(
 
 
 def bool_to_completion(values: list[bool], output_format: str) -> list[str]:
-    if output_format == "yes_no":
+    if output_format == "yes_no" or output_format == "yes_no_direct":
         return ["Yes" if v else "No" for v in values]
     elif output_format == "probability":
         return ["1" if v else "0" for v in values]
