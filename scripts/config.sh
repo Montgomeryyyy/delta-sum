@@ -39,6 +39,8 @@ MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 
 # ---- Enviorment Variables ----
 CACHE_DIR="${SCRATCH_DIR}/../.cache"
+NUM_WORKERS="${SLURM_CPUS_PER_TASK:-1}"
+
 export HF_HOME="${CACHE_DIR}/hf"
 export UV_CACHE_DIR="${CACHE_DIR}/uv"
 export VLLM_CACHE_ROOT="${CACHE_DIR}/vllm"

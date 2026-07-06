@@ -31,7 +31,7 @@ training:
   # SFTTrainer parameters
   model_init_kwargs:
     attn_implementation: flash_attention_2
-    dtype: float16
+    dtype: bfloat16
   ## Parameters that control the data preprocessing
   max_length: null
   shuffle_dataset: true
@@ -54,9 +54,9 @@ training:
   optim: adamw_torch_fused
   weight_decay: 0.01
   ## Regularization & Training Stability
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 1
   ## Mixed Precision Training
-  fp16: true
+  bf16: true
   ## Logging & Monitoring Training
   logging_strategy: steps
   logging_steps: 1

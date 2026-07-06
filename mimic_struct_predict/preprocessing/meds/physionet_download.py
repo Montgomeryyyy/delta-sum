@@ -666,7 +666,7 @@ def main(cfg: DictConfig) -> None:
         workers_blurb = "sequentially (1 worker)"
     else:
         workers_blurb = f"with {download_workers} parallel workers"
-    logger.info(f"Downloading demo data {workers_blurb}.")
+    logger.info(f"Downloading data {workers_blurb}.")
 
     download_data(
         Path(cfg.raw_mimic_dir),

@@ -5,14 +5,14 @@
 set -eo pipefail
 
 # --- Get config ---
-source "./scripts/config_full.sh"
+source "./scripts/config.sh"
 
-module load cuda/12.2.1-gcc-13.2.0
+# module load cuda/12.2.1-gcc-13.2.0
 
 # Print GPU status at launch
 echo "Running on ${HOSTNAME}"
 nvidia-smi
-nvcc --version
+# nvcc --version
 
 # --- Parse CLI args ---
 USAGE_STRING="Usage: $0 --dataset-name [dataset-name] --config-name [config-name]"
@@ -64,4 +64,4 @@ uv run natural_language_sft \
     model="${HF_MODEL_NAME}" \
     dataset_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/${PROMPT_DATASET_NAME}" \
     output_dir="${NATURAL_LANGUAGE_MODEL_DIR}/sft/${PROMPT_DATASET_NAME}" \
-    training.dataset_num_proc="${SLURM_CPUS_PER_TASK}"
+    training.dataset_num_proc="${NUM_WORKERS}"

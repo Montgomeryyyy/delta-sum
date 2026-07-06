@@ -8,23 +8,21 @@ model:
   model: ???
   dtype: float16
   tensor_parallel_size: 1
-  max_model_len: 6000
+  max_model_len: 4600
   gpu_memory_utilization: 0.9
 
 
 sampling_params:
-  temperature: 0.7
-  top_p: 0.8
-  top_k: 20
-  min_p: 0.0
-  max_tokens: 64
-  stop:
-    -"</answer>"
+  max_tokens: 1
+  logprobs: 20
+  temperature: 0
+
 
 post_processing:
   # Match with content between <answer> and </answer> tags, non-greedy match to get the first occurrence
   # Includes newlines and other whitespace characters
-  regex_pattern: '([\s\S]*?)(?=</answer>)'
+  output_format: yes_no
+  regex_pattern: '(Yes|No)'
   default_prob: 0.5
 
 hydra:

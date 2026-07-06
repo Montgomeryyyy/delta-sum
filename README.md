@@ -114,6 +114,11 @@ sbatch \
     --dataset-name thinking_yes_no \
     --split tuning
 
+bash scripts/natural_language_inference.sh \
+    --config-name inference_direct.yaml \
+    --dataset-name direct_yes_no \
+    --split tuning
+
 sbatch \
     --partition biomed_a100_gpu \
     --gres=gpu:1 \

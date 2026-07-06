@@ -26,7 +26,7 @@ INPUT_DIR="$MIMICIV_PRE_MEDS_DIR" \
 OUTPUT_DIR="$MIMICIV_MEDS_COHORT_DIR" \
 DATASET_NAME="$DATASET_NAME" \
 DATASET_VERSION="$MIMIC_VERSION" \
-N_WORKERS="$SLURM_CPUS_PER_TASK" \
+N_WORKERS="${NUM_WORKERS}" \
 uv run MEDS_transform-pipeline \
     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/ETL.yaml \
 
@@ -37,7 +37,7 @@ INPUT_DIR="$MIMICIV_MEDS_COHORT_DIR" \
 OUTPUT_DIR="$NATURAL_LANGUAGE_DATA_DIR" \
 DATASET_NAME="$DATASET_NAME" \
 DATASET_VERSION="$MIMIC_VERSION" \
-N_WORKERS="$SLURM_CPUS_PER_TASK" \
+N_WORKERS="${NUM_WORKERS}" \
 uv run MEDS_transform-pipeline \
     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_headers.yaml \
 
@@ -62,7 +62,7 @@ for task in ${ACES_TASKS}; do
         cohort_dir="${ACES_OUTPUT_DIR}" \
         cohort_name="${task}" \
         hydra/launcher=joblib \
-        hydra.launcher.n_jobs=$SLURM_CPUS_PER_TASK \
+        hydra.launcher.n_jobs="${NUM_WORKERS}" \
         --multirun
 done
 

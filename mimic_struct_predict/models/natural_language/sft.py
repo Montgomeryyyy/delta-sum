@@ -91,13 +91,57 @@ class MultiTaskSFTTrainer(SFTTrainer):
         return metrics
 
     def compute_loss(self, model: Any, inputs: Any, return_outputs: Any = False, num_items_in_batch: Any = None) -> Any:
-        if self.is_first:
-            log.info(inputs["input_ids"])
-            log.info(inputs["labels"])
-            log.info("-" * 80)
+        # Get loss and outputs
+        loss, outputs = super().compute_loss(model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch)
+
+        # Log text at the very first step, and then every 10 steps to not spam the logs
+        if self.state.is_world_process_zero and (
+            self.is_first or (self.state.global_step > 0 and self.state.global_step % 10 == 0)
+        ):
             self.is_first = False
 
-        return super().compute_loss(model, inputs, return_outputs, num_items_in_batch)
+            tokenizer = getattr(self, "processing_class", None) or getattr(self, "tokenizer", None)
+            if tokenizer is not None:
+                # Take the first example in the batch
+                input_ids = inputs["input_ids"][0]
+                labels = inputs["labels"][0]
+
+                # Decode the input text
+                input_text = tokenizer.decode(input_ids, skip_special_tokens=False)
+
+                # Decode the valid labels (where label != -100)
+                valid_label_mask = labels != -100
+                if valid_label_mask.any():
+                    label_tokens = input_ids[valid_label_mask]
+                    label_text = tokenizer.decode(label_tokens.cpu().tolist(), skip_special_tokens=False)
+                else:
+                    label_text = "None (All labels masked to -100!)"
+
+                # Build alignment string for the last 50 tokens
+                alignment_str = "Token-by-Token Alignment (Last 50 tokens):\n"
+                # input_ids and labels have the same shape
+                seq_len = len(input_ids)
+                start_idx = max(0, seq_len - 50)
+                for i in range(start_idx, seq_len):
+                    # .item() safely pulls the value from the GPU to a Python int
+                    in_tok = tokenizer.decode([input_ids[i].item()])
+                    in_tok_clean = repr(in_tok)  # use repr to make \n and spaces visible
+
+                    if labels[i] == -100:
+                        alignment_str += f"{in_tok_clean:20} -> (masked)\n"
+                    else:
+                        lbl_tok = tokenizer.decode([labels[i].item()])
+                        lbl_tok_clean = repr(lbl_tok)
+                        alignment_str += f"{in_tok_clean:20} -> TARGET: {lbl_tok_clean}\n"
+
+                log_str = f"\n{'-'*40} Step {self.state.global_step} {'-'*40}\n"
+                log_str += f"INPUT PROMPT (Last 200 chars):\n{input_text[-200:]}\n\n"
+                log_str += f"TARGET LABELS (Tokens Model is Trained On):\n{label_text}\n\n"
+                log_str += f"{alignment_str}\n"
+                log_str += f"{'-'*89}\n"
+                log.info(log_str)
+
+        return (loss, outputs) if return_outputs else loss
 
 
 @hydra.main(
@@ -128,7 +172,7 @@ def main(cfg: DictConfig) -> None:
     eval_dict = {
         eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir))
         .shuffle(seed=cfg.seed)
-        .select(range(cfg.max_eval_samples))
+        # .select(range(cfg.max_eval_samples))
         .select_columns(["prompt", "completion"])
         for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir()
         if eval_task_dir.is_dir()

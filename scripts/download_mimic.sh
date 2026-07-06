@@ -3,6 +3,15 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+DO_DEMO="false"
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --demo) DO_DEMO="true"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+done
+
 # --- Get config ---
 source "./scripts/config.sh"
 
@@ -24,4 +33,4 @@ echo "Starting download for ${DATASET_NAME}..."
 uv run physionet_download \
     raw_mimic_dir="${MIMICIV_RAW_DIR}" \
     mimic_version="${MIMIC_VERSION}" \
-    do_demo=false
+    do_demo="${DO_DEMO}"

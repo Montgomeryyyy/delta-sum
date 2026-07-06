@@ -204,6 +204,7 @@ def process_omr_df(omr_df: pl.LazyFrame) -> pl.LazyFrame:
             pl.col("bp_parts").list.get(0).cast(pl.Float32, strict=False).alias("SYSTOLIC_BLOOD_PRESSURE_MMHG"),
             pl.col("bp_parts").list.get(1).cast(pl.Float32, strict=False).alias("DIASTOLIC_BLOOD_PRESSURE_MMHG"),
         )
+        .drop("result_name")
         .unpivot(
             index=["subject_id", "chartdate", "seq_num"],
             on=["SYSTOLIC_BLOOD_PRESSURE_MMHG", "DIASTOLIC_BLOOD_PRESSURE_MMHG"],
