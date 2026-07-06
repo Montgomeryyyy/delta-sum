@@ -16,8 +16,8 @@ tracking:
   logging_dir: ${run_dir}
 
 lora:
-  r: 32
-  lora_alpha: 64
+  r: 16
+  lora_alpha: 32
   bias: "none"
   task_type: "CAUSAL_LM"
   target_modules: "all-linear"
@@ -39,7 +39,7 @@ split_names:
 
 brier_loss: false
 
-max_eval_samples: 10000
+max_eval_samples: 2000
 early_stopping_patience: 10
 
 training:
@@ -63,7 +63,7 @@ training:
   use_vllm: true
   vllm_mode: "colocate"
   ## Parameters that control colocated vLLM execution (only used when `vllm_mode` is `"colocate"`)
-  vllm_gpu_memory_utilization: 0.35
+  vllm_gpu_memory_utilization: 0.3
   vllm_max_model_length: 5632 # prompt + EHR + new tokens = ~512 + 4096 + 1024
   vllm_tensor_parallel_size: 1
   ## Parameters that control the training
@@ -100,7 +100,7 @@ training:
   ## Checkpointing & Saving
   save_strategy: "steps"
   save_steps: 10 # Must match eval_steps for load_best_model_at_end to work correctly
-  save_total_limit: 1
+  save_total_limit: 3
   # ## Best Model Tracking
   load_best_model_at_end: true
   metric_for_best_model: eval_reward
@@ -112,7 +112,7 @@ training:
 
   num_generations : 8
   # steps_per_generation: 1
-  gradient_accumulation_steps: 16
+  gradient_accumulation_steps: 8
   per_device_train_batch_size: 8
 
   vllm_importance_sampling_correction: true
