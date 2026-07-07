@@ -97,6 +97,10 @@ training:
   eval_strategy: "steps"
   eval_steps: 10
   per_device_eval_batch_size: 8
+  gradient_checkpointing_kwargs:
+    # Try to prevent torch.utils.checkpoint.CheckpointError: torch.utils.checkpoint:
+    # Recomputed values for the following tensors have different metadata than during the forward pass.
+    use_reentrant: true
   ## Checkpointing & Saving
   save_strategy: "steps"
   save_steps: 10 # Must match eval_steps for load_best_model_at_end to work correctly
