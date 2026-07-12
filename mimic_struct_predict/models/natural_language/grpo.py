@@ -169,6 +169,25 @@ def main(cfg: DictConfig) -> None:
     """Run GRPO training with thinking and accuracy rewards."""
     Accelerator()
 
+    # HACK: To get vllm.LLM to use same dtype as Huggingface model (source code defaults to auto)
+    from functools import wraps
+
+    import vllm
+
+    _original_llm_init = vllm.LLM.__init__
+
+    @wraps(_original_llm_init)
+    def _patched_llm_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        if "dtype" not in kwargs:
+            training_cfg = cfg.get("training", {})
+            if training_cfg.get("bf16", False):
+                kwargs["dtype"] = "bfloat16"
+            elif training_cfg.get("fp16", False):
+                kwargs["dtype"] = "float16"
+        _original_llm_init(self, *args, **kwargs)
+
+    vllm.LLM.__init__ = _patched_llm_init
+
     dataset_dir = Path(cfg.dataset_dir)
     run_output_dir = Path(HydraConfig.get().runtime.output_dir)
 
@@ -252,6 +271,16 @@ def main(cfg: DictConfig) -> None:
         reward_funcs=reward_funcs,
         callbacks=callbacks,
     )
+
+    # Log model dtypes
+    hf_dtype = getattr(trainer.model, "dtype", "unknown")
+    log.info(f"HuggingFace model dtype: {hf_dtype}")
+
+    if hasattr(trainer, "vllm_generation") and hasattr(trainer.vllm_generation, "llm"):
+        vllm_dtype = trainer.vllm_generation.llm.llm_engine.model_config.dtype
+        log.info(f"vLLM engine dtype: {vllm_dtype}")
+    else:
+        log.info("vLLM model not found in trainer")
 
     # --- Train ---
     log.info("Starting GRPO training...")
