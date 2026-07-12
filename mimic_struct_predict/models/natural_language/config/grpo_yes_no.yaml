@@ -37,16 +37,15 @@ split_names:
   train: train
   val: tuning
 
-brier_loss: false
 
 max_eval_samples: 2000
 early_stopping_patience: 10
 
 training:
-  # GRPOTrainer parameters
   model_init_kwargs:
     attn_implementation: flash_attention_2
     dtype: float16
+    use_cache: false
   ## Parameters that control the data preprocessing
   remove_unused_columns: false
   num_generations_eval : 1
@@ -97,10 +96,6 @@ training:
   eval_strategy: "steps"
   eval_steps: 10
   per_device_eval_batch_size: 8
-  gradient_checkpointing_kwargs:
-    # Try to prevent torch.utils.checkpoint.CheckpointError: torch.utils.checkpoint:
-    # Recomputed values for the following tensors have different metadata than during the forward pass.
-    use_reentrant: true
   ## Checkpointing & Saving
   save_strategy: "steps"
   save_steps: 10 # Must match eval_steps for load_best_model_at_end to work correctly
