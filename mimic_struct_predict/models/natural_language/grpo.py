@@ -13,12 +13,13 @@ from typing import Any, List, Optional
 
 import datasets
 import hydra
+import torch
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
-from peft import LoraConfig
-from transformers import EarlyStoppingCallback, TrainerCallback
+from peft import AutoPeftModelForCausalLM, LoraConfig
+from transformers import AutoTokenizer, EarlyStoppingCallback, TrainerCallback
 from trl import GRPOConfig, GRPOTrainer
 
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
@@ -297,3 +298,32 @@ def main(cfg: DictConfig) -> None:
     output_model_dir = run_output_dir / "final_model"
     trainer.save_model(str(output_model_dir))
     log.info(f"Model saved to {output_model_dir}")
+
+    if peft_config is not None:
+        # Wait for all GPUs to finish saving the adapter
+        trainer.accelerator.wait_for_everyone()
+
+        if trainer.is_world_process_zero():
+            log.info("Merging LoRA weights with base model...")
+            merged_model_dir = run_output_dir / "merged_model"
+
+            # Extract the actual dtype used during training before deleting the trainer
+            hf_dtype = getattr(trainer.model, "dtype", torch.float16)
+
+            # Free memory before merging
+            del trainer
+            torch.cuda.empty_cache()
+
+            log.info(f"Loading model for merging with dtype: {hf_dtype}")
+            model = AutoPeftModelForCausalLM.from_pretrained(
+                str(output_model_dir),
+                device_map="auto",
+                torch_dtype=hf_dtype,
+            )
+            merged_model = model.merge_and_unload()
+            merged_model.save_pretrained(str(merged_model_dir))
+
+            tokenizer = AutoTokenizer.from_pretrained(str(output_model_dir))
+            tokenizer.save_pretrained(str(merged_model_dir))
+
+            log.info(f"Merged model saved to {merged_model_dir}")
