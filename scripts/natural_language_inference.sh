@@ -76,20 +76,35 @@ fi
 
 echo "Detected $N GPUs. Spawning $N Python processes with RUN_ID: $RUN_TIMESTAMP"
 
+# Create the run directory so we can store logs there
+RUN_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${PROMPT_DATASET_NAME}/${RUN_TIMESTAMP}"
+mkdir -p "$RUN_DIR"
+
 for i in "${!GPU_IDS[@]}"; do
     gpu_id=${GPU_IDS[$i]}
     export RANK=$i
     export WORLD_SIZE=$N
     export CUDA_VISIBLE_DEVICES=$gpu_id
 
-    echo "Spawning Worker Rank $RANK/$WORLD_SIZE on GPU $gpu_id"
-    uv run natural_language_inference \
-        --config-name "${CONFIG_NAME}" \
-        model.model="${MODEL_PATH}" \
-        dataset_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/${PROMPT_DATASET_NAME}" \
-        output_dir="${NATURAL_LANGUAGE_INFERENCE_DIR}/${PROMPT_DATASET_NAME}" \
-        hydra.run.dir="${NATURAL_LANGUAGE_INFERENCE_DIR}/${PROMPT_DATASET_NAME}/${RUN_TIMESTAMP}" \
-        split="${SPLIT}" &
+    if [ "$RANK" -eq 0 ]; then
+        echo "Spawning Worker Rank $RANK/$WORLD_SIZE on GPU $gpu_id (Logging to SLURM .out file)"
+        uv run natural_language_inference \
+            --config-name "${CONFIG_NAME}" \
+            model.model="${MODEL_PATH}" \
+            dataset_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/${PROMPT_DATASET_NAME}" \
+            output_dir="${NATURAL_LANGUAGE_INFERENCE_DIR}/${PROMPT_DATASET_NAME}" \
+            hydra.run.dir="$RUN_DIR" \
+            split="${SPLIT}" &
+    else
+        echo "Spawning Worker Rank $RANK/$WORLD_SIZE on GPU $gpu_id (Logging to $RUN_DIR/worker_${RANK}.log)"
+        uv run natural_language_inference \
+            --config-name "${CONFIG_NAME}" \
+            model.model="${MODEL_PATH}" \
+            dataset_dir="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/${PROMPT_DATASET_NAME}" \
+            output_dir="${NATURAL_LANGUAGE_INFERENCE_DIR}/${PROMPT_DATASET_NAME}" \
+            hydra.run.dir="$RUN_DIR" \
+            split="${SPLIT}" > "$RUN_DIR/worker_${RANK}.log" 2>&1 &
+    fi
 done
 
 echo "Waiting for all $N workers to finish..."
