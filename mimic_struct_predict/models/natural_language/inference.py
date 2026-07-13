@@ -5,6 +5,7 @@ Probability extraction modes:
 """
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -180,9 +181,16 @@ def main(cfg: DictConfig) -> None:
             continue
 
         log.info(f"Processing Task: [{task_name}]")
-        # TODO: Remove when running on full dataset
-        dataset = datasets.load_from_disk(str(task_dir)).select(range(2_000))
-        log.info(f"Loaded {len(dataset)} examples from task directory.")
+        dataset = datasets.load_from_disk(str(task_dir))
+
+        world_size = int(os.environ.get("WORLD_SIZE", 1))
+        rank = int(os.environ.get("RANK", 0))
+
+        if world_size > 1:
+            log.info(f"Running distributed: Rank {rank}/{world_size}. Sharding dataset...")
+            dataset = dataset.shard(num_shards=world_size, index=rank)
+
+        log.info(f"Loaded {len(dataset)} examples from task directory (after sharding).")
 
         # Batch wise inference and streaming results to Parquet to avoid memory issues with large datasets
         # and allow for partial results to be saved even if the process is interrupted.
@@ -192,9 +200,9 @@ def main(cfg: DictConfig) -> None:
 
         try:
             for i in tqdm(range(0, len(dataset), cfg.chunk_size)):
-                log.info(f"Processing Chunk {i + 1}")
                 chunk_index = i // (cfg.chunk_size)
-                chunk_file_path = inference_dir / f"chunk_{chunk_index:06d}.parquet"
+                log.info(f"Processing Chunk {i + 1}")
+                chunk_file_path = inference_dir / f"chunk_rank{rank:02d}_{chunk_index:06d}.parquet"
 
                 # Auto-resume: Skip if this chunk file already exists on disk
                 if chunk_file_path.exists():
