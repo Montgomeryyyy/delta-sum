@@ -5,7 +5,7 @@
 set -eo pipefail
 
 # --- Get config ---
-source "./scripts/config.sh"
+source "./scripts/config_full.sh"
 
 module load cuda/12.2.1-gcc-13.2.0
 
@@ -54,11 +54,6 @@ if [[ -z "$PROMPT_DATASET_NAME" ]]; then
     exit 1
 fi
 
-if [[ -z "$CONFIG_NAME" ]]; then
-    echo "Error: The --config-name argument is required." >&2
-    echo "$USAGE_STRING" >&2
-    exit 1
-fi
 
 # --- Run the natural language inference task ---
 # Echo commands to stderr for debugging

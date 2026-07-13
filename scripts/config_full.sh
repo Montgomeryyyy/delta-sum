@@ -12,7 +12,7 @@ DATA_DIR="${SCRATCH_DIR}/data_full"
 TRAINING_DIR="${SCRATCH_DIR}/training"
 INFERENCE_DIR="${SCRATCH_DIR}/inference"
 
-HF_MODEL_NAME="${SCRATCH_DIR}/hf_models/Qwen/Qwen3-8B"
+HF_MODEL_NAME="Qwen/Qwen3-8B"
 
 MIMIC_VERSION="2.2"
 # DATASET_NAME="mimic-iv-demo"
@@ -39,6 +39,8 @@ MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 
 # ---- Enviorment Variables ----
 CACHE_DIR="${SCRATCH_DIR}/../.cache"
+NUM_WORKERS="${SLURM_CPUS_PER_TASK:-1}"
+
 export HF_HOME="${CACHE_DIR}/hf"
 export UV_CACHE_DIR="${CACHE_DIR}/uv"
 export VLLM_CACHE_ROOT="${CACHE_DIR}/vllm"
@@ -46,3 +48,5 @@ export TRITON_CACHE_DIR="${CACHE_DIR}/triton"
 
 export TRACKIO_DIR="${TRAINING_DIR}/trackio"
 export UV_PROJECT_ENVIRONMENT="${SCRATCH_DIR}/.venv"
+
+export TQDM_MININTERVAL=1

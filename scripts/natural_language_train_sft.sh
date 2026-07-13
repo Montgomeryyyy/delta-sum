@@ -5,7 +5,7 @@
 set -eo pipefail
 
 # --- Get config ---
-source "./scripts/config.sh"
+source "./scripts/config_full.sh"
 
 # module load cuda/12.2.1-gcc-13.2.0
 

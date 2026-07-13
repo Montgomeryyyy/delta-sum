@@ -16,7 +16,7 @@ set -x
 N_WORKERS=$(nproc)
 
 echo "  -> Generating Hydra subsets"
-WINDOW_SIZES="[1d,7d,30d,365d, full]"
+WINDOW_SIZES="[1d,7d,30d,365d,full]"
 AGGS="[code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]"
 WINDOW_SUBSETS=$(uv run generate-subsets "${WINDOW_SIZES}")
 AGG_SUBSETS=$(uv run generate-subsets "${AGGS}")
