@@ -77,13 +77,15 @@ def main(cfg: DictConfig) -> None:
         f"Combined train dataset has {len(train_dataset)} examples and the following columns:"
         f" {train_dataset.column_names}"
     )
-    eval_dict = {
-        eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir))
-        # .select(range(cfg.max_eval_samples))
-        .select_columns(["prompt", "completion"])
-        for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir()
-        if eval_task_dir.is_dir()
-    }
+    eval_dict = {}
+    for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir():
+        if eval_task_dir.is_dir():
+            full_ds = datasets.load_from_disk(str(eval_task_dir))
+            if len(full_ds) > cfg.max_eval_samples:
+                subsampled_ds = full_ds.shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
+                eval_dict[eval_task_dir.name] = subsampled_ds
+            else:
+                eval_dict[eval_task_dir.name] = full_ds
     log.info(f"Eval datasets: { {task: (len(ds), ds.column_names) for task, ds in eval_dict.items()} }")
 
     # --- SFT config ---
