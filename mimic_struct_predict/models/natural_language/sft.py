@@ -9,10 +9,8 @@ import hydra
 import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
-from peft import LoraConfig
-from scipy.special import softmax
-from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
-from transformers import AutoTokenizer, EarlyStoppingCallback, EvalPrediction, TrainerCallback
+from peft import AutoPeftModelForCausalLM, LoraConfig
+from transformers import AutoTokenizer, EarlyStoppingCallback, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
@@ -21,10 +19,6 @@ log = logging.getLogger(__name__)
 
 
 class MultiTaskSFTTrainer(SFTTrainer):
-    def __init__(self, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
-        self.is_first = True
-
     def evaluate(
         self,
         eval_dataset: Optional[Any] = None,
@@ -78,7 +72,6 @@ def main(cfg: DictConfig) -> None:
     )
     eval_dict = {
         eval_task_dir.name: datasets.load_from_disk(str(eval_task_dir))
-        .shuffle(seed=cfg.seed)
         # .select(range(cfg.max_eval_samples))
         .select_columns(["prompt", "completion"])
         for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir()
@@ -100,61 +93,6 @@ def main(cfg: DictConfig) -> None:
         peft_config = LoraConfig(**cfg.get("lora", {}))
 
     tokenizer = AutoTokenizer.from_pretrained(cfg.model)
-    yes_token_id = tokenizer("Yes", add_special_tokens=False).input_ids[-1]
-    no_token_id = tokenizer("No", add_special_tokens=False).input_ids[-1]
-
-    def preprocess_logits_for_metrics(logits: torch.tensor, labels: torch.tensor) -> torch.tensor:
-        if isinstance(logits, tuple):
-            logits = logits[0]
-
-        # Keep only the logits for 'Yes' and 'No' tokens.
-        # This changes the last dimension from vocab_size to 2
-        yes_no_logits = logits[..., [yes_token_id, no_token_id]]
-
-        # Shift so that tokens < n predict n
-        shift_logits = yes_no_logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-
-        # Since there is exactly 1 valid label per input, we find its index using argmax.
-        # This guarantees the output is exactly (batch_size, 2), even if DDP introduces
-        # completely padded dummy rows (where all labels are -100).
-        # Completely padded rows will just extract index 0 (which is also -100) and get safely filtered later.
-        valid_indices = (shift_labels != -100).long().argmax(dim=1)
-        batch_indices = torch.arange(shift_logits.shape[0], device=shift_logits.device)
-
-        return shift_logits[batch_indices, valid_indices], shift_labels[batch_indices, valid_indices]
-
-    def compute_metrics(eval_preds: EvalPrediction) -> dict:
-        logits, labels = eval_preds
-        if isinstance(logits, tuple):
-            logits = logits[0]
-
-        # DDP gathering might pad some batches with -100 across GPUs, so we still filter -100 here.
-        valid_mask = labels != -100
-        valid_logits = logits[valid_mask]  # shape: (num_valid, 2)
-        valid_labels = labels[valid_mask]  # shape: (num_valid,)
-
-        if len(valid_labels) == 0:
-            return {"accuracy": 0.0}
-
-        # Calculate probabilities using softmax over the two classes
-        pos_probs = softmax(valid_logits, axis=-1)[:, 0]
-
-        # y_true is 1 if the true label is 'Yes', else 0
-        y_true = (valid_labels == yes_token_id).astype(int)
-        y_pred = (pos_probs >= 0.5).astype(int)
-
-        metrics = {}
-        try:
-            metrics["auroc"] = roc_auc_score(y_true, pos_probs)
-            metrics["ap"] = average_precision_score(y_true, pos_probs)
-            metrics["f1"] = f1_score(y_true, y_pred)
-        except Exception as e:
-            log.warning(f"Failed to compute binary metrics (possibly due to only one class present): {e}")
-
-        metrics["accuracy"] = (y_true == y_pred).mean()
-        return metrics
-
     # HACK: So EOS token is not added
     original_eos = tokenizer.eos_token
     if not cfg.add_eos_token:
@@ -172,8 +110,6 @@ def main(cfg: DictConfig) -> None:
         eval_dataset=eval_dict,
         peft_config=peft_config,
         callbacks=callbacks,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-        compute_metrics=compute_metrics,
     )
 
     tokenizer.eos_token = original_eos
@@ -192,5 +128,33 @@ def main(cfg: DictConfig) -> None:
     # --- Save ---
     output_model_dir = run_output_dir / "final_model"
     trainer.save_model(str(output_model_dir))
-    # tokenizer.save_pretrained(str(output_model_dir))
     log.info(f"Model saved to {output_model_dir}")
+
+    if peft_config is not None:
+        # Wait for all GPUs to finish saving the adapter
+        trainer.accelerator.wait_for_everyone()
+
+        if trainer.is_world_process_zero():
+            log.info("Merging LoRA weights with base model...")
+            merged_model_dir = run_output_dir / "merged_model"
+
+            # Extract the actual dtype used during training before deleting the trainer
+            hf_dtype = getattr(trainer.model, "dtype", torch.float16)
+
+            # Free memory before merging
+            del trainer
+            torch.cuda.empty_cache()
+
+            log.info(f"Loading model for merging with dtype: {hf_dtype}")
+            model = AutoPeftModelForCausalLM.from_pretrained(
+                str(output_model_dir),
+                device_map="auto",
+                torch_dtype=hf_dtype,
+            )
+            merged_model = model.merge_and_unload()
+            merged_model.save_pretrained(str(merged_model_dir))
+
+            tokenizer = AutoTokenizer.from_pretrained(str(output_model_dir))
+            tokenizer.save_pretrained(str(merged_model_dir))
+
+            log.info(f"Merged model saved to {merged_model_dir}")

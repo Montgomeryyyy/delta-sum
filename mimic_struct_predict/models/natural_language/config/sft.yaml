@@ -48,8 +48,8 @@ training:
   ## Learning Rate & Scheduler
   learning_rate: 2e-5
   lr_scheduler_type: constant_with_warmup
-  # warmup_ratio: 0.1
-  warmup_steps: 10
+  warmup_ratio: 0.1
+  # warmup_steps: 100
   ## Optimizer
   optim: adamw_torch_fused
   weight_decay: 0.01
@@ -62,11 +62,11 @@ training:
   logging_steps: 1
   ## Evaluation
   eval_strategy: steps
-  eval_steps: 10
+  eval_steps: 50
   per_device_eval_batch_size: 48
   ## Checkpointing & Saving
   save_strategy: steps
-  save_steps: 10  # Must match eval_steps for load_best_model_at_end to work correctly
+  save_steps: 50  # Must match eval_steps for load_best_model_at_end to work correctly
   save_total_limit: 3
   ## Best Model Tracking
   load_best_model_at_end: true
