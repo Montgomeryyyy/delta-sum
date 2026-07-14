@@ -16,14 +16,14 @@ source "./scripts/config_full.sh"
 # --- Parse CLI args ---
 SPLIT="held_out"
 MODEL_PATH="${HF_MODEL_NAME}"
-USAGE_STRING="Usage: $0 -d [dataset-name] -c [config-name]"
+USAGE_STRING="Usage: $0 --dataset-name [name] --config-name [name] [--lora-adaptor path] [--model-path path] [--split name]"
 
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dataset-name)
       PROMPT_DATASET_NAME="$2"   # Assign the next argument to the variable
-      shift 2     # Move past the flag (-u) and its value (Alice)
+      shift 2     # Move past the flag and its value
       ;;
     --config-name)
       CONFIG_NAME="$2"   # Assign the next argument to the variable
@@ -37,6 +37,10 @@ while [[ $# -gt 0 ]]; do
       SPLIT="$2"   # Assign the next argument to the variable
       shift 2     # Move past the flag and its value
       ;;
+    --lora-adaptor)
+      LORA_ADAPTOR="$2"
+      shift 2
+      ;;
     -h|--help)
       echo $USAGE_STRING
       exit 0
@@ -49,12 +53,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$PROMPT_DATASET_NAME" ]]; then
-    echo "Error: The -u/--user argument is required." >&2
+    echo "Error: The --dataset-name argument is required." >&2
     echo $USAGE_STRING >&2
     exit 1
 fi
 if [[ -z "$CONFIG_NAME" ]]; then
-    echo "Error: The -c/--config-name argument is required." >&2
+    echo "Error: The --config-name argument is required." >&2
     echo $USAGE_STRING >&2
     exit 1
 fi
@@ -79,6 +83,18 @@ echo "Detected $N GPUs. Spawning $N Python processes with RUN_ID: $RUN_TIMESTAMP
 # Create the run directory so we can store logs there
 RUN_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${PROMPT_DATASET_NAME}/${RUN_TIMESTAMP}"
 mkdir -p "$RUN_DIR"
+
+if [[ -n "$LORA_ADAPTOR" ]]; then
+    echo "Merging LoRA adaptor $LORA_ADAPTOR into $MODEL_PATH..."
+    MERGED_MODEL_DIR="$RUN_DIR/merged_model"
+    uv run natural_language_merge_peft_adaptor \
+        base_model="${MODEL_PATH}" \
+        lora_adaptor="${LORA_ADAPTOR}" \
+        out_dir="${MERGED_MODEL_DIR}"
+
+    # Update MODEL_PATH to point to the newly merged model for inference
+    MODEL_PATH="$MERGED_MODEL_DIR"
+fi
 
 for i in "${!GPU_IDS[@]}"; do
     gpu_id=${GPU_IDS[$i]}
@@ -110,3 +126,8 @@ done
 echo "Waiting for all $N workers to finish..."
 wait
 echo "All workers completed!"
+
+if [[ -n "$LORA_ADAPTOR" ]]; then
+    echo "Cleaning up merged model at $MERGED_MODEL_DIR..."
+    rm -rf "$MERGED_MODEL_DIR"
+fi

@@ -25,22 +25,29 @@ class MultiTaskSFTTrainer(SFTTrainer):
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
     ) -> Any:
-        # 1. Run the standard evaluation to get the task-specific metrics
+        # Temporarily remove EarlyStoppingCallback so it isn't triggered prematurely
+        early_stopping_cb = next(
+            (cb for cb in self.callback_handler.callbacks if isinstance(cb, EarlyStoppingCallback)), None
+        )
+        if early_stopping_cb:
+            self.remove_callback(early_stopping_cb)
+
+        # Call the parent evaluate (which handles single datasets and dict loops)
         metrics = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
 
-        # 2. Find all keys that represent a task loss
-        # This will catch 'eval_eval_icu_mortality_loss', etc.
+        # Compute the aggregated eval_loss across all task metrics
         loss_keys = [k for k in metrics.keys() if k.endswith("_loss") and k != "eval_loss"]
-
-        # 3. Compute the mean of those losses
         if loss_keys:
             mean_loss = sum(metrics[k] for k in loss_keys) / len(loss_keys)
-
-            # Add it back to the metrics dictionary so load_best_model_at_end can find it
             metrics["eval_loss"] = mean_loss
+            # Only log at the top-level call to avoid redundant logs from nested dict evaluations
+            if metric_key_prefix == "eval":
+                self.log({"eval_loss": mean_loss})
 
-            # Optional: Manually log it so it shows up in WandB/TensorBoard alongside the others
-            self.log({"eval_loss": mean_loss})
+        # Add callback back and explicitly trigger it with the aggregated metrics
+        if early_stopping_cb:
+            self.add_callback(early_stopping_cb)
+            self.control = early_stopping_cb.on_evaluate(self.args, self.state, self.control, metrics)  # type: ignore[has-type]
 
         return metrics
 
