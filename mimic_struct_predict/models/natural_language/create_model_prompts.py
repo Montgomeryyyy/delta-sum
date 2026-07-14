@@ -21,7 +21,7 @@ Your task is to forecast whether a specific clinical outcome will happen in the 
 {reasoning_instructions}
 """  # noqa: E501
 
-DIRECT_INSTRUCTIONS = """Do not explain your reasoning. Output only your final answer between <answer> and </answer>."""
+DIRECT_INSTRUCTIONS = """Do not explain your reasoning."""
 
 THINKING_INSTRUCTIONS = """CRITICAL OUTPUT FORMAT:
 1. You must show your thinking between <think> and </think> tags.

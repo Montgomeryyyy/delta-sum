@@ -7,57 +7,17 @@ from typing import Any, List, Optional
 import datasets
 import hydra
 import torch
-import torch.nn.functional as F
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig
+from scipy.special import softmax
+from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
+from transformers import AutoTokenizer, EarlyStoppingCallback, EvalPrediction, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
 
 log = logging.getLogger(__name__)
-torch.set_printoptions(profile="full")
-
-
-def create_expected_brier_loss(digit_token_ids: list[int], true_label_token_id: int) -> Any:
-    """
-    digit_token_ids: List of token IDs representing confidences 0 through N.
-                     (e.g., the token IDs for '0', '1', ..., '9').
-    true_label_token_id: The specific token ID in your labels that represents
-                         a correctness of 1.0 (True).
-    """
-    N = len(digit_token_ids) - 1
-    implied_confidences = torch.tensor([i / N for i in range(N + 1)], dtype=torch.float32)
-    allowed_ids_tensor = torch.tensor(digit_token_ids, dtype=torch.long)
-
-    def expected_brier_loss_func(outputs: Any, labels: Any, num_items_in_batch: Any = None) -> torch.Tensor:
-        logits = outputs.get("logits") if hasattr(outputs, "get") else outputs.logits
-
-        device = logits.device
-        confidences = implied_confidences.to(device)
-        allowed_ids = allowed_ids_tensor.to(device)
-
-        # 1. Extract final token logits & labels
-        target_logits = logits[:, -2, :]  # (batch_size, vocab_size)
-        target_labels = labels[:, -1]  # (batch_size,)
-
-        # 2. Map the token ID to the mathematical y value (1.0 or 0.0)
-        # If the label is the true token ID, y becomes 1.0. Otherwise 0.0.
-        y = (target_labels == true_label_token_id).float()
-
-        # 3. Extract q: the predictive distribution over the confidence tokens
-        relevant_logits = target_logits[:, allowed_ids]  # (batch_size, N+1)
-        q = F.softmax(relevant_logits, dim=-1)  # (batch_size, N+1)
-        # 4. Compute expected squared error: sum( q_i * (y - i/N)^2 )
-        squared_errors = (y.unsqueeze(1) - confidences.unsqueeze(0)) ** 2
-        brier_loss_per_sample = torch.sum(q * squared_errors, dim=-1)
-
-        # 5. Average the loss
-        if num_items_in_batch is not None:
-            return torch.sum(brier_loss_per_sample) / num_items_in_batch
-        return torch.mean(brier_loss_per_sample)
-
-    return expected_brier_loss_func
 
 
 class MultiTaskSFTTrainer(SFTTrainer):
@@ -89,59 +49,6 @@ class MultiTaskSFTTrainer(SFTTrainer):
             self.log({"eval_loss": mean_loss})
 
         return metrics
-
-    def compute_loss(self, model: Any, inputs: Any, return_outputs: Any = False, num_items_in_batch: Any = None) -> Any:
-        # Get loss and outputs
-        loss, outputs = super().compute_loss(model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch)
-
-        # Log text at the very first step, and then every 10 steps to not spam the logs
-        if self.state.is_world_process_zero and (
-            self.is_first or (self.state.global_step > 0 and self.state.global_step % 10 == 0)
-        ):
-            self.is_first = False
-
-            tokenizer = getattr(self, "processing_class", None) or getattr(self, "tokenizer", None)
-            if tokenizer is not None:
-                # Take the first example in the batch
-                input_ids = inputs["input_ids"][0]
-                labels = inputs["labels"][0]
-
-                # Decode the input text
-                input_text = tokenizer.decode(input_ids, skip_special_tokens=False)
-
-                # Decode the valid labels (where label != -100)
-                valid_label_mask = labels != -100
-                if valid_label_mask.any():
-                    label_tokens = input_ids[valid_label_mask]
-                    label_text = tokenizer.decode(label_tokens.cpu().tolist(), skip_special_tokens=False)
-                else:
-                    label_text = "None (All labels masked to -100!)"
-
-                # Build alignment string for the last 50 tokens
-                alignment_str = "Token-by-Token Alignment (Last 50 tokens):\n"
-                # input_ids and labels have the same shape
-                seq_len = len(input_ids)
-                start_idx = max(0, seq_len - 50)
-                for i in range(start_idx, seq_len):
-                    # .item() safely pulls the value from the GPU to a Python int
-                    in_tok = tokenizer.decode([input_ids[i].item()])
-                    in_tok_clean = repr(in_tok)  # use repr to make \n and spaces visible
-
-                    if labels[i] == -100:
-                        alignment_str += f"{in_tok_clean:20} -> (masked)\n"
-                    else:
-                        lbl_tok = tokenizer.decode([labels[i].item()])
-                        lbl_tok_clean = repr(lbl_tok)
-                        alignment_str += f"{in_tok_clean:20} -> TARGET: {lbl_tok_clean}\n"
-
-                log_str = f"\n{'-'*40} Step {self.state.global_step} {'-'*40}\n"
-                log_str += f"INPUT PROMPT (Last 200 chars):\n{input_text[-200:]}\n\n"
-                log_str += f"TARGET LABELS (Tokens Model is Trained On):\n{label_text}\n\n"
-                log_str += f"{alignment_str}\n"
-                log_str += f"{'-'*89}\n"
-                log.info(log_str)
-
-        return (loss, outputs) if return_outputs else loss
 
 
 @hydra.main(
@@ -192,11 +99,70 @@ def main(cfg: DictConfig) -> None:
         log.info("Using LoRA for training")
         peft_config = LoraConfig(**cfg.get("lora", {}))
 
-    # if cfg.brier_loss:
-    #     log.info("Using custom Brier loss for training")
-    #     digit_token_ids = [tokenizer.convert_tokens_to_ids(str(i)) for i in range(10)]
-    #     true_label_token_id = tokenizer.convert_tokens_to_ids("1")
-    #     custom_loss_func = create_expected_brier_loss(digit_token_ids, true_label_token_id)
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model)
+    yes_token_id = tokenizer("Yes", add_special_tokens=False).input_ids[-1]
+    no_token_id = tokenizer("No", add_special_tokens=False).input_ids[-1]
+
+    def preprocess_logits_for_metrics(logits: torch.tensor, labels: torch.tensor) -> torch.tensor:
+        if isinstance(logits, tuple):
+            logits = logits[0]
+
+        # Keep only the logits for 'Yes' and 'No' tokens.
+        # This changes the last dimension from vocab_size to 2
+        yes_no_logits = logits[..., [yes_token_id, no_token_id]]
+
+        # Shift so that tokens < n predict n
+        shift_logits = yes_no_logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+
+        # Since there is exactly 1 valid label per input, we find its index using argmax.
+        # This guarantees the output is exactly (batch_size, 2), even if DDP introduces
+        # completely padded dummy rows (where all labels are -100).
+        # Completely padded rows will just extract index 0 (which is also -100) and get safely filtered later.
+        valid_indices = (shift_labels != -100).long().argmax(dim=1)
+        batch_indices = torch.arange(shift_logits.shape[0], device=shift_logits.device)
+
+        return shift_logits[batch_indices, valid_indices], shift_labels[batch_indices, valid_indices]
+
+    def compute_metrics(eval_preds: EvalPrediction) -> dict:
+        logits, labels = eval_preds
+        if isinstance(logits, tuple):
+            logits = logits[0]
+
+        # DDP gathering might pad some batches with -100 across GPUs, so we still filter -100 here.
+        valid_mask = labels != -100
+        valid_logits = logits[valid_mask]  # shape: (num_valid, 2)
+        valid_labels = labels[valid_mask]  # shape: (num_valid,)
+
+        if len(valid_labels) == 0:
+            return {"accuracy": 0.0}
+
+        # Calculate probabilities using softmax over the two classes
+        pos_probs = softmax(valid_logits, axis=-1)[:, 0]
+
+        # y_true is 1 if the true label is 'Yes', else 0
+        y_true = (valid_labels == yes_token_id).astype(int)
+        y_pred = (pos_probs >= 0.5).astype(int)
+
+        metrics = {}
+        try:
+            metrics["auroc"] = roc_auc_score(y_true, pos_probs)
+            metrics["ap"] = average_precision_score(y_true, pos_probs)
+            metrics["f1"] = f1_score(y_true, y_pred)
+        except Exception as e:
+            log.warning(f"Failed to compute binary metrics (possibly due to only one class present): {e}")
+
+        metrics["accuracy"] = (y_true == y_pred).mean()
+        return metrics
+
+    # HACK: So EOS token is not added
+    original_eos = tokenizer.eos_token
+    if not cfg.add_eos_token:
+        tokenizer.eos_token = ""
+
+    callbacks: list[TrainerCallback] = [MultiGpuTensorBoardCallback()]
+    if getattr(cfg, "early_stopping_patience", None) is not None:
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=cfg.early_stopping_patience))
 
     # --- Create trainer ---
     trainer = MultiTaskSFTTrainer(
@@ -205,9 +171,12 @@ def main(cfg: DictConfig) -> None:
         train_dataset=train_dataset,
         eval_dataset=eval_dict,
         peft_config=peft_config,
-        callbacks=[MultiGpuTensorBoardCallback()],
-        # compute_loss_func=custom_loss_func if cfg.brier_loss else None,
+        callbacks=callbacks,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+        compute_metrics=compute_metrics,
     )
+
+    tokenizer.eos_token = original_eos
 
     # --- Train ---
     log.info("Starting SFT training...")
