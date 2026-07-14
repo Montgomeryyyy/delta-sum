@@ -2,7 +2,7 @@ dataset_dir: ???  # Required: directory of pre-built prompt datasets
 output_dir: ???          # Required: directory to save outputs
 split: ???
 tasks: null
-chunk_size: 1000
+chunk_size: 5000
 
 model:
   model: ???

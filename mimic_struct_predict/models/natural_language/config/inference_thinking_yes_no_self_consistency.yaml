@@ -3,8 +3,10 @@ defaults:
   - inference_thinking_yes_no
   - _self_
 
+chunk_size: 500
+
 sampling_params:
-  n: 8
+  n: 10
 
 post_processing:
   output_format: "yes_no_self_consistency"
