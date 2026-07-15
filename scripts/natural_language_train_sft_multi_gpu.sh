@@ -63,6 +63,9 @@ if [[ -z "$CONFIG_NAME" ]]; then
     exit 1
 fi
 
+# (P2P) over PCIe is broken or blocked by the BIOS/IOMMU
+export NCCL_P2P_DISABLE=1
+
 # --- Run the natural language sft task ---
 
 uv run accelerate launch \
