@@ -203,7 +203,7 @@ def create_prompts_from_ehr_texts(
         ]
         if not enable_thinking:
             # Add generation prompt to guide the model to output in the correct format for direct prompt
-            messages.append({"role": "assistant", "content": "0." if output_format == "probability" else ""})
+            messages.append({"role": "assistant", "content": "\n0." if output_format == "probability" else "\n"})
 
         batch_messages.append(messages)
 

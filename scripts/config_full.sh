@@ -6,13 +6,17 @@ if [ -z "$SCRATCH_DIR" ]; then
     echo "Error: SCRATCH_DIR environment variable must be set." >&2
     return 1
 fi
+if [ -z "$HF_TOKEN" ]; then
+    echo "Error: HF_TOKEN environment variable must be set." >&2
+    return 1
+fi
 
 # ---- Internal Script Variables (No export needed) ----
 DATA_DIR="${SCRATCH_DIR}/data_full"
 TRAINING_DIR="${SCRATCH_DIR}/training"
 INFERENCE_DIR="${SCRATCH_DIR}/inference"
 
-HF_MODEL_NAME="Qwen/Qwen3-8B"
+HF_MODEL_NAME="google/gemma-3-270m-it"
 
 MIMIC_VERSION="2.2"
 # DATASET_NAME="mimic-iv-demo"
@@ -23,7 +27,8 @@ MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
 MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
 ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
-ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
+# ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
+ACES_TASKS="in_hospital_mortality"
 ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 
 NATURAL_LANGUAGE_DATA_DIR="${DATA_DIR}/MEDS_cohort_with_headers"

@@ -3,19 +3,29 @@ output_dir: ???          # Required: directory to save outputs
 split: ???
 tasks: null
 chunk_size: 5000
+seed: 42
+max_eval_samples: 5000
 
 model:
   model: ???
-  dtype: float16
+  dtype: bfloat16
   tensor_parallel_size: 1
   max_model_len: 4600
   gpu_memory_utilization: 0.9
 
+structured_outputs:
+  choice:
+    - "Yes"
+    - "No"
 
 sampling_params:
   max_tokens: 1
-  logprobs: 20
-  temperature: 0
+  logprobs: 2
+
+  # temperature: 1.0
+  # top_k: 64
+  # min_p: 0.0
+  # top_p: 0.95
 
 
 post_processing:

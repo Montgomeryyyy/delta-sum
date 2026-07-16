@@ -6,6 +6,11 @@ if [ -z "$SCRATCH_DIR" ]; then
     echo "Error: SCRATCH_DIR environment variable must be set." >&2
     return 1
 fi
+if [ -z "$HF_TOKEN" ]; then
+    echo "Error: HF_TOKEN environment variable must be set." >&2
+    return 1
+fi
+
 
 # ---- Internal Script Variables (No export needed) ----
 DATA_DIR="${SCRATCH_DIR}/data"

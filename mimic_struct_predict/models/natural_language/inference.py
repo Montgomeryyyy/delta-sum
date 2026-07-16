@@ -21,6 +21,7 @@ from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 from vllm.logprobs import Logprob
 from vllm.outputs import RequestOutput
+from vllm.sampling_params import StructuredOutputsParams
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +73,6 @@ def extract_yes_no_logit_probabilities(
     last_logprobs = completion_output.logprobs[-1]
     yes_logprob_obj = last_logprobs.get(yes_token_id)
     no_logprob_obj = last_logprobs.get(no_token_id)
-
     # In empircal testing always returned as option 1 and 2
     if yes_logprob_obj is None:
         log.info("Yes log_prob not returned in top k so setting to 0")
@@ -127,7 +127,14 @@ def main(cfg: DictConfig) -> None:
     # 2. Load model and tokenizer once
     log.info("Loading model...")
     llm = LLM(**cfg.model)
-    sampling_params = SamplingParams(**OmegaConf.to_container(cfg.sampling_params, resolve=True))
+    structured_outputs_params = (
+        StructuredOutputsParams(**cfg.structured_outputs) if getattr(cfg, "structured_outputs", None) else None
+    )
+
+    sampling_params = SamplingParams(
+        structured_outputs=structured_outputs_params, **OmegaConf.to_container(cfg.sampling_params, resolve=True)
+    )
+    log.info(sampling_params)
 
     compiled_regex = re.compile(cfg.post_processing.regex_pattern)
 
@@ -181,7 +188,7 @@ def main(cfg: DictConfig) -> None:
             continue
 
         log.info(f"Processing Task: [{task_name}]")
-        dataset = datasets.load_from_disk(str(task_dir))
+        dataset = datasets.load_from_disk(str(task_dir)).shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
 
         world_size = int(os.environ.get("WORLD_SIZE", 1))
         rank = int(os.environ.get("RANK", 0))
