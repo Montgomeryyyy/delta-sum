@@ -18,7 +18,7 @@ TRAINING_DIR="${SCRATCH_DIR}/training"
 INFERENCE_DIR="${SCRATCH_DIR}/inference"
 DEBUG_DIR="${SCRATCH_DIR}/debug"
 
-HF_MODEL_NAME="${SCRATCH_DIR}/hf_models/Qwen/Qwen3-0.6B"
+HF_MODEL_NAME="google/gemma-3-270m-it"
 
 MIMIC_VERSION="2.2"
 DATASET_NAME="mimic-iv-demo"
@@ -32,6 +32,7 @@ ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions
 ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
 ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 
+NATURAL_LANGUAGE_PRE_TRAINING_DIR="${DATA_DIR}/natural_language/pre_training"
 NATURAL_LANGUAGE_PROMPT_DATA_DIR="${DATA_DIR}/natural_language/prompts"
 EHR_TEXT_DIR="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/ehr_texts"
 NATURAL_LANGUAGE_MODEL_DIR="${TRAINING_DIR}/natural_language"
@@ -42,7 +43,7 @@ MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 
 # ---- Enviorment Variables ----
 CACHE_DIR="${SCRATCH_DIR}/../.cache"
-NUM_WORKERS="${SLURM_CPUS_PER_TASK:-1}"
+export NUM_WORKERS="${SLURM_CPUS_PER_TASK:-1}"
 
 export HF_HOME="${CACHE_DIR}/hf"
 export UV_CACHE_DIR="${CACHE_DIR}/uv"

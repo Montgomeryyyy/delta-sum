@@ -8,3 +8,5 @@ source scripts/config.sh
 bash scripts/download_mimic.sh --demo
 
 bash scripts/meds-dataset.sh
+
+bash scripts/natural-language-pretrain-dataset.sh

@@ -88,7 +88,7 @@ stages:
       delimiter: ${delimiter}
       eod_string: "Unspecified"
   - add_delta_rows:
-      header: "## Delta"
+      header: "## Date"
       delimiter: ${delimiter}
   - aggregate_code_metadata:
       aggregations:
