@@ -75,10 +75,10 @@ def extract_yes_no_logit_probabilities(
     no_logprob_obj = last_logprobs.get(no_token_id)
     # In empircal testing always returned as option 1 and 2
     if yes_logprob_obj is None:
-        log.info("Yes log_prob not returned in top k so setting to 0")
+        log.info(f"Yes log_prob not returned in top k so setting to 0. {last_logprobs}")
         yes_logprob_obj = Logprob(logprob=0.0)
     if no_logprob_obj is None:
-        log.info("No log_prob not returned in top k so setting to 0")
+        log.info(f"No log_prob not returned in top k so setting to 0. {last_logprobs}")
         no_logprob_obj = Logprob(logprob=0.0)
 
     # P(Yes) = p_yes / (p_yes + p_no) = 1 / (1 + (p_no / p_yes)) = 1 / (1 + exp(L_no - L_yes))
@@ -140,8 +140,9 @@ def main(cfg: DictConfig) -> None:
 
     if cfg.post_processing.output_format == "yes_no":
         tokenizer = AutoTokenizer.from_pretrained(cfg.model.model)
-        yes_token_id = tokenizer("Yes", add_special_tokens=False).input_ids[-1]
-        no_token_id = tokenizer("No", add_special_tokens=False).input_ids[-1]
+        yes_token_id = tokenizer(cfg.yes_token, add_special_tokens=False).input_ids[-1]
+        no_token_id = tokenizer(cfg.no_token, add_special_tokens=False).input_ids[-1]
+        log.info(f"Using yes token id: {yes_token_id}, no token id: {no_token_id}")
         logprobs = getattr(sampling_params, "logprobs", None)
         if logprobs is None or logprobs <= 0:
             raise ValueError(

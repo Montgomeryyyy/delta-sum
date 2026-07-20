@@ -14,6 +14,28 @@ from mimic_struct_predict.models.utils import load_tokenizer
 
 log = logging.getLogger(__name__)
 
+TEMPLATE = """{ehr}
+
+# Task
+You are an expert clinical AI assistant analyzing patient records to predict clinical outcomes.
+Above are the most recent events from a patient's EHR.
+Earlier events are truncated.
+Events are new line separated and ordered chronologically from least to most recent.
+They are hierarchically batched by timestamp and category tags:
+- `## Delta +X days`: Days elapsed since the previous batch.
+- `### Time HHh:mmm`: Same date and time.
+- `#### Category`: Same date, time, and event category.
+
+## Prediction Task
+{task_description}
+
+## Answer Format
+Your response must be exactly one of the following (do not explain your reasoning):
+Answer: Yes
+OR
+Answer: No
+"""
+
 SYSTEM_TEMPLATE = """You are a clinical AI forecaster.
 You will be given a patient's historical Electronic Health Record (EHR) up to the present moment.
 Your task is to forecast whether a specific clinical outcome will happen in the future based on this past medical history.
@@ -60,9 +82,9 @@ OR
 YES_NO_DIRECT_FORMAT_INSTRUCTIONS = """Predict yes or no if the target event will occur.
 Provide your final answer.
 It must be exactly one of the following:
-Yes
+Answer: Yes
 OR
-No
+Answer: No
 """
 
 PROBABILITY_FORMAT_INSTRUCTIONS = """Predict the probability of the target event occurring.
@@ -141,6 +163,46 @@ def truncate_ehr_texts(
                 final_ehrs.append(text)
 
     return final_ehrs
+
+
+def create_prompts_from_ehr_texts_v2(
+    ehr_texts: list[str],
+    task_description: str,
+    tokenizer: PreTrainedTokenizer,
+    enable_thinking: bool,
+    output_format: str,
+    max_new_tokens: int | None = None,
+) -> list[str]:
+    batch_messages = [
+        [
+            {
+                "role": "user",
+                "content": TEMPLATE.format(
+                    ehr=ehr,
+                    task_description=task_description,
+                ),
+            },
+            {
+                "role": "assistant",
+                "content": "Answer:",
+            },
+        ]
+        for ehr in ehr_texts
+    ]
+
+    prompts: list[str] = tokenizer.apply_chat_template(
+        batch_messages,
+        enable_thinking=False,
+        add_generation_prompt=False,
+        continue_final_message=True,
+        # https://huggingface.co/docs/transformers/main/en/chat_templating#using-applychattemplate
+        # When you format text with apply_chat_template(tokenize=False), make sure you set
+        # add_special_tokens=False if you tokenize later to avoid duplicating these tokens
+        tokenize=False,
+        add_special_tokens=False,
+    )
+
+    return prompts
 
 
 def create_prompts_from_ehr_texts(
@@ -235,7 +297,7 @@ def ehr_text_to_prompts(
         character_per_token_heuristic=tokenization_cfg.character_per_token_heuristic,
     )
 
-    prompts = create_prompts_from_ehr_texts(
+    prompts = create_prompts_from_ehr_texts_v2(
         ehr_texts=final_ehrs,
         task_description=task_description,
         tokenizer=tokenizer,
@@ -249,7 +311,7 @@ def ehr_text_to_prompts(
 
 def bool_to_completion(values: list[bool], output_format: str) -> list[str]:
     if output_format == "yes_no" or output_format == "yes_no_direct":
-        return ["Yes" if v else "No" for v in values]
+        return [" Yes" if v else " No" for v in values]
     elif output_format == "probability":
         return ["1" if v else "0" for v in values]
     else:

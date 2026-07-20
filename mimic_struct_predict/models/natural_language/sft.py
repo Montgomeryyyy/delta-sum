@@ -9,7 +9,7 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig
-from transformers import AutoTokenizer, EarlyStoppingCallback, TrainerCallback
+from transformers import AutoTokenizer, BatchEncoding, EarlyStoppingCallback, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
@@ -80,12 +80,51 @@ def main(cfg: DictConfig) -> None:
     for eval_task_dir in (dataset_dir / cfg.split_names.val).iterdir():
         if eval_task_dir.is_dir():
             full_ds = datasets.load_from_disk(str(eval_task_dir))
-            if len(full_ds) > cfg.max_eval_samples:
+            if getattr(cfg, "max_eval_samples", float("inf")) < len(full_ds):
                 subsampled_ds = full_ds.shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
                 eval_dict[eval_task_dir.name] = subsampled_ds
             else:
                 eval_dict[eval_task_dir.name] = full_ds
     log.info(f"Eval datasets: { {task: (len(ds), ds.column_names) for task, ds in eval_dict.items()} }")
+
+    log.info("Tokenizing dataset")
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model)
+
+    def prepare_dataset(
+        samples: dict[str, list[str]],
+    ) -> BatchEncoding:
+        prompts = samples["prompt"]
+        completions = samples["completion"]
+        full_texts = [p + c for p, c in zip(prompts, completions)]
+
+        tokenized_full_texts = tokenizer(
+            full_texts,
+            truncation=False,
+            padding=False,
+            add_special_tokens=False,
+        )
+        tokenized_prompts = tokenizer(
+            prompts,
+            truncation=False,
+            padding=False,
+            add_special_tokens=False,
+        )
+
+        labels = []
+        for input_ids, prompt_ids in zip(tokenized_full_texts["input_ids"], tokenized_prompts["input_ids"]):
+            label = input_ids.copy()
+            prompt_len = len(prompt_ids)
+            label[:prompt_len] = [-100] * prompt_len
+            labels.append(label)
+
+        tokenized_full_texts["labels"] = labels
+        return tokenized_full_texts
+
+    train_dataset = train_dataset.map(prepare_dataset, batched=True, num_proc=int(cfg.num_workers))
+    eval_dict = {
+        task: task_dataset.map(prepare_dataset, batched=True, num_proc=int(cfg.num_workers))
+        for task, task_dataset in eval_dict.items()
+    }
 
     # --- SFT config ---
     sft_config = SFTConfig(
@@ -99,12 +138,6 @@ def main(cfg: DictConfig) -> None:
     if "lora" in cfg:
         log.info("Using LoRA for training")
         peft_config = LoraConfig(**cfg.get("lora", {}))
-
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model)
-    # HACK: So EOS token is not added
-    original_eos = tokenizer.eos_token
-    if not cfg.add_eos_token:
-        tokenizer.eos_token = ""
 
     callbacks: list[TrainerCallback] = [MultiGpuTensorBoardCallback()]
     if getattr(cfg, "early_stopping_patience", None) is not None:
@@ -120,7 +153,7 @@ def main(cfg: DictConfig) -> None:
         callbacks=callbacks,
     )
 
-    tokenizer.eos_token = original_eos
+    log.info(trainer.train_dataset[0])
 
     # --- Train ---
     log.info("Starting SFT training...")
