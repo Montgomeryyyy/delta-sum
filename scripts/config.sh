@@ -16,28 +16,26 @@ fi
 DATA_DIR="${SCRATCH_DIR}/data"
 TRAINING_DIR="${SCRATCH_DIR}/training"
 INFERENCE_DIR="${SCRATCH_DIR}/inference"
+DEBUG_DIR="${SCRATCH_DIR}/debug"
 
 HF_MODEL_NAME="${SCRATCH_DIR}/hf_models/Qwen/Qwen3-0.6B"
 
 MIMIC_VERSION="2.2"
 DATASET_NAME="mimic-iv-demo"
-MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic_demo"
+MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
 # DATASET_NAME="mimiciv"
 # MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
 MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
-MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
+export MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
 ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
 ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
 ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 
-NATURAL_LANGUAGE_DATA_DIR="${DATA_DIR}/MEDS_cohort_with_headers"
 NATURAL_LANGUAGE_PROMPT_DATA_DIR="${DATA_DIR}/natural_language/prompts"
 EHR_TEXT_DIR="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/ehr_texts"
 NATURAL_LANGUAGE_MODEL_DIR="${TRAINING_DIR}/natural_language"
 NATURAL_LANGUAGE_INFERENCE_DIR="${INFERENCE_DIR}/natural_language"
-
-STRUCTURED_INPUT_DATA_DIR="${DATA_DIR}/MEDS_cohort_with_headers_and_quantiles"
 
 MEDS_TAB_OUTPUT_DATA_DIR="${DATA_DIR}/MEDS_tab"
 MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"

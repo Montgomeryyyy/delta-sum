@@ -26,6 +26,7 @@ etl_metadata:
   dataset_version: ${oc.env:DATASET_VERSION}
   pipeline_name: "etl"
 
+delimiter: "//"
 
 stages:
   - shard_events:
@@ -79,6 +80,22 @@ stages:
       - "Diagnosis"
       - "Diagnosis Related Group"
       - "Hcpcs Billing Item"
+  - add_prefix_rows:
+      header: "####"
+      delimiter: ${delimiter}
+  - add_time_rows:
+      header: "### Time"
+      delimiter: ${delimiter}
+      eod_string: "Unspecified"
+  - add_delta_rows:
+      header: "## Delta"
+      delimiter: ${delimiter}
+  - aggregate_code_metadata:
+      aggregations:
+        - name: "values/quantiles"
+          quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  - bin_numeric_values: # <- output used for structured data (has quantile bins instead of numeric values)
+      code_with_bin_name: "{code}//Quantile {bin}"
 
 parallelize:
   n_workers: ${oc.env:N_WORKERS,1}

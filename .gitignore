@@ -5,6 +5,7 @@ data/
 notebooks/tests/
 pre_trained_models/
 outputs/
+.scratch_dir
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

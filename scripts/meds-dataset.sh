@@ -30,25 +30,16 @@ N_WORKERS="${NUM_WORKERS}" \
 uv run MEDS_transform-pipeline \
     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/ETL.yaml \
 
-echo "Running add headers pipeline..."
-rm -rf "$NATURAL_LANGUAGE_DATA_DIR"
-
-INPUT_DIR="$MIMICIV_MEDS_COHORT_DIR" \
-OUTPUT_DIR="$NATURAL_LANGUAGE_DATA_DIR" \
-DATASET_NAME="$DATASET_NAME" \
-DATASET_VERSION="$MIMIC_VERSION" \
-N_WORKERS="${NUM_WORKERS}" \
-uv run MEDS_transform-pipeline \
-    pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_headers.yaml \
-
-# echo "Running add quantiles pipeline..."
-# rm -rf "$STRUCTURED_INPUT_DATA_DIR"
-# INPUT_DIR="$NATURAL_LANGUAGE_DATA_DIR" \
-# OUTPUT_DIR="$STRUCTURED_INPUT_DATA_DIR" \
-# DATASET_NAME="$DATASET_NAME" \
-# DATASET_VERSION="$MIMIC_VERSION" \
-# uv run MEDS_transform-pipeline \
-#     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/add_quantiles.yaml
+DEBUG_OUTPUT="${DEBUG_DIR}/meds_output.md"
+mkdir -p "${DEBUG_DIR}"
+echo "Outputting one subject to markdown for debugging at ${DEBUG_OUTPUT}"
+uv run python -c "
+import polars as pl; \
+from pathlib import Path; \
+df = pl.read_parquet('$MIMICIV_MEDS_COHORT_DIR/data/train/'); \
+markdown_str = df.filter(pl.col('subject_id') == df['subject_id'][0]).to_pandas().to_markdown(index=False); \
+Path('$DEBUG_OUTPUT').write_text(markdown_str) \
+"
 
 echo "Running ACES pipeline"
 rm -rf "${ACES_OUTPUT_DIR}"
