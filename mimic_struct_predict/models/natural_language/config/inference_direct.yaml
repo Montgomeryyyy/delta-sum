@@ -15,17 +15,18 @@ model:
 
 structured_outputs:
   choice:
-    - "Yes"
-    - "No"
+    - " Yes"
+    - " No"
+
+yes_token: "▁Yes"
+no_token: "▁No"
+
 
 sampling_params:
   max_tokens: 1
   logprobs: 2
-
-  # temperature: 1.0
-  # top_k: 64
-  # min_p: 0.0
-  # top_p: 0.95
+  temperature: 0.0
+  seed: 42
 
 
 post_processing:
