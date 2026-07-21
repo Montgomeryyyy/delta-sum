@@ -29,7 +29,9 @@ MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
 export MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
 ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
+shopt -s nullglob
 ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
+shopt -u nullglob
 ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 
 NATURAL_LANGUAGE_PRE_TRAINING_DIR="${DATA_DIR}/natural_language/pre_training"
@@ -46,7 +48,7 @@ MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 
 # ---- Enviorment Variables ----
 CACHE_DIR="${SCRATCH_DIR}/../.cache"
-export NUM_WORKERS="${SLURM_CPUS_PER_TASK:1}"
+export NUM_WORKERS="${SLURM_CPUS_PER_TASK:-1}"
 
 export HF_HOME="${CACHE_DIR}/hf"
 export UV_CACHE_DIR="${CACHE_DIR}/uv"

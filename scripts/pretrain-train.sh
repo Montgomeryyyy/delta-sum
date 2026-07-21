@@ -23,9 +23,6 @@ source "./scripts/config.sh"
 
 # --- Pipeline Execution ---
 
-# Print commands
-# set -x
-
 if [[ "$MODE" == "structured" ]]; then
     CONFIG_NAME="structured.yaml"
     DATASET_DIR="${STRUCTURED_PRE_TRAINING_DIR}/tokenized_dataset"
@@ -38,8 +35,10 @@ else
     OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining"
 fi
 
-uv run pre_training_train \
-    --config-name="${CONFIG_NAME}" \
+uv run accelerate launch \
+    --config_file mimic_struct_predict/models/pre_training/config/train/accelerate.yaml \
+    --no_python pre_training_train \
+    --config-name "${CONFIG_NAME}" \
     dataset_dir="${DATASET_DIR}" \
     output_dir="${OUTPUT_DIR}" \
     model.name="${HF_MODEL_NAME}" \
