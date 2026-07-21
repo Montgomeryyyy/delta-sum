@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import Callable
 
 import polars as pl
 
@@ -50,37 +49,6 @@ def get_agg_expr(
     return expr
 
 
-def run_processor_loop(
-    input_paths: list[Path],
-    output_dir: Path,
-    overwrite: bool,
-    process_fn: Callable[[Path], tuple[pl.LazyFrame, Path, str]],  # Returns (LazyFrame, OutPath, LogMsg)
-) -> None:
-    """Generic orchestrator for processing parquet shards."""
-    for path in input_paths:
-        try:
-            lazy_df, out_path, context_msg = process_fn(path)
-
-            if out_path.exists() and not overwrite:
-                log.info(f"Skipping {out_path}: already exists.")
-                continue
-
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            log.info(f"Processing {context_msg}")
-
-            lazy_df.sink_parquet(out_path)
-            log.debug(f"Saved to {out_path}")
-
-        except FileNotFoundError as e:
-            log.warning(f"Skipping {path}: {e}")
-        except Exception as e:
-            log.error(f"Error processing {path}: {e}")
-            raise
-
-
-## Refactored High-Level Functions
-
-
 def meds_to_string_dataset(
     meds_dir: Path,
     output_dir: Path,
@@ -96,18 +64,33 @@ def meds_to_string_dataset(
     shards = sorted(shard for shard in meds_dir.glob("*/*.parquet") if (splits is None or shard.parent.name in splits))
     agg_expr = get_agg_expr(code_join_token, split_on_delimiter, delimiter)
 
-    def pretrain_loader(p: Path) -> tuple[pl.LazyFrame, Path, str]:
-        split, name = p.parent.name, p.name
-        out = output_dir / split / name
-        # Simple scan and agg
-        lf = pl.scan_parquet(p)
-        if append_numeric_values:
-            lf = lf.with_columns(code=append_numeric_values_to_codes_expr(delimiter=delimiter, sig_figs=sig_figs))
+    for shard in shards:
+        split, name = shard.parent.name, shard.name
+        out_path = output_dir / split / name
 
-        lf = lf.group_by("subject_id").agg(ehr_text=agg_expr)
-        return lf, out, f"Split: [{split}] | Shard: {name}"
+        if out_path.exists() and not overwrite:
+            log.info(f"Skipping {out_path}: already exists.")
+            continue
 
-    run_processor_loop(shards, output_dir, overwrite, pretrain_loader)
+        try:
+            log.info(f"Processing Split: [{split}] | Shard: {name}")
+
+            # Simple scan and agg
+            df = pl.scan_parquet(shard)
+            if append_numeric_values:
+                df = df.with_columns(code=append_numeric_values_to_codes_expr(delimiter=delimiter, sig_figs=sig_figs))
+
+            df = df.group_by("subject_id").agg(ehr_text=agg_expr)
+
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            df.sink_parquet(out_path)
+            log.debug(f"Saved to {out_path}")
+
+        except FileNotFoundError as e:
+            log.warning(f"Skipping {shard}: {e}")
+        except Exception as e:
+            log.error(f"Error processing {shard}: {e}")
+            raise
 
 
 def meds_and_aces_to_string_dataset(
@@ -136,28 +119,42 @@ def meds_and_aces_to_string_dataset(
         sort_by="meds_row_idx",
     )
 
-    def task_loader(p: Path) -> tuple[pl.LazyFrame, Path, str]:
-        task, split, name = p.parent.parent.name, p.parent.name, p.name
-        meds_p = meds_dir / split / name
-        if not meds_p.exists():
-            raise FileNotFoundError(f"MEDS shard missing: {meds_p}")
+    for shard in shards:
+        task, split, name = shard.parent.parent.name, shard.parent.name, shard.name
+        out_path = output_dir / task / split / name
 
-        out = output_dir / task / split / name
+        if out_path.exists() and not overwrite:
+            log.info(f"Skipping {out_path}: already exists.")
+            continue
 
-        # Joined logic
-        aces_lazy = pl.scan_parquet(p)
-        meds_lazy = pl.scan_parquet(meds_p).with_row_index("meds_row_idx")
-        if append_numeric_values:
-            meds_lazy = meds_lazy.with_columns(
-                code=append_numeric_values_to_codes_expr(delimiter=delimiter, sig_figs=sig_figs)
+        try:
+            meds_p = meds_dir / split / name
+            if not meds_p.exists():
+                raise FileNotFoundError(f"MEDS shard missing: {meds_p}")
+
+            log.info(f"Processing Task: [{task}] | Split: [{split}] | Shard: {name}")
+
+            # Joined logic
+            aces_lazy = pl.scan_parquet(shard)
+            meds_lazy = pl.scan_parquet(meds_p).with_row_index("meds_row_idx")
+            if append_numeric_values:
+                meds_lazy = meds_lazy.with_columns(
+                    code=append_numeric_values_to_codes_expr(delimiter=delimiter, sig_figs=sig_figs)
+                )
+
+            lf = (
+                aces_lazy.join(meds_lazy, on="subject_id", how="inner")
+                .filter(pl.col("time") <= pl.col("prediction_time"))
+                .group_by(["subject_id", "prediction_time", "boolean_value"])
+                .agg(ehr_text=agg_expr)
             )
 
-        lf = (
-            aces_lazy.join(meds_lazy, on="subject_id", how="inner")
-            .filter(pl.col("time") <= pl.col("prediction_time"))
-            .group_by(["subject_id", "prediction_time", "boolean_value"])
-            .agg(ehr_text=agg_expr)
-        )
-        return lf, out, f"Task: [{task}] | Split: [{split}] | Shard: {name}"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            lf.sink_parquet(out_path)
+            log.debug(f"Saved to {out_path}")
 
-    run_processor_loop(shards, output_dir, overwrite, task_loader)
+        except FileNotFoundError as e:
+            log.warning(f"Skipping {shard}: {e}")
+        except Exception as e:
+            log.error(f"Error processing {shard}: {e}")
+            raise

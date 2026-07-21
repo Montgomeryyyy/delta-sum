@@ -31,9 +31,9 @@ def main(cfg: DictConfig) -> None:
         tasks=valid_tasks if valid_tasks else None,
         splits=valid_splits,
         code_join_token=cfg.preprocessing.code_join_token,
-        split_on_delimiter=True,
+        split_on_delimiter=cfg.preprocessing.split_on_delimiter,
         delimiter=cfg.preprocessing.delimiter,
-        append_numeric_values=True,
+        append_numeric_values=cfg.preprocessing.append_numeric_values,
         sig_figs=cfg.preprocessing.numeric_value_sig_figs,
     )
     log.info(f"Finished creating raw EHR text datasets. Saved to: {output_dir}")

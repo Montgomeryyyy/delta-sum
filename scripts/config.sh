@@ -35,12 +35,13 @@ shopt -u nullglob
 ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 
 NATURAL_LANGUAGE_PRE_TRAINING_DIR="${DATA_DIR}/natural_language/pre_training"
-NATURAL_LANGUAGE_PROMPT_DATA_DIR="${DATA_DIR}/natural_language/prompts"
+NATURAL_LANGUAGE_TASK_DATA_DIR="${DATA_DIR}/natural_language/tasks"
 EHR_TEXT_DIR="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/ehr_texts"
 NATURAL_LANGUAGE_MODEL_DIR="${TRAINING_DIR}/natural_language"
 NATURAL_LANGUAGE_INFERENCE_DIR="${INFERENCE_DIR}/natural_language"
 
 STRUCTURED_PRE_TRAINING_DIR="${DATA_DIR}/structured/pre_training"
+STRUCTURED_TASK_DATA_DIR="${DATA_DIR}/structured/tasks"
 STRUCTURED_MODEL_DIR="${TRAINING_DIR}/structured"
 
 MEDS_TAB_OUTPUT_DATA_DIR="${DATA_DIR}/MEDS_tab"
