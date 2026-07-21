@@ -10,7 +10,7 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-MODE=${1:-natural_language}
+MODE=${1}
 
 if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
     echo "Usage: $0 [structured|natural_language]"

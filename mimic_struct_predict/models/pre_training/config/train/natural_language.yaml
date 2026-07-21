@@ -8,50 +8,49 @@ split_names:
 pad_to_multiple_of: 8
 
 model:
-  name: "google/gemma-3-270m"
-  random_init: true
-  vocab_padding_multiple: 8
-  torch_dtype: float32
+  name: ???
+  random_init: false
   config:
-    use_cache: false
+    dtype: bfloat16
 
-tokenizer_dir: ${model.name}
+tokenizer_dir: ???
 
 # https://huggingface.co/docs/transformers/en/main_classes/trainer#transformers.TrainingArguments
 training_args:
   # Training Duration and Batch Size
   per_device_train_batch_size: 4
-  max_steps : 100
+  num_train_epochs: 1
   # Learning Rate & Scheduler
-  learning_rate: 5e-4
+  learning_rate: 5e-5
   lr_scheduler_type: cosine
-  warmup_steps: 0.1
+  warmup_steps: 0.05
   # Optimizer
   optim: adamw_torch
   weight_decay: 0.01
   # Regularization & Training Stability
   gradient_accumulation_steps: 1
   # Mixed Precision Training
-  fp16: true
+  bf16: true
   # Logging & Monitoring Training
   logging_strategy: steps
-  logging_steps: 0.01
+  logging_steps: 1
   # Experiment Tracking Integration
-  report_to: "trackio"
-  project: "mimic-struct-predict-structured-pretraining"
-  trackio_space_id: null
+  report_to: "tensorboard"
   # Evaluation
   eval_strategy: steps
-  eval_steps: 0.2
+  eval_steps: 0.01
   per_device_eval_batch_size : 4
   # Checkpointing & Saving
   save_strategy: steps
-  save_steps: 0.2
-  save_total_limit: 3
+  save_steps: 0.01
+  save_total_limit: 1
   # Best Model Tracking
   load_best_model_at_end: true
   metric_for_best_model: eval_loss
   greater_is_better: false
+  ## Dataloader
+  dataloader_num_workers: ${oc.decode:${oc.env:NUM_WORKERS}}
+  gradient_checkpointing: true
 
 hydra:
   run:

@@ -1,11 +1,9 @@
 import math
 from logging import getLogger
 from pathlib import Path
-from typing import Any
 
 import datasets
 import hydra
-import trackio
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig, TaskType, get_peft_model
@@ -15,31 +13,11 @@ from transformers import (
     DataCollatorForLanguageModeling,
     PreTrainedTokenizerFast,
     Trainer,
-    TrainerCallback,
-    TrainerControl,
-    TrainerState,
     TrainingArguments,
 )
 from transformers.utils import logging as hf_logging
 
-from mimic_struct_predict.models.utils.model_loading import resolve_dtype
-
 log = getLogger(__name__)
-
-
-class TrackioSystemMetricsCallback(TrainerCallback):
-    """Custom callback to log GPU and system metrics to Trackio."""
-
-    def on_log(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        logs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        # Automatically detects NVIDIA or Apple Silicon GPUs and logs stats
-        trackio.log_gpu()
 
 
 @hydra.main(version_base=None, config_path="config/train")
@@ -63,8 +41,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     tokenizer = PreTrainedTokenizerFast.from_pretrained(str(tokenizer_dir))
-    torch_dtype = resolve_dtype(cfg.model.get("torch_dtype", None))
-    hydra_model_config = OmegaConf.to_container(cfg.model.get("config", {}), resolve=True)
+    hydra_model_config = OmegaConf.to_container(getattr(cfg.model, "config", {}), resolve=True)
 
     if cfg.model.random_init:
         log.info("Initializing model with random weights...")
@@ -73,13 +50,13 @@ def main(cfg: DictConfig) -> None:
             vocab_size=math.ceil(len(tokenizer) / cfg.model.vocab_padding_multiple) * cfg.model.vocab_padding_multiple,
             n_positions=tokenizer.model_max_length,
             pad_token_id=tokenizer.pad_token_id,
-            torch_dtype=torch_dtype,
             **hydra_model_config,
         )
         model = AutoModelForCausalLM.from_config(config)
     else:
         log.info(f"Loading pre-trained model from {cfg.model.name}...")
-        model = AutoModelForCausalLM.from_pretrained(cfg.model.name, torch_dtype=torch_dtype, **hydra_model_config)
+
+        model = AutoModelForCausalLM.from_pretrained(cfg.model.name, **hydra_model_config)
     model.train()
 
     if cfg.get("lora", None):
@@ -102,14 +79,12 @@ def main(cfg: DictConfig) -> None:
         output_dir=str(run_output_dir), run_name=run_output_dir.name, **cfg.get("training_args", {})
     )
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, pad_to_multiple_of=cfg.pad_to_multiple_of)
-    callbacks = [TrackioSystemMetricsCallback()] if cfg.training_args.report_to == "trackio" else None
     trainer = Trainer(
         model=model,
         args=args,
         data_collator=data_collator,
         train_dataset=dataset[cfg.split_names.train],
         eval_dataset=dataset[cfg.split_names.val],
-        callbacks=callbacks,
     )
 
     # --- Train ---

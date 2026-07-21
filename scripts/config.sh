@@ -18,7 +18,7 @@ TRAINING_DIR="${SCRATCH_DIR}/training"
 INFERENCE_DIR="${SCRATCH_DIR}/inference"
 DEBUG_DIR="${SCRATCH_DIR}/debug"
 
-HF_MODEL_NAME="google/gemma-3-270m-it"
+HF_MODEL_NAME="google/gemma-3-270m"
 
 MIMIC_VERSION="2.2"
 DATASET_NAME="mimic-iv-demo"
@@ -39,13 +39,14 @@ NATURAL_LANGUAGE_MODEL_DIR="${TRAINING_DIR}/natural_language"
 NATURAL_LANGUAGE_INFERENCE_DIR="${INFERENCE_DIR}/natural_language"
 
 STRUCTURED_PRE_TRAINING_DIR="${DATA_DIR}/structured/pre_training"
+STRUCTURED_MODEL_DIR="${TRAINING_DIR}/structured"
 
 MEDS_TAB_OUTPUT_DATA_DIR="${DATA_DIR}/MEDS_tab"
 MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 
 # ---- Enviorment Variables ----
 CACHE_DIR="${SCRATCH_DIR}/../.cache"
-export NUM_WORKERS="${SLURM_CPUS_PER_TASK:-1}"
+export NUM_WORKERS="${SLURM_CPUS_PER_TASK:1}"
 
 export HF_HOME="${CACHE_DIR}/hf"
 export UV_CACHE_DIR="${CACHE_DIR}/uv"
