@@ -5,9 +5,9 @@ metadata:
 
 predicates:
   hospital_discharge:
-    code: {regex: "Hospital Discharge//.*"}
+    code: "####//Hospital Discharge"
   death:
-    code: "Death//Died"
+    code: "####//Death"
 
 trigger: hospital_discharge
 

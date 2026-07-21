@@ -4,14 +4,14 @@ metadata:
     Prediction is made at ED discharge, and only includes patients who survive until ED discharge.
 
 predicates:
-  ed_admission:
-    code: {regex: "Emergency Department Registration//.*"}
-  ed_out:
-    code: {regex: "Emergency Department Discharge//.*"}
+  ed_registration:
+    code: "####//Emergency Department Registration"
+  ed_discharge:
+    code: "####//Emergency Department Discharge"
   death:
-    code: "Death//Died"
+    code: "####//Death"
 
-trigger: ed_out
+trigger: ed_discharge
 
 windows:
   input:
@@ -35,4 +35,4 @@ windows:
     end: start + 72 hours
     start_inclusive: False
     end_inclusive: True
-    label: ed_admission
+    label: ed_registration

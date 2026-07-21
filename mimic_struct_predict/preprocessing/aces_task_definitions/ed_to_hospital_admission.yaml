@@ -4,14 +4,14 @@ metadata:
     Prediction is made at emergency department admission, transfers to other hospitals are not considered admissions.
 
 predicates:
-  ed_admission:
-    code: {regex: "Emergency Department Registration//.*"}
-  ed_out:
-    code: {regex: "Emergency Department Discharge//.*"}
-  ed_out_to_admission:
-    code: "Emergency Department Discharge//Disposition//Admitted"
+  ed_registration:
+    code: "####//Emergency Department Registration"
+  ed_discharge:
+    code: "####//Emergency Department Discharge"
+  disposition_admitted:
+    code: "Disposition//Admitted"
 
-trigger: ed_admission
+trigger: ed_registration
 
 windows:
   input:
@@ -23,9 +23,9 @@ windows:
     end_inclusive: True
     index_timestamp: end
   target:
-    # True if patient ed_out disposition is admitted to the hospital, false otherwise
+    # True if patient ed_discharge disposition is admitted to the hospital, false otherwise
     start: input.end
-    end: start->ed_out
+    end: start->ed_discharge
     start_inclusive: False
     end_inclusive: True
-    label: ed_out_to_admission
+    label: disposition_admitted

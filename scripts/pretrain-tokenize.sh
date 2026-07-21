@@ -43,7 +43,8 @@ uv run pre_training_tokenize \
     --config-name="${CONFIG_NAME}" \
     tokenizer.pre_trained_tokenizer="${pre_trained_tokenizer}" \
     dataset_dir="${MIMICIV_MEDS_COHORT_DIR}/data" \
-    output_dir="${OUTPUT_DIR}"
+    output_dir="${OUTPUT_DIR}" \
+    num_workers="${NUM_WORKERS}"
 
 echo "Outputting one subject to markdown for debugging at ${DEBUG_OUTPUT}"
 uv run python -c "
