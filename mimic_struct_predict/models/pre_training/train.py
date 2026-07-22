@@ -1,9 +1,11 @@
 import math
-from logging import getLogger
+import os
 from pathlib import Path
 
 import datasets
 import hydra
+from accelerate import Accelerator
+from accelerate.logging import get_logger
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig, TaskType, get_peft_model
@@ -15,15 +17,15 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-from transformers.utils import logging as hf_logging
 
-log = getLogger(__name__)
+from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
+
+log = get_logger(__name__)
 
 
 @hydra.main(version_base=None, config_path="config/train")
 def main(cfg: DictConfig) -> None:
-    hf_logging.set_verbosity_info()
-    hf_logging.enable_propagation()
+    Accelerator()
 
     run_output_dir = Path(HydraConfig.get().runtime.output_dir)
     run_output_dir.mkdir(parents=True, exist_ok=True)
@@ -35,6 +37,14 @@ def main(cfg: DictConfig) -> None:
 
     log.info("Loading dataset...")
     dataset = datasets.load_from_disk(str(dataset_dir))
+    if len(dataset[cfg.split_names.train]) > cfg.max_train_samples:
+        dataset[cfg.split_names.train] = (
+            dataset[cfg.split_names.train].shuffle(seed=cfg.seed).select(range(cfg.max_train_samples))
+        )
+    if len(dataset[cfg.split_names.val]) > cfg.max_eval_samples:
+        dataset[cfg.split_names.val] = (
+            dataset[cfg.split_names.val].shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
+        )
     log.info(
         f"Dataset loaded. Train size: {len(dataset[cfg.split_names.train])},"
         f"Val size: {len(dataset[cfg.split_names.val])}"
@@ -58,6 +68,7 @@ def main(cfg: DictConfig) -> None:
 
         model = AutoModelForCausalLM.from_pretrained(cfg.model.name, **hydra_model_config)
     model.train()
+    log.info(f"Model dtype: {model.dtype}")
 
     if cfg.get("lora", None):
         log.info("Applying LoRA adapters to the model...")
@@ -75,16 +86,23 @@ def main(cfg: DictConfig) -> None:
         )
 
     log.info("Starting training...")
-    args = TrainingArguments(
+    log.info(f"Saving outputs to {run_output_dir}")
+
+    training_args = TrainingArguments(
         output_dir=str(run_output_dir), run_name=run_output_dir.name, **cfg.get("training_args", {})
     )
+    if training_args.report_to == "tensorboard":
+        os.environ["TENSORBOARD_LOGGING_DIR"] = str(run_output_dir)
+    log.info(training_args)
+
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, pad_to_multiple_of=cfg.pad_to_multiple_of)
     trainer = Trainer(
         model=model,
-        args=args,
+        args=training_args,
         data_collator=data_collator,
         train_dataset=dataset[cfg.split_names.train],
         eval_dataset=dataset[cfg.split_names.val],
+        callbacks=[MultiGpuTensorBoardCallback()],
     )
 
     # --- Train ---

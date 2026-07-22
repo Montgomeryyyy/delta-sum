@@ -5,52 +5,71 @@ split_names:
   train: train
   val: tuning
 
-pad_to_multiple_of: 8
+pad_to_multiple_of: 64
+max_train_samples: 2000
+max_eval_samples: 1000
+seed: 42
 
 model:
   name: ???
   random_init: false
   config:
     dtype: bfloat16
+    attn_implementation: eager # [liger_kernel.transformers.model.gemma3][WARNING] - It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `flash_attention_2`. Use `eager` with `AutoModelForCausalLM.from_pretrained('<path-to-checkpoint>', attn_implementation='eager')`
 
 tokenizer_dir: ???
 
 # https://huggingface.co/docs/transformers/en/main_classes/trainer#transformers.TrainingArguments
 training_args:
   # Training Duration and Batch Size
-  per_device_train_batch_size: 4
+  per_device_train_batch_size: 32
   num_train_epochs: 1
+  # max_steps: 100
   # Learning Rate & Scheduler
   learning_rate: 5e-5
   lr_scheduler_type: cosine
   warmup_steps: 0.05
   # Optimizer
-  optim: adamw_torch
+  optim: adamw_torch_fused
   weight_decay: 0.01
   # Regularization & Training Stability
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 2
+  max_grad_norm: 1.0
   # Mixed Precision Training
   bf16: true
+  bf16_full_eval: true
+  tf32: true
+  # Gradient Checkpointing
+  gradient_checkpointing: false
   # Logging & Monitoring Training
   logging_strategy: steps
   logging_steps: 1
+  # Logging
+  log_level: "info"
+  disable_tqdm: true
   # Experiment Tracking Integration
   report_to: "tensorboard"
   # Evaluation
   eval_strategy: steps
-  eval_steps: 0.01
-  per_device_eval_batch_size : 4
+  eval_steps: 0.25
+  per_device_eval_batch_size : 32
+  prediction_loss_only: true
   # Checkpointing & Saving
   save_strategy: steps
-  save_steps: 0.01
+  save_steps: 0.25
   save_total_limit: 1
   # Best Model Tracking
   load_best_model_at_end: true
   metric_for_best_model: eval_loss
   greater_is_better: false
   ## Dataloader
-  dataloader_num_workers: ${oc.decode:${oc.env:NUM_WORKERS}}
-  gradient_checkpointing: true
+  dataloader_num_workers: 4
+  # DDP
+  ddp_find_unused_parameters: false
+  # Compilation
+  torch_compile: false
+  # Kernels
+  use_liger_kernel: true
 
 hydra:
   run:
