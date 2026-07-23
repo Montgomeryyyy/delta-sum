@@ -37,10 +37,6 @@ def main(cfg: DictConfig) -> None:
 
     log.info("Loading dataset...")
     dataset = datasets.load_from_disk(str(dataset_dir))
-    if len(dataset[cfg.split_names.train]) > cfg.max_train_samples:
-        dataset[cfg.split_names.train] = (
-            dataset[cfg.split_names.train].shuffle(seed=cfg.seed).select(range(cfg.max_train_samples))
-        )
     if len(dataset[cfg.split_names.val]) > cfg.max_eval_samples:
         dataset[cfg.split_names.val] = (
             dataset[cfg.split_names.val].shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
@@ -88,8 +84,9 @@ def main(cfg: DictConfig) -> None:
     log.info("Starting training...")
     log.info(f"Saving outputs to {run_output_dir}")
 
+    hydra_training_args = OmegaConf.to_container(getattr(cfg, "training_args", {}), resolve=True)
     training_args = TrainingArguments(
-        output_dir=str(run_output_dir), run_name=run_output_dir.name, **cfg.get("training_args", {})
+        output_dir=str(run_output_dir), run_name=run_output_dir.name, **hydra_training_args
     )
     if training_args.report_to == "tensorboard":
         os.environ["TENSORBOARD_LOGGING_DIR"] = str(run_output_dir)

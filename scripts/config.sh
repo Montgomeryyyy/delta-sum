@@ -21,10 +21,8 @@ DEBUG_DIR="${SCRATCH_DIR}/debug"
 HF_MODEL_NAME="google/gemma-3-270m"
 
 MIMIC_VERSION="2.2"
-DATASET_NAME="mimic-iv-demo"
+DATASET_NAME="mimiciv"
 MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
-# DATASET_NAME="mimiciv"
-# MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
 MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
 export MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
@@ -50,6 +48,7 @@ MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 # ---- Enviorment Variables ----
 CACHE_DIR="${SCRATCH_DIR}/../.cache"
 export NUM_WORKERS="${SLURM_CPUS_PER_TASK:-1}"
+export NUM_GPUS="${SLURM_GPUS_ON_NODE:-1}"
 
 export HF_HOME="${CACHE_DIR}/hf"
 export UV_CACHE_DIR="${CACHE_DIR}/uv"
