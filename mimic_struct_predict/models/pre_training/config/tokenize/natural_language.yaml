@@ -1,7 +1,7 @@
 dataset_dir: ???  # Required: directory of meds datasets with quantiles
 output_dir: ???          # Required: directory to save outputs
 
-overwrite: false
+overwrite: true
 
 dataset:
   split_names:
@@ -21,7 +21,7 @@ tokenizer:
 
 tokenization:
   stride: 128
-  max_length: 1024
+  max_length: 4096
 
 num_workers: 1
 batch_size: 50

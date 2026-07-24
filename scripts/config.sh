@@ -13,37 +13,40 @@ fi
 
 
 # ---- Internal Script Variables (No export needed) ----
-DATA_DIR="${SCRATCH_DIR}/data"
-TRAINING_DIR="${SCRATCH_DIR}/training"
-INFERENCE_DIR="${SCRATCH_DIR}/inference"
-DEBUG_DIR="${SCRATCH_DIR}/debug"
+export DATA_DIR="${SCRATCH_DIR}/data"
+export TRAINING_DIR="${SCRATCH_DIR}/training"
+export INFERENCE_DIR="${SCRATCH_DIR}/inference"
+export DEBUG_DIR="${SCRATCH_DIR}/debug"
+export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots"
 
-HF_MODEL_NAME="google/gemma-3-270m"
+export HF_MODEL_NAME="google/gemma-3-270m"
 
-MIMIC_VERSION="2.2"
-DATASET_NAME="mimiciv"
-MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
-MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
+export MIMIC_VERSION="2.2"
+export DATASET_NAME="mimiciv"
+export MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
+export MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
 export MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
-ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
+export ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
 shopt -s nullglob
-ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
+export ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
 shopt -u nullglob
-ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
+export ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 
-NATURAL_LANGUAGE_PRE_TRAINING_DIR="${DATA_DIR}/natural_language/pre_training"
-NATURAL_LANGUAGE_TASK_DATA_DIR="${DATA_DIR}/natural_language/tasks"
-EHR_TEXT_DIR="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/ehr_texts"
-NATURAL_LANGUAGE_MODEL_DIR="${TRAINING_DIR}/natural_language"
-NATURAL_LANGUAGE_INFERENCE_DIR="${INFERENCE_DIR}/natural_language"
+export NATURAL_LANGUAGE_MEDS_DIR="${MIMICIV_MEDS_COHORT_DIR}/add_delta_rows"
+export NATURAL_LANGUAGE_PRE_TRAINING_DIR="${DATA_DIR}/natural_language/pre_training"
+export NATURAL_LANGUAGE_TASK_DATA_DIR="${DATA_DIR}/natural_language/tasks"
+export EHR_TEXT_DIR="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/ehr_texts"
+export NATURAL_LANGUAGE_MODEL_DIR="${TRAINING_DIR}/natural_language"
+export NATURAL_LANGUAGE_INFERENCE_DIR="${INFERENCE_DIR}/natural_language"
 
-STRUCTURED_PRE_TRAINING_DIR="${DATA_DIR}/structured/pre_training"
-STRUCTURED_TASK_DATA_DIR="${DATA_DIR}/structured/tasks"
-STRUCTURED_MODEL_DIR="${TRAINING_DIR}/structured"
+export STRUCTURED_MEDS_DIR="${MIMICIV_MEDS_COHORT_DIR}/data" # Output of bin_numeric_values
+export STRUCTURED_PRE_TRAINING_DIR="${DATA_DIR}/structured/pre_training"
+export STRUCTURED_TASK_DATA_DIR="${DATA_DIR}/structured/tasks"
+export STRUCTURED_MODEL_DIR="${TRAINING_DIR}/structured"
 
-MEDS_TAB_OUTPUT_DATA_DIR="${DATA_DIR}/MEDS_tab"
-MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
+export MEDS_TAB_OUTPUT_DATA_DIR="${DATA_DIR}/MEDS_tab"
+export MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 
 # ---- Enviorment Variables ----
 CACHE_DIR="${SCRATCH_DIR}/../.cache"

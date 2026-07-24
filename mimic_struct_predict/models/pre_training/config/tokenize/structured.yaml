@@ -14,5 +14,5 @@ tokenizer:
     unk_token: "Unknown"
     pad_token: "<PAD>"
     eoc_token: "\n\n" # End of Code token
-  model_max_length: 512
+  model_max_length: ${tokenization.max_length}
   truncation_side: left

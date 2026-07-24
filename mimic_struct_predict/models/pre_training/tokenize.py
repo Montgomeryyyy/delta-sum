@@ -44,7 +44,17 @@ def train_custom_tokenizer(dataset: datasets.Dataset, cfg: DictConfig, batch_siz
         special_tokens=[cfg.special_tokens.pad_token],
     )
 
-    def batch_iterator() -> Iterable[str]:
+    def batch_iterator() -> Iterable[list[str]]:
+        # Ensure all time tokens are in vocab by yielding them min_frequency times
+        time_tokens = (
+            [f"+{num} days" for num in range(1, 366)]
+            + [f"{num:02d}h" for num in range(24)]
+            + [f"{num:02d}m" for num in range(60)]
+        )
+        # HACK: To ensure time_token is always in vocab
+        for _ in range(max(1, cfg.min_frequency)):
+            yield time_tokens
+
         for batch in dataset.iter(batch_size=batch_size):
             yield batch["ehr_text"]
 

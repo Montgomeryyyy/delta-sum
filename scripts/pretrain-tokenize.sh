@@ -27,11 +27,13 @@ source "./scripts/config.sh"
 
 if [[ "$MODE" == "structured" ]]; then
     CONFIG_NAME="structured.yaml"
+    DATASET_DIR="${STRUCTURED_MEDS_DIR}"
     OUTPUT_DIR="${STRUCTURED_PRE_TRAINING_DIR}"
     DEBUG_OUTPUT="${DEBUG_DIR}/structured_pretrain_text_output.md"
     pre_trained_tokenizer=null
 else
     CONFIG_NAME="natural_language.yaml"
+    DATASET_DIR="${NATURAL_LANGUAGE_MEDS_DIR}"
     OUTPUT_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}"
     DEBUG_OUTPUT="${DEBUG_DIR}/natural_language_pretrain_output.md"
     pre_trained_tokenizer="${HF_MODEL_NAME}"
@@ -42,7 +44,7 @@ mkdir -p "${OUTPUT_DIR}"
 uv run pre_training_tokenize \
     --config-name="${CONFIG_NAME}" \
     tokenizer.pre_trained_tokenizer="${pre_trained_tokenizer}" \
-    dataset_dir="${MIMICIV_MEDS_COHORT_DIR}/data" \
+    dataset_dir="${DATASET_DIR}" \
     output_dir="${OUTPUT_DIR}" \
     num_workers="${NUM_WORKERS}"
 
