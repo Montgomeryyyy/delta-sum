@@ -34,6 +34,6 @@ def main(cfg: DictConfig) -> None:
         split_on_delimiter=cfg.preprocessing.split_on_delimiter,
         delimiter=cfg.preprocessing.delimiter,
         append_numeric_values=cfg.preprocessing.append_numeric_values,
-        sig_figs=cfg.preprocessing.numeric_value_sig_figs,
+        numeric_values_sig_figs=cfg.preprocessing.numeric_value_sig_figs,
     )
     log.info(f"Finished creating raw EHR text datasets. Saved to: {output_dir}")

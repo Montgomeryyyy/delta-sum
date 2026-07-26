@@ -97,11 +97,8 @@ def main(cfg: DictConfig) -> None:
         splits={train_split, val_split},
         # Add delimiter around eoc token to ensure it is always a separate token
         # and to allow for easier decoding back to text
-        code_join_token=cfg.pre_processing.code_join_token,
-        delimiter=cfg.pre_processing.delimiter,
-        split_on_delimiter=cfg.pre_processing.split_on_delimiter,  # Tokenizer will split to create tokens
-        append_numeric_values=False,  # We are using quantiles instead of raw numeric values
         overwrite=cfg.overwrite,
+        **cfg.pre_processing,
     )
 
     log.info("Loading raw pretraining dataset as huggingface dataset...")
@@ -153,6 +150,8 @@ def main(cfg: DictConfig) -> None:
     # Save the tokenized dataset to disk and remove the intermediate data directory
     tokenized_dataset.save_to_disk(output_dir / "tokenized_dataset")
     log.info(f"Tokenized dataset saved to {output_dir / 'tokenized_dataset'}")
+
+    tokenized_dataset.cleanup_cache_files()
 
     log.info("Counting total tokens in the tokenized training dataset...")
 

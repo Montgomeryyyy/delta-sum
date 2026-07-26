@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 
 
 def append_numeric_values_to_codes_expr(
-    delimiter: str | None, sig_figs: int, code_col: str = "code", numeric_col: str = "numeric_value"
+    delimiter: str | None, numeric_values_sig_figs: int, code_col: str = "code", numeric_col: str = "numeric_value"
 ) -> pl.Expr:
     """Appends numeric values to codes with specified significant figures."""
     if not delimiter:
@@ -16,7 +16,7 @@ def append_numeric_values_to_codes_expr(
     rounded_str = (
         pl.when(pl.col(numeric_col) == pl.col(numeric_col).floor())
         .then(pl.col(numeric_col).cast(pl.Int64).cast(pl.String))
-        .otherwise(pl.col(numeric_col).round_sig_figs(sig_figs).cast(pl.String))
+        .otherwise(pl.col(numeric_col).round_sig_figs(numeric_values_sig_figs).cast(pl.String))
     )
 
     return (
@@ -58,7 +58,7 @@ def meds_to_string_dataset(
     delimiter: None | str,
     split_on_delimiter: bool = False,
     append_numeric_values: bool = False,
-    sig_figs: int = 2,
+    numeric_values_sig_figs: int = 2,
 ) -> None:
     # Format shards: split/shard.parquet
     shards = sorted(shard for shard in meds_dir.glob("*/*.parquet") if (splits is None or shard.parent.name in splits))
@@ -78,7 +78,11 @@ def meds_to_string_dataset(
             # Simple scan and agg
             df = pl.scan_parquet(shard)
             if append_numeric_values:
-                df = df.with_columns(code=append_numeric_values_to_codes_expr(delimiter=delimiter, sig_figs=sig_figs))
+                df = df.with_columns(
+                    code=append_numeric_values_to_codes_expr(
+                        delimiter=delimiter, numeric_values_sig_figs=numeric_values_sig_figs
+                    )
+                )
 
             df = df.group_by("subject_id").agg(ehr_text=agg_expr)
 
@@ -104,7 +108,7 @@ def meds_and_aces_to_string_dataset(
     delimiter: None | str = None,
     split_on_delimiter: bool = False,
     append_numeric_values: bool = False,
-    sig_figs: int = 2,
+    numeric_values_sig_figs: int = 2,
 ) -> None:
     # Format shards: task/split/shard.parquet
     shards = sorted(
@@ -139,7 +143,9 @@ def meds_and_aces_to_string_dataset(
             meds_lazy = pl.scan_parquet(meds_p).with_row_index("meds_row_idx")
             if append_numeric_values:
                 meds_lazy = meds_lazy.with_columns(
-                    code=append_numeric_values_to_codes_expr(delimiter=delimiter, sig_figs=sig_figs)
+                    code=append_numeric_values_to_codes_expr(
+                        delimiter=delimiter, numeric_values_sig_figs=numeric_values_sig_figs
+                    )
                 )
 
             lf = (

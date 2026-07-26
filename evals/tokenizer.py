@@ -8,8 +8,11 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import seaborn as sns
-from datasets import load_dataset, load_from_disk
+from datasets import disable_caching, disable_progress_bar, load_dataset, load_from_disk
 from transformers import AutoTokenizer
+
+disable_progress_bar()
+disable_caching()
 
 # NeurIPS camera-ready plot settings
 plt.style.use("seaborn-v0_8-paper")
@@ -123,8 +126,10 @@ plt.axvline(x=CONTEXT_WINDOW, color="red", linestyle="--", label=f"{CONTEXT_WIND
 # Set x-lim up to 99th percentile to avoid huge outliers skewing the plot
 max_x = max(np.percentile(nl_lengths, 99), np.percentile(struct_lengths, 99))
 plt.xscale("log", base=2)
-plt.xlim(1024, max_x)
-ticks = [2**i for i in range(10, int(np.ceil(np.log2(max_x))) + 1)]
+# HACK: Hardcoded cut-off point
+min_log2_x = 7
+plt.xlim(2**min_log2_x, max_x)
+ticks = [2**i for i in range(min_log2_x, int(np.ceil(np.log2(max_x))) + 1)]
 plt.xticks(ticks, [f"$2^{{{int(np.log2(t))}}}$" for t in ticks])
 plt.ylim(0, 1)
 plt.xlabel("Full Tokenized EHR Length")
