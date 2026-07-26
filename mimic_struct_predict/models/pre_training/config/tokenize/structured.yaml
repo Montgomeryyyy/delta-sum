@@ -3,7 +3,7 @@ defaults:
   - _self_
 
 pre_processing:
-  split_on_delimiter: false # Tokenizer uses delimeter to define codes
+  delimiter_replacement: null # Tokenizer uses delimeter to define codes
   code_join_token: ${pre_processing.delimiter}${tokenizer.special_tokens.eoc_token}${pre_processing.delimiter}
   append_numeric_values: false
 

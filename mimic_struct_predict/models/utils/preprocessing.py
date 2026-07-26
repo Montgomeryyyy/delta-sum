@@ -28,7 +28,7 @@ def append_numeric_values_to_codes_expr(
 
 def get_agg_expr(
     code_join_token: str,
-    split_on_delimiter: bool,
+    delimiter_replacement: str | None,
     delimiter: None | str,
     sort_by: str | None = None,
 ) -> pl.Expr:
@@ -42,10 +42,10 @@ def get_agg_expr(
         expr = expr.sort_by(sort_by)
 
     expr = expr.str.join(code_join_token)
-    if split_on_delimiter:
+    if delimiter_replacement:
         if not delimiter:
-            raise ValueError("Delimiter must be specified if split_on_delimiter is True.")
-        expr = expr.str.replace_all(delimiter, " ", literal=True)
+            raise ValueError("Delimiter must be specified if delimiter_replacement is not None.")
+        expr = expr.str.replace_all(delimiter, delimiter_replacement, literal=True)
     return expr
 
 
@@ -56,13 +56,13 @@ def meds_to_string_dataset(
     splits: set[str] | None,
     code_join_token: str,
     delimiter: None | str,
-    split_on_delimiter: bool = False,
+    delimiter_replacement: str | None = None,
     append_numeric_values: bool = False,
     numeric_values_sig_figs: int = 2,
 ) -> None:
     # Format shards: split/shard.parquet
     shards = sorted(shard for shard in meds_dir.glob("*/*.parquet") if (splits is None or shard.parent.name in splits))
-    agg_expr = get_agg_expr(code_join_token, split_on_delimiter, delimiter)
+    agg_expr = get_agg_expr(code_join_token, delimiter_replacement, delimiter)
 
     for shard in shards:
         split, name = shard.parent.name, shard.name
@@ -106,7 +106,7 @@ def meds_and_aces_to_string_dataset(
     splits: set[str] | None,
     code_join_token: str,
     delimiter: None | str = None,
-    split_on_delimiter: bool = False,
+    delimiter_replacement: str | None = None,
     append_numeric_values: bool = False,
     numeric_values_sig_figs: int = 2,
 ) -> None:
@@ -118,7 +118,7 @@ def meds_and_aces_to_string_dataset(
     )
     agg_expr = get_agg_expr(
         code_join_token,
-        split_on_delimiter,
+        delimiter_replacement,
         delimiter,
         sort_by="meds_row_idx",
     )

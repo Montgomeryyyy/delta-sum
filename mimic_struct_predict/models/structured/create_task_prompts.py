@@ -31,7 +31,5 @@ def main(cfg: DictConfig) -> None:
         overwrite=cfg.overwrite,
         tasks=valid_tasks if valid_tasks else None,
         splits=valid_splits,
-        code_join_token=cfg.preprocessing.code_join_token,
-        split_on_delimiter=False,  # Tokenizer will split to create tokens
-        append_numeric_values=False,  # We are using quantiles instead of raw numeric values
+        **cfg.preprocessing,
     )
