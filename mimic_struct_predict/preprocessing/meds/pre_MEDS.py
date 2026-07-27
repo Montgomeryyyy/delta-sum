@@ -201,6 +201,13 @@ def process_ed_edstays_df(ed_edstays_df: pl.LazyFrame, hosp_patients_df: pl.Lazy
     )
 
 
+def process_ed_medrecon_df(ed_medrecon_df: pl.LazyFrame, ed_edstays_df: pl.LazyFrame) -> pl.LazyFrame:
+    """ED Medication Reconciliation Steps:
+    - Add intime from edstays
+    """
+    return _add_time_by_id(ed_medrecon_df, ed_edstays_df, on="stay_id", time_column_name="intime")
+
+
 def process_ed_triage_df(ed_triage_df: pl.LazyFrame, ed_edstays_df: pl.LazyFrame) -> pl.LazyFrame:
     """ED Triage Steps:
     - Convert Fahrenheit temperatures to Celsius
@@ -468,6 +475,10 @@ FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[
     "ed/edstays": (
         process_ed_edstays_df,
         [("hosp/patients", ["subject_id", "anchor_year", "anchor_age"])],
+    ),
+    "ed/medrecon": (
+        process_ed_medrecon_df,
+        [("ed/edstays", ["stay_id", "intime"])],
     ),
     "ed/triage": (
         process_ed_triage_df,

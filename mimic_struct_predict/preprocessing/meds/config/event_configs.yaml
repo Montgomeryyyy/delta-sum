@@ -101,7 +101,7 @@ hosp/drgcodes:
 hosp/emar:
   medication:
     code:
-      - Hospital Medication
+      - Hospital Medication Administered
       - col(medication)
       - col(event_txt)
     time: col(charttime)
@@ -294,6 +294,7 @@ icu/icustays:
 ### ED Tables ###
 
 ed/diagnosis:
+  # Same format as hosp/diagnoses_icd
   diagnosis:
     code:
       - Emergency Department Diagnosis
@@ -309,18 +310,19 @@ ed/edstays:
       - col(arrival_transport)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
-  ed_registration_gender:
-    code:
-      - Emergency Department Registration
-      - Gender
-      - col(gender)
-    time: col(intime)
-    time_format: "%Y-%m-%d %H:%M:%S"
+  # Same format as hosp/admissions/admission_race etc
   ed_registration_race:
     code:
       - Emergency Department Registration
       - Race
       - col(race)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  ed_registration_gender:
+    code:
+      - Emergency Department Registration
+      - Gender
+      - col(gender)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
   ed_registration_age:
@@ -331,6 +333,7 @@ ed/edstays:
      time: col(intime)
      time_format: "%Y-%m-%d %H:%M:%S"
   ed_out:
+    # Same format as Hospital Discharge
     code:
       - Emergency Department Discharge
       - Location
@@ -338,10 +341,19 @@ ed/edstays:
     time: col(outtime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
-ed/pyxis:
+ed/medrecon:
   medication:
     code:
-      - Emergency Department Medication Administration
+      - Emergency Department Registration Current Medication
+      - col(name)
+    time: col(intime) # Use intime instead of chartime so better grouping
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/pyxis:
+  medication:
+    # Same format as hosp/emar but no event_txt in this table
+    code:
+      - Emergency Department Medication Administered
       - col(name)
     time: col(charttime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -358,7 +370,7 @@ ed/triage:
     time_format: "%Y-%m-%d %H:%M:%S"
 
 ed/vitalsign:
-  # Cols not used: rhythm (implict as dropped in premeds see process_ed_vitals_df)
+  # Cols not used: rhythm (implict as dropped in premeds, for reasoning see process_ed_vitals_df)
   vital_sign:
     code:
       - "Emergency Department Vital Sign: Name, Unit, Value"
