@@ -1,98 +1,18 @@
-# Natural Language adaptation of the ETHOS_ARES event_config_ed.yaml.
-# The resulting MEDS events can then be converted concatenated to either form a stream of discrete tokens
-# or a natural language description of the patient's stay.
+# Schema based on MIMIC_IV_MEDS, see ./event_configs_MIMIC_IV_MEDS (diffing these 2 files is instructive)
 
-# No ID columns are included apart from subject_id
-# Seq_num not used although could be used for informative ordering (beyond alphabetical) in future
-# Descriptions used instead of IDs (e.g. long_title instead of icd code and version)
-# All other unused columns are noted
-
-# Tables not used
-# POE?
-
-### ED
+# Alterations have been made to maximise natural language representation (e.g. using icd descriptions instead of codes)
+# These differences are commented inline
+# Notably we add descriptive headers with explanation of event ordering (e.g "Diagnosis Related Group: Type, Description, Severity of Illness, Likelihood Of Mortality")
+# We do not use any ids or meta data other than subject_id so these are not included
+# Future work could use seq_num for more informative ordering
 
 subject_id_col: subject_id
 
-ed/diagnosis:
-  diagnosis:
-    code:
-      - Emergency Department Diagnosis
-      - col(long_title) # Joined from hosp/d_icd_diagnoses (icd_code + icd_version -> long_title)
-    time: col(outtime) # Joined from ed/edstays
-    time_format: "%Y-%m-%d %H:%M:%S"
-
-ed/edstays:
-  ed_registration_arrival:
-    code:
-      - Emergency Department Registration
-      - Arrival Method
-      - col(arrival_transport)
-    time: col(intime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-  ed_registration_gender:
-    code:
-      - Emergency Department Registration
-      - Gender
-      - col(gender)
-    time: col(intime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-  ed_registration_race:
-    code:
-      - Emergency Department Registration
-      - Race
-      - col(race)
-    time: col(intime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-  ed_registration_age:
-     code:
-       - Emergency Department Registration
-       - Age
-     numeric_value: col(age) # Calculated from hosp/patients anchor_age and anchor_year
-     time: col(intime)
-     time_format: "%Y-%m-%d %H:%M:%S"
-  ed_out:
-    code:
-      - Emergency Department Discharge
-      - Location
-      - col(disposition)
-    time: col(outtime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-
-ed/pyxis:
-  medication:
-    code:
-      - Emergency Department Medication Administration
-      - col(name)
-    time: col(charttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-
-ed/triage:
-  triage:
-    code:
-      - "Emergency Department Triage: Name, Unit, Value"
-      - col(name)
-      - col(unit)
-      - col(value)
-    numeric_value: value_num
-    time: col(intime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-
-ed/vitalsign:
-  # Cols not used: rhythm (implict as dropped in premeds see process_ed_vitals_df)
-  vital_sign:
-    code:
-      - "Emergency Department Vital Sign: Name, Unit, Value"
-      - col(name)
-      - col(unit)
-      - col(value)
-    numeric_value: value_num
-    time: col(charttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
+### Hospital Tables ###
 
 hosp/admissions:
-  # edregtime, edouttime not used (as using MIMIC-ED extension)
-  # Seperate out admission type, location etc in to sepearte events (will be grouped later)
+  # ed_registration, ed_out not used (as using MIMIC-ED extension)
+  # Seperate out admission type, location etc in to seperate events (will be grouped later)
   admission_type:
     code:
       - Hospital Admission
@@ -196,111 +116,74 @@ hosp/hcpcsevents:
     time_format: "%Y-%m-%d %H:%M:%S"
 
 hosp/labevents:
-  # Choose just to record event at time of result and not at collection as well
-  lab:
+  # Choose just to record event at time of result and not at collection as well (as doubles number of events)
+  lab_result:
     code:
-      - "Laboratory Result: Fluid, Test, Priority, Units, Value"
-      - Speciemen Coll
+      - "Lab Result: Fluid, Test, Priority, Units, Value"
       - col(fluid)
       - col(label)
       - col(priority)
       - col(valueuom)
       - col(value)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
     numeric_value: valuenum
-    time: col(charttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-
-hosp/microbiologyevents:
-  microbiology:
-    code:
-      - "Microbiology Result: Sample, Test, Organism Grown, Antibiotic Tested, Sensitivity"
-      - col(spec_type_desc)
-      - col(test_name)
-      - col(org_name)
-      - col(ab_name)
-      - col(interpretation)
-    time: col(storetime) # date and time of when the microbiology result was available
-    time_format: "%Y-%m-%d %H:%M:%S"
 
 hosp/omr:
-  # Cols not used: seq_num
-  # premeds.py filters only to Blood Pressure, BMI (kg/m2), Weight (lbs), Height (Inches) rows
-  # Blood pressure is split into diastolic/systolic in premeds.py
+  # premeds.py filters only to Blood Pressure, BMI (kg/m2), Weight (lbs), Height (Inches) rows, adds a unit column and converts
+  # result_value to numeric. Blood pressure is also split into diastolic/systolic
   omr:
     code:
       - "Clinical Observation: Name, Unit, Value"
       - col(result_name)
       - col(result_unit)
-    # Pre-MEDS transforms this to numeric so can be used for structured quantiles matching vital signs
     numeric_value: col(result_num)
     time: col(chartdate) # Only chartdate column available so set EOD.
     time_format: "%Y-%m-%d %H:%M:%S"
 
 hosp/patients:
+  # Gender and age added to hosp/admission so gender and dob dropped here
   death:
     code:
       # Not using the MEDS official code for death (MEDS_DEATH) due to semantics.
       - Death
       - Died
-    time: col(dod) # Combined with admissions deathtime in preMEDS.py
+    time: col(dod)
     time_format: "%Y-%m-%d %H:%M:%S"
 
-# hosp/pharmacy:
-#  medication_start:
-#    code:
-#      - Pharmacy Prescription
-#      - Start
-#      - col(medication)
-#      - Route
-#      - col(route)
-#      - Frequency
-#      - col(frequency)
-#      - Doses Per 24 Hrs
-#      - col(doses_per_24_hrs)
-#    time: col(starttime)
-#    time_format:
-#      - "%Y-%m-%d %H:%M:%S"
-#  medication_stop:
-#    code:
-#      - Pharmacy Prescription
-#      - Stop
-#      - col(medication)
-#    time: col(stoptime)
-#    time_format:
-#      - "%Y-%m-%d %H:%M:%S"
+hosp/pharmacy:
+  medication_start:
+    code:
+      - "Medication Start: Name, Route, Frequency, Doses Per 24 Hrs"
+      - col(medication)
+      - col(route)
+      - col(frequency)
+      - col(doses_per_24_hrs)
+    time: col(starttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    #  - "%Y-%m-%d" All rows seem to have time of day
+
+  medication_stop:
+    code:
+      - "Medication Stop"
+      - col(medication)
+    time: col(stoptime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    #  - "%Y-%m-%d" All rows seem to have time of day
+
 
 hosp/procedures_icd:
   procedure:
     code:
       - Hospital Procedure
-      - col(long_title) # Joined from hosp/d_procedures (icd_code + icd_version -> long_title)
-    time: col(chartdate)
-    time_format: "%Y-%m-%d %H:%M:%S"
-
-hosp/services:
-  service_to:
-    code:
-      - Hospital Service
-      - To
-      - col(curr_service)
-    time: col(transfertime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-  service_from:
-    code:
-      - Hospital Service
-      - From
-      - col(prev_service)
-    time: col(transfertime)
+      - col(long_title) # Instead of ICD code + version
+    time: col(dischtime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
 hosp/transfers:
-  transfer_from:
-    code:
-      - Hospital Transfer
-      - From
-      - col(careunit)
-    time: col(outtime)
-    time_format: "%Y-%m-%d %H:%M:%S"
+  # Split into 2 events (grouped later)
   transfer_to:
     code:
       - Hospital Transfer
@@ -407,3 +290,81 @@ icu/icustays:
 #     time: col(charttime)
 #     time_format: "%Y-%m-%d %H:%M:%S"
 #     numeric_value: value
+
+### ED Tables ###
+
+ed/diagnosis:
+  diagnosis:
+    code:
+      - Emergency Department Diagnosis
+      - col(long_title) # Joined from hosp/d_icd_diagnoses (icd_code + icd_version -> long_title)
+    time: col(outtime) # Joined from ed/edstays
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/edstays:
+  ed_registration_arrival:
+    code:
+      - Emergency Department Registration
+      - Arrival Method
+      - col(arrival_transport)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  ed_registration_gender:
+    code:
+      - Emergency Department Registration
+      - Gender
+      - col(gender)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  ed_registration_race:
+    code:
+      - Emergency Department Registration
+      - Race
+      - col(race)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  ed_registration_age:
+     code:
+       - Emergency Department Registration
+       - Age
+     numeric_value: col(age) # Calculated from hosp/patients anchor_age and anchor_year
+     time: col(intime)
+     time_format: "%Y-%m-%d %H:%M:%S"
+  ed_out:
+    code:
+      - Emergency Department Discharge
+      - Location
+      - col(disposition)
+    time: col(outtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/pyxis:
+  medication:
+    code:
+      - Emergency Department Medication Administration
+      - col(name)
+    time: col(charttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/triage:
+  triage:
+    code:
+      - "Emergency Department Triage: Name, Unit, Value"
+      - col(name)
+      - col(unit)
+      - col(value)
+    numeric_value: value_num
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/vitalsign:
+  # Cols not used: rhythm (implict as dropped in premeds see process_ed_vitals_df)
+  vital_sign:
+    code:
+      - "Emergency Department Vital Sign: Name, Unit, Value"
+      - col(name)
+      - col(unit)
+      - col(value)
+    numeric_value: value_num
+    time: col(charttime)
+    time_format: "%Y-%m-%d %H:%M:%S"

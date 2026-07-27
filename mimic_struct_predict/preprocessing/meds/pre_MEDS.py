@@ -347,27 +347,6 @@ def process_hosp_lab_events_df(hosp_lab_events_df: pl.LazyFrame, hosp_d_labitems
     )
 
 
-def process_hosp_microbiology_events_df(hosp_microbiology_events_df: pl.LazyFrame) -> pl.LazyFrame:
-    """Microbiology event steps:
-    - If org_name null "no organism grew (i.e. a negative culture)" so set to No Growth
-    - Only include interpretation of antibiotic sensitivity if one was tested (i.e. ab_name is not null)
-    """
-    return hosp_microbiology_events_df.with_columns(
-        pl.when(pl.col("org_name").is_null()).then(pl.lit("No Growth")).otherwise(pl.col("org_name")).alias("org_name"),
-        pl.col("interpretation")
-        .replace_strict(
-            {"S": "Sensitive", "R": "Resistant", "I": "Intermediate", "P": "Pending"}, default=pl.col("interpretation")
-        )
-        .alias("interpretation"),
-    ).with_columns(
-        pl.when(pl.col("ab_name").is_null()).then(pl.lit("")).otherwise(pl.col("ab_name")).alias("ab_name"),
-        pl.when(pl.col("ab_name").is_null())
-        .then(pl.lit(""))
-        .otherwise(pl.col("interpretation"))
-        .alias("interpretation"),
-    )
-
-
 def process_hosp_omr_df(hosp_omr_df: pl.LazyFrame) -> pl.LazyFrame:
     """OMR (Online Medical Record ~misc observations) Steps:
     - Blood pressure
@@ -439,6 +418,18 @@ def process_hosp_patients_df(hosp_patients_df: pl.LazyFrame, hosp_admissions_df:
     )
 
 
+def process_hosp_pharmacy_df(hosp_pharamcy_df: pl.LazyFrame) -> pl.LazyFrame:
+    """Pharmacy Steps:
+    - Map null Doses Per 24 Hrs to empty strings
+    """
+    return hosp_pharamcy_df.with_columns(
+        pl.when(pl.col("doses_per_24_hrs").is_null())
+        .then(pl.lit(""))
+        .otherwise(pl.col("doses_per_24_hrs"))
+        .alias("doses_per_24_hrs")
+    )
+
+
 def process_hosp_procedures_df(
     hosp_procedures_df: pl.LazyFrame, hosp_admissions_df: pl.LazyFrame, hosp_d_icd_procedures_df: pl.LazyFrame
 ) -> pl.LazyFrame:
@@ -453,16 +444,6 @@ def process_hosp_procedures_df(
     hosp_procedures_df = _join_icd_code_version_to_title(hosp_procedures_df, hosp_d_icd_procedures_df)
     hosp_procedures_df = _convert_date_to_end_of_day_timestamp(hosp_procedures_df)
     return hosp_procedures_df
-
-
-def process_hosp_services_df(hosp_services_df: pl.LazyFrame) -> pl.LazyFrame:
-    """Services Steps:
-    - Map service abbreviations to descriptions
-    """
-    return hosp_services_df.with_columns(
-        pl.col("prev_service").replace_strict(SERVICE_MAP, default=None),
-        pl.col("curr_service").replace_strict(SERVICE_MAP, default=None),
-    )
 
 
 # Processing functions registry for MIMIC-IV data files.
@@ -498,6 +479,7 @@ FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[
         process_ed_vitalsign_df,
         None,
     ),
+    ### Hospital Tables ###
     "hosp/admissions": (
         process_hosp_admissions_df,
         [("hosp/patients", ["subject_id", "gender", "anchor_year", "anchor_age"])],
@@ -521,25 +503,18 @@ FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[
         process_hosp_lab_events_df,
         [("hosp/d_labitems", ["itemid", "label", "fluid"])],
     ),
-    "hosp/microbiologyevents": (
-        process_hosp_microbiology_events_df,
-        None,
-    ),
     "hosp/omr": (process_hosp_omr_df, None),
     "hosp/patients": (
         process_hosp_patients_df,
         [("hosp/admissions", ["subject_id", "deathtime"])],
     ),
+    "hosp/pharmacy": (process_hosp_pharmacy_df, None),
     "hosp/procedures_icd": (
         process_hosp_procedures_df,
         [
             ("hosp/admissions", ["hadm_id", "dischtime"]),
             ("hosp/d_icd_procedures", ["icd_code", "icd_version", "long_title"]),
         ],
-    ),
-    "hosp/services": (
-        process_hosp_services_df,
-        None,
     ),
 }
 
