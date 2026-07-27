@@ -75,6 +75,8 @@ SERVICE_MAP = {
     "VSURG": "Vascular Surgical",
 }
 
+POUNDS_TO_KG = 0.45359237
+
 ### Helper Functions ###
 
 
@@ -256,6 +258,55 @@ def process_ed_vitalsign_df(ed_vitalsign_df: pl.LazyFrame) -> pl.LazyFrame:
     return _unpivot_measurements(ed_vitalsign_df, vital_cols, ["subject_id", "charttime"])
 
 
+def process_icu_chartevents_df(icu_chartevents_df: pl.LazyFrame, icu_d_items_df: pl.LazyFrame) -> pl.LazyFrame:
+    """ICU Chartevents Steps:
+    - Join with d_items_df to add label
+    - Set "___" to null for 'value'
+    - Set valueuom to empty string when null
+    - Values:
+        - When valuenum is present we will use it as a numeric value and set value string to empty string
+        - When valuenum is null, use value as a string
+    """
+    return (
+        _join_with_items_lookup(icu_chartevents_df, icu_d_items_df, ["label"])
+        .with_columns(
+            # Set "___" to null for 'value'
+            pl.col("value").replace("___", None),
+            pl.when(pl.col("valueuom").is_null()).then(pl.lit("")).otherwise(pl.col("valueuom")).alias("valueuom"),
+        )
+        .with_columns(
+            # Use valuenum when we can (so structured can quantiles) otherwise use value as string
+            # When valuenum is present we will use it as a numeric value and set value string to empty string
+            pl.when(pl.col("valuenum").is_not_null())
+            .then(pl.lit(PLACEHOLDER))
+            # Otherwise use value, falling back to null
+            .otherwise(pl.col("value"))
+            .alias("value")
+        )
+    )
+
+
+def process_icu_procedureevents_df(icu_procedureevents_df: pl.LazyFrame, icu_d_items_df: pl.LazyFrame) -> pl.LazyFrame:
+    """ICU Procedureevents Steps:
+    - Join with d_items_df to add label
+    """
+    return _join_with_items_lookup(icu_procedureevents_df, icu_d_items_df, ["label"])
+
+
+def process_icu_inputevents_df(icu_inputevents_df: pl.LazyFrame, icu_d_items_df: pl.LazyFrame) -> pl.LazyFrame:
+    """ICU Inputevents Steps:
+    - Join with d_items_df to add label
+    """
+    return _join_with_items_lookup(icu_inputevents_df, icu_d_items_df, ["label"])
+
+
+def process_icu_outputevents_df(icu_outputevents_df: pl.LazyFrame, icu_d_items_df: pl.LazyFrame) -> pl.LazyFrame:
+    """ICU Outputevents Steps:
+    - Join with d_items_df to add label
+    """
+    return _join_with_items_lookup(icu_outputevents_df, icu_d_items_df, ["label"])
+
+
 def process_hosp_admissions_df(hosp_admissions_df: pl.LazyFrame, hosp_patients_df: pl.LazyFrame) -> pl.LazyFrame:
     """Admissions Steps:
     - Map patient_df gender: F → Female, M → Male
@@ -363,6 +414,7 @@ def process_hosp_omr_df(hosp_omr_df: pl.LazyFrame) -> pl.LazyFrame:
         - Convert result_value to float
         - Extract unit into result_unit and keep category in result_name
     - Merge BP and BMI/weight/height
+    - Convert weight from lbs to kg
     - Convert chartdate to EOD
     """
     output_cols = ["subject_id", "chartdate", "seq_num", "result_name", "result_num", "result_unit"]
@@ -397,6 +449,16 @@ def process_hosp_omr_df(hosp_omr_df: pl.LazyFrame) -> pl.LazyFrame:
             pl.col("result_value").cast(pl.Float32, strict=False).alias("result_num"),
             pl.col("result_name").str.extract(r" \((.*)\)").alias("result_unit"),
             pl.col("result_name").str.replace(r" \(.*\)", "").alias("result_name"),
+        )
+        .with_columns(
+            pl.when(pl.col("result_name") == "Weight")
+            .then(pl.col("result_num") * POUNDS_TO_KG)
+            .otherwise(pl.col("result_num"))
+            .alias("result_num"),
+            pl.when(pl.col("result_name") == "Weight")
+            .then(pl.lit("kg"))
+            .otherwise(pl.col("result_unit"))
+            .alias("result_unit"),
         )
         .select(output_cols)
     )
@@ -526,6 +588,23 @@ FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[
             ("hosp/admissions", ["hadm_id", "dischtime"]),
             ("hosp/d_icd_procedures", ["icd_code", "icd_version", "long_title"]),
         ],
+    ),
+    ### ICU Tables ###
+    "icu/chartevents": (
+        process_icu_chartevents_df,
+        [("icu/d_items", ["itemid", "label"])],
+    ),
+    "icu/procedureevents": (
+        process_icu_procedureevents_df,
+        [("icu/d_items", ["itemid", "label"])],
+    ),
+    "icu/inputevents": (
+        process_icu_inputevents_df,
+        [("icu/d_items", ["itemid", "label"])],
+    ),
+    "icu/outputevents": (
+        process_icu_outputevents_df,
+        [("icu/d_items", ["itemid", "label"])],
     ),
 }
 

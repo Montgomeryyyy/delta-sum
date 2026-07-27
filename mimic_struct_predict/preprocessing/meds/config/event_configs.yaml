@@ -1,4 +1,5 @@
 # Schema based on MIMIC_IV_MEDS, see ./event_configs_MIMIC_IV_MEDS (diffing these 2 files is instructive)
+# The offical MIMIC docs gives good descriptions of tables and columns https://mimic.mit.edu/docs/iv/
 
 # Alterations have been made to maximise natural language representation (e.g. using icd descriptions instead of codes)
 # These differences are commented inline
@@ -154,7 +155,7 @@ hosp/patients:
 hosp/pharmacy:
   medication_start:
     code:
-      - "Medication Start: Name, Route, Frequency, Doses Per 24 Hrs"
+      - "Hospital Medication Start: Name, Route, Frequency, Doses Per 24 Hrs"
       - col(medication)
       - col(route)
       - col(frequency)
@@ -166,7 +167,7 @@ hosp/pharmacy:
 
   medication_stop:
     code:
-      - "Medication Stop"
+      - "Hospital Medication Stop"
       - col(medication)
     time: col(stoptime)
     time_format:
@@ -199,6 +200,8 @@ hosp/transfers:
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
+### ICU Tables ###
+
 icu/icustays:
   icu_admission:
     code:
@@ -215,81 +218,70 @@ icu/icustays:
     time: col(outtime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
-# icu/chartevents:
-#   event:
-#     code:
-#       - Icu Observation
-#       - col(label)
-#       - Value
-#       - col(valueuom)
-#       # HACK: If valuenum (float) is not null value (string) is set to None in preMEDS.py
-#       # Subsequent processing cleans up // notation
-#       - col(value)
-#     time: col(charttime)
-#     time_format: "%Y-%m-%d %H:%M:%S"
-#     numeric_value: valuenum
+icu/chartevents:
+  event:
+    code:
+      - "Icu Chart Event: Label, Unit, Value"
+      - col(label)
+      - col(valueuom)
+      - col(value)
+    time: col(charttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    numeric_value: valuenum
 
-# icu/procedureevents:
-#   start:
-#     code:
-#       - Icu Procedure
-#       - Start
-#       - col(label)
-#     time: col(starttime)
-#     time_format: "%Y-%m-%d %H:%M:%S"
-#   end:
-#     code:
-#       - Icu Procedure
-#       - End
-#       - col(label)
-#     time: col(endtime)
-#     time_format: "%Y-%m-%d %H:%M:%S"
+icu/procedureevents:
+  start:
+    code:
+      - Icu Procedure Start
+      - col(label)
+    time: col(starttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  end:
+    code:
+      - Icu Procedure End
+      - col(label)
+    time: col(endtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
 
-# icu/inputevents:
-#   input_start:
-#     code:
-#       - Icu Input
-#       - Start
-#       - col(label)
-#       - Order Category
-#       - col(ordercategorydescription)
-#       - Rate
-#       - col(rateuom)
-#     time: col(starttime)
-#     time_format: "%Y-%m-%d %H:%M:%S"
-#     numeric_value: rate
-#   input_end:
-#     code:
-#       - Icu Input
-#       - End
-#       - col(label)
-#       - Order Category
-#       - col(ordercategorydescription)
-#       - Status
-#       - col(statusdescription)
-#       - Amount
-#       - col(amountuom)
-#     time: col(endtime)
-#     time_format: "%Y-%m-%d %H:%M:%S"
-#     numeric_value: amount
-#   subject_weight:
-#     code:
-#       - Icu Observation
-#       - Patient Weight
-#       - KG
-#     time: col(starttime)
-#     time_format: "%Y-%m-%d %H:%M:%S"
-#     numeric_value: patientweight
+icu/inputevents:
+  input_start:
+    code:
+      - "Icu Infusion Start: Name, Administration, Unit, Rate"
+      - col(label)
+      - col(ordercategorydescription)
+      - col(rateuom)
+    numeric_value: rate # TODO: Handle null rate values
+    time: col(starttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  subject_weight:
+    code:
+      - "Icu Infusion Start: Name, Administration, Unit, Rate" # Not perfect but odd to make own event type
+      - Weight
+      - ""
+      - kg
+    time: col(starttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    numeric_value: patientweight
+  input_end:
+    code:
+      - "Icu Infusion End: Name, Administration, Status, Unit, Amount Administered"
+      - col(label)
+      - col(ordercategorydescription)
+      - col(statusdescription)
+      - col(amountuom)
+    numeric_value: amount
+    time: col(endtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
 
-# icu/outputevents:
-#   output:
-#     code:
-#       - Icu Output
-#       - col(label)
-#       - col(valueuom)
-#     time: col(charttime)
-#     time_format: "%Y-%m-%d %H:%M:%S"
-#     numeric_value: value
+icu/outputevents:
+  output:
+    code:
+      - "Icu Fluid Output: Name, Unit, Amount"
+      - col(label)
+      - col(valueuom)
+    time: col(charttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    numeric_value: value
 
 ### ED Tables ###
 
