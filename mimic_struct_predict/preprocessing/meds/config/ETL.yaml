@@ -40,14 +40,16 @@ stages:
       column: "code"
       # Fix up repeated/trailing slashes and UNK tokens
       patterns:
-        - pattern: "/{3,}"
-          replacement: "//"
-        - pattern: "//$"
+        - pattern: "//PLACEHOLDER$"
           replacement: ""
-        - pattern: "//UNK$"
+        - pattern: "//PLACEHOLDER//"
+          replacement: ""
+        - pattern: "//UNK"
           replacement: "//UNKNOWN"
-        - pattern: "//UNK//"
-          replacement: "//UNKNOWN//"
+        - pattern: " //"
+          replacement: "//"
+        - pattern: " $"
+          replacement: ""
   - title_case_codes
   - order_by_code_prefix:
       # Priority from first to last
@@ -81,7 +83,7 @@ stages:
       - "Diagnosis Related Group"
       - "Hcpcs Billing Item"
   - add_prefix_rows:
-      header: "####"
+      header: "#### Event"
       delimiter: ${delimiter}
   - add_time_rows:
       header: "### Time"
