@@ -40,50 +40,43 @@ stages:
       column: "code"
       # Fix up repeated/trailing slashes and UNK tokens
       patterns:
-        - pattern: "//PLACEHOLDER$"
+        - pattern: "//Placeholder$"
           replacement: ""
-        - pattern: "//PLACEHOLDER//"
-          replacement: ""
-        - pattern: "//UNK"
-          replacement: "//UNKNOWN"
-        - pattern: " //"
-          replacement: "//"
-        - pattern: " $"
-          replacement: ""
-  - title_case_codes
+        - pattern: "//UNK//"
+          replacement: "//Unknown//"
+        - pattern: "//UNK$"
+          replacement: "//Unknown"
   - order_by_code_prefix:
-      # Priority from first to last
+      # Priority from first to last, used when timestamps are equal
       prefix_priority:
-      # Birth
-      - "Birth"
-      # Admissions
-      - "Emergency Department Registration"
-      - "Hospital Transfer" # Includes ED->Hospital transfers
-      - "Hospital Admission"
-      - "Patient Demographics" # Recorded at admission time
-      - "Icu Admission"
-      # Lab results and observations
-      - "Emergency Department Triage"
-      - "Emergency Department Vital Sign"
-      - "Laboratory Test"
-      - "Clinical Observation"
-      # Interventions and treatments
-      - "Emergency Department Medication Administration"
-      - "Hospital Medication Administration"
-      - "Hospital Procedure"
-      # Death (discharge and billing happens after death)
-      - "Death"
-      # Discharges
-      - "Icu Discharge"
-      - "Hospital Discharge"
-      - "Emergency Department Discharge"
-      # Billing codes
-      - "Emergency Department Diagnosis"
-      - "Diagnosis"
-      - "Diagnosis Related Group"
-      - "Hcpcs Billing Item"
+        # ED Events
+        - "Emergency Department Admission"
+        - "Emergency Department Triage: Name, Unit, Value"
+        - "Home Medications"
+        - "Emergency Department Vital Sign: Name, Unit, Value"
+        - "Emergency Department Medication Administered"
+        - "Emergency Department Discharge"
+        - "Emergency Department Diagnosis"
+        # Admissions
+        - "Hospital Transfer" # Includes ED->Hospital transfers
+        - "Hospital Admission"
+        # Hospital Lab results and observations
+        - "Lab Result: Fluid, Test, Priority, Units, Value"
+        - "Clinical Observation: Name, Unit, Value"
+        # Hospital Interventions and treatments
+        - "Hospital Medication Prescribed: Name, Route, Frequency, Doses Per 24 Hrs"
+        - "Hospital Medication Administered: Name, Details"
+        - "Hospital Medication Stopped"
+        - "Hospital Procedure"
+        # Discharge
+        - "Death" # (discharge and billing happens after in-hospital death)
+        - "Hospital Discharge"
+        # Hospital Billing codes
+        - "Hospital Diagnosis"
+        - "Diagnosis Related Group: Type, Description, Severity Of Illness, Likelihood Of Mortality"
+        - "HCPCS Billing Item"
   - add_prefix_rows:
-      header: "#### Event"
+      header: "####"
       delimiter: ${delimiter}
   - add_time_rows:
       header: "### Time"

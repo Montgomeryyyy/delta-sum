@@ -10,7 +10,7 @@ dataset:
 
 pre_processing:
   delimiter: "//"
-  delimiter_replacement: ", "
+  delimiter_replacement: " "
   append_numeric_values: true
   numeric_values_sig_figs: 2
   code_join_token: "\n\n"

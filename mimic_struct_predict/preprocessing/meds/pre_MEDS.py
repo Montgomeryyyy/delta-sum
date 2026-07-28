@@ -31,8 +31,8 @@ ED_MEASUREMENT_UNIT_MAP = {
     "o2sat": "%",
     "sbp": "mmHg",
     "dbp": "mmHg",
-    "pain": "0 low - 10 high",
-    "acuity": "1 highest - 5 lowest priority",
+    "pain": "0 Low - 10 High",
+    "acuity": "1 Highest - 5 Lowest Priority",
 }
 
 ED_MEASUREMENT_NAME_MAP = {
@@ -48,7 +48,7 @@ ED_MEASUREMENT_NAME_MAP = {
 
 GENDER_MAP = {"F": "Female", "M": "Male"}
 
-PLACEHOLDER = "PLACEHOLDER"
+PLACEHOLDER = "Placeholder"
 
 # Map from https://mimic.mit.edu/docs/iv/modules/hosp/services.html
 SERVICE_MAP = {
@@ -77,6 +77,8 @@ SERVICE_MAP = {
 
 POUNDS_TO_KG = 0.45359237
 
+NA_STRING = "NA"
+
 ### Helper Functions ###
 
 
@@ -100,7 +102,8 @@ def _unpivot_measurements(
             df.unpivot(index=index_cols, on=numeric_cols, variable_name="name", value_name="value_num")
             .with_columns(
                 # Set value to PLACEHOLDER when value_num exists MEDS pipeline will then remove this allowing value_num
-                # to be appended. Otherwise None and so will be replaced with UNKNOWN
+                # to be appended -> Name//Unit//value_num
+                # Otherwise None and so will be replaced with Unknown by MEDS -> Name//Unit//Unknown
                 pl.when(pl.col("value_num").is_not_null())
                 .then(pl.lit(PLACEHOLDER))
                 .otherwise(pl.lit(None).cast(pl.String))
@@ -189,14 +192,18 @@ def process_ed_diagnosis_df(
 
 def process_ed_edstays_df(ed_edstays_df: pl.LazyFrame, hosp_patients_df: pl.LazyFrame) -> pl.LazyFrame:
     """ED Stays Steps:
-    - Map gender F -> Female, M -> Male
     - Join patient df to get "anchor_year", "anchor_age"
+    - Map gender F -> Female, M -> Male
+    - race, arrival_transport and disposition to titlecase
     - Calc age at admission as anchor_age + intime year - anchor_year
     """
     return (
         ed_edstays_df.join(hosp_patients_df, on="subject_id", how="left")
         .with_columns(
             pl.col("gender").replace_strict(GENDER_MAP).alias("gender"),
+            pl.col("race").str.to_titlecase().alias("race"),
+            pl.col("arrival_transport").str.to_titlecase().alias("arrival_transport"),
+            pl.col("disposition").str.to_titlecase().alias("disposition"),
             age=pl.col("anchor_age") + (pl.col("intime").str.to_datetime().dt.year() - pl.col("anchor_year")),
         )
         .drop(["anchor_age", "anchor_year"])
@@ -233,7 +240,7 @@ def process_ed_triage_df(ed_triage_df: pl.LazyFrame, ed_edstays_df: pl.LazyFrame
         .with_columns(pl.col("value").str.strip_chars())
         .with_columns(
             pl.lit("Chief Complaint").alias("name"),
-            pl.lit("").alias("unit"),
+            pl.lit("NA").alias("unit"),
             pl.lit(None).cast(pl.Float32).alias("value_num"),
         )
         .select(["subject_id", "intime", "name", "unit", "value", "value_num"])
@@ -262,7 +269,7 @@ def process_icu_chartevents_df(icu_chartevents_df: pl.LazyFrame, icu_d_items_df:
     """ICU Chartevents Steps:
     - Join with d_items_df to add label
     - Set "___" to null for 'value'
-    - Set valueuom to empty string when null
+    - Set valueuom to NA when null
     - Values:
         - When valuenum is present we will use it as a numeric value and set value string to empty string
         - When valuenum is null, use value as a string
@@ -270,9 +277,8 @@ def process_icu_chartevents_df(icu_chartevents_df: pl.LazyFrame, icu_d_items_df:
     return (
         _join_with_items_lookup(icu_chartevents_df, icu_d_items_df, ["label"])
         .with_columns(
-            # Set "___" to null for 'value'
             pl.col("value").replace("___", None),
-            pl.when(pl.col("valueuom").is_null()).then(pl.lit("")).otherwise(pl.col("valueuom")).alias("valueuom"),
+            pl.col("valueuom").fill_null(NA_STRING),
         )
         .with_columns(
             # Use valuenum when we can (so structured can quantiles) otherwise use value as string
@@ -310,6 +316,7 @@ def process_icu_outputevents_df(icu_outputevents_df: pl.LazyFrame, icu_d_items_d
 def process_hosp_admissions_df(hosp_admissions_df: pl.LazyFrame, hosp_patients_df: pl.LazyFrame) -> pl.LazyFrame:
     """Admissions Steps:
     - Map patient_df gender: F → Female, M → Male
+    - To title case admission_type, admission_location, discharge_location, insurance, language, marital_status, race
     - Join admission and patient df to get "gender", "anchor_year", "anchor_age"
     - Calc age at admission as anchor_age + admittime year - anchor_year
     """
@@ -320,7 +327,14 @@ def process_hosp_admissions_df(hosp_admissions_df: pl.LazyFrame, hosp_patients_d
     return (
         hosp_admissions_df.join(patients_clean, on="subject_id", how="left")
         .with_columns(
-            age=pl.col("anchor_age") + (pl.col("admittime").str.to_datetime().dt.year() - pl.col("anchor_year"))
+            pl.col("admission_type").str.to_titlecase(),
+            pl.col("admission_location").str.to_titlecase(),
+            pl.col("discharge_location").str.to_titlecase(),
+            pl.col("insurance").str.to_titlecase(),
+            pl.col("language").str.to_titlecase(),
+            pl.col("marital_status").str.to_titlecase(),
+            pl.col("race").str.to_titlecase(),
+            age=pl.col("anchor_age") + (pl.col("admittime").str.to_datetime().dt.year() - pl.col("anchor_year")),
         )
         .drop(["anchor_age", "anchor_year"])
     )
@@ -341,13 +355,15 @@ def process_hosp_diagnosis_df(
 def process_hosp_drgcodes_df(hosp_drgcodes_df: pl.LazyFrame, hosp_admissions_df: pl.LazyFrame) -> pl.LazyFrame:
     """DRGCodes (Diagnosis Related Groups) Steps:
     - Map drg_severity and drg_mortality to free text categorical values
+    - Description to titlecase
     - Add admission dischtime
     """
     # https://hcup-us.ahrq.gov/db/nation/nis/APR-DRGsV20MethodologyOverviewandBibliography.pdf p.21
-    severity_map = {"1": "MINOR", "2": "MODERATE", "3": "MAJOR", "4": "EXTREME"}
+    severity_map = {"1": "Minor", "2": "Moderate", "3": "Major", "4": "Extreme"}
     hosp_drgcodes_df = hosp_drgcodes_df.with_columns(
         pl.col("drg_severity").replace_strict(severity_map, default=None).alias("drg_severity"),
         pl.col("drg_mortality").replace_strict(severity_map, default=None).alias("drg_mortality"),
+        pl.col("description").str.to_titlecase(),
     )
     return _add_time_by_id(hosp_drgcodes_df, hosp_admissions_df, on="hadm_id", time_column_name="dischtime")
 
@@ -369,11 +385,13 @@ def process_hosp_lab_events_df(hosp_lab_events_df: pl.LazyFrame, hosp_d_labitems
     """Lab event steps:
     - Join with d_labitems_df to add fluid and label
     - Set "___" to null for both 'value' and 'comments'
+    - Set null units to NA_STRING
+    - Map priority stat -> urgent
     - Set comments > 20 chars to empty string
     - Values:
         - When valuenum is present we will use it as a numeric value and set value string to empty string
         - When valuenum is null, coalesce value->comments->None as a string
-    - Map priority stat -> urgent
+    - Set priority and value columns to titlecase
     """
     return (
         _join_with_items_lookup(hosp_lab_events_df, hosp_d_labitems_df, ["fluid", "label"])
@@ -381,16 +399,14 @@ def process_hosp_lab_events_df(hosp_lab_events_df: pl.LazyFrame, hosp_d_labitems
             # Set "___" to null for both 'value' and 'comments'
             pl.col("value").replace("___", None),
             pl.col("comments").replace("___", None),
+            pl.col("valueuom").fill_null(NA_STRING),
+            pl.col("priority").replace_strict({"STAT": "URGENT"}, default=pl.col("priority")).alias("priority"),
         )
         .with_columns(
             # Set comments longer than 50 chars to None. Not ideal but stops v long comments being added
             # More custom pre-processing could extract values from these edge cases but really we are trying
             # to capture cases like "NEGATIVE" that are sometimes in comments
-            pl.when(pl.col("comments").str.len_chars() > 50).then(None).otherwise(pl.col("comments")).alias("comments")
-        )
-        .with_columns(
-            # Map priority stat -> urgent for clarity
-            pl.col("priority").replace_strict({"STAT": "URGENT"}, default=pl.col("priority")).alias("priority")
+            pl.when(pl.col("comments").str.len_chars() > 50).then(None).otherwise(pl.col("comments")).alias("comments"),
         )
         .with_columns(
             # Use valuenum when we can (so structured can quantiles) otherwise use value as string
@@ -400,9 +416,21 @@ def process_hosp_lab_events_df(hosp_lab_events_df: pl.LazyFrame, hosp_d_labitems
             # Otherwise coalesce value and comments (taking first non-null),
             # falling back to null (which MEDS->"Unknown")
             .otherwise(pl.coalesce(["value", "comments"]))
-            .alias("value")
+            .alias("value"),
+        )
+        .with_columns(
+            pl.col("priority").str.to_titlecase(),
+            pl.col("value").str.to_titlecase(),
         )
     )
+
+
+def process_hosp_emar_df(hosp_emar_df: pl.LazyFrame) -> pl.LazyFrame:
+    """emar (electronic medication administration record) Steps:
+    - Drop any rows where medication column is null
+    - Fill any null event_txt with "NA_STRING"
+    """
+    return hosp_emar_df.drop_nulls(subset=["medication"]).with_columns(pl.col("event_txt").fill_null(NA_STRING))
 
 
 def process_hosp_omr_df(hosp_omr_df: pl.LazyFrame) -> pl.LazyFrame:
@@ -489,13 +517,11 @@ def process_hosp_patients_df(hosp_patients_df: pl.LazyFrame, hosp_admissions_df:
 
 def process_hosp_pharmacy_df(hosp_pharamcy_df: pl.LazyFrame) -> pl.LazyFrame:
     """Pharmacy Steps:
-    - Map null Doses Per 24 Hrs to empty strings
+    - Drop rows where medication is null
+    - Set frequency to titlecase
     """
-    return hosp_pharamcy_df.with_columns(
-        pl.when(pl.col("doses_per_24_hrs").is_null())
-        .then(pl.lit(""))
-        .otherwise(pl.col("doses_per_24_hrs"))
-        .alias("doses_per_24_hrs")
+    return hosp_pharamcy_df.filter(pl.col("medication").is_not_null()).with_columns(
+        pl.col("frequency").str.to_titlecase()
     )
 
 
@@ -513,6 +539,13 @@ def process_hosp_procedures_df(
     hosp_procedures_df = _join_icd_code_version_to_title(hosp_procedures_df, hosp_d_icd_procedures_df)
     hosp_procedures_df = _convert_date_to_end_of_day_timestamp(hosp_procedures_df)
     return hosp_procedures_df
+
+
+def process_hosp_transfers_df(hosp_transfers_df: pl.LazyFrame) -> pl.LazyFrame:
+    """Transfers Steps:
+    - Map eventtype to titlecase
+    """
+    return hosp_transfers_df.with_columns(pl.col("eventtype").str.to_titlecase())
 
 
 # Processing functions registry for MIMIC-IV data files.
@@ -576,6 +609,7 @@ FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[
         process_hosp_lab_events_df,
         [("hosp/d_labitems", ["itemid", "label", "fluid"])],
     ),
+    "hosp/emar": (process_hosp_emar_df, None),
     "hosp/omr": (process_hosp_omr_df, None),
     "hosp/patients": (
         process_hosp_patients_df,
@@ -589,23 +623,24 @@ FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[
             ("hosp/d_icd_procedures", ["icd_code", "icd_version", "long_title"]),
         ],
     ),
-    ### ICU Tables ###
-    "icu/chartevents": (
-        process_icu_chartevents_df,
-        [("icu/d_items", ["itemid", "label"])],
-    ),
-    "icu/procedureevents": (
-        process_icu_procedureevents_df,
-        [("icu/d_items", ["itemid", "label"])],
-    ),
-    "icu/inputevents": (
-        process_icu_inputevents_df,
-        [("icu/d_items", ["itemid", "label"])],
-    ),
-    "icu/outputevents": (
-        process_icu_outputevents_df,
-        [("icu/d_items", ["itemid", "label"])],
-    ),
+    "hosp/transfers": (process_hosp_transfers_df, None),
+    # ### ICU Tables ###
+    # "icu/chartevents": (
+    #     process_icu_chartevents_df,
+    #     [("icu/d_items", ["itemid", "label"])],
+    # ),
+    # "icu/procedureevents": (
+    #     process_icu_procedureevents_df,
+    #     [("icu/d_items", ["itemid", "label"])],
+    # ),
+    # "icu/inputevents": (
+    #     process_icu_inputevents_df,
+    #     [("icu/d_items", ["itemid", "label"])],
+    # ),
+    # "icu/outputevents": (
+    #     process_icu_outputevents_df,
+    #     [("icu/d_items", ["itemid", "label"])],
+    # ),
 }
 
 

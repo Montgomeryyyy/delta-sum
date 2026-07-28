@@ -84,14 +84,14 @@ hosp/diagnoses_icd:
   diagnosis:
     code:
       - Hospital Diagnosis
-      - col(long_title) # Use long title instead of version and code
+      - col(long_title) # Use long title instead of icd_version and icd_code
     time: col(dischtime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
 hosp/drgcodes:
   drg:
     code:
-      - "Diagnosis Related Group: Type, Description, Severity of Illness, Likelihood Of Mortality"
+      - "Diagnosis Related Group: Type, Description, Severity Of Illness, Likelihood Of Mortality"
       - col(drg_type)
       - col(description) # Use instead of drg_code
       - col(drg_severity) # Add to code
@@ -102,7 +102,7 @@ hosp/drgcodes:
 hosp/emar:
   medication:
     code:
-      - Hospital Medication Administered
+      - "Hospital Medication Administered: Name, Details"
       - col(medication)
       - col(event_txt)
     time: col(charttime)
@@ -111,7 +111,7 @@ hosp/emar:
 hosp/hcpcsevents:
   hcpcs:
     code:
-      - HCPCS
+      - HCPCS Billing Item
       - col(long_description) # Uses long_description if available, otherwise short_description (done in preMEDS.py)
     time: col(chartdate) # Only chartdate column available so set EOD.
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -121,10 +121,14 @@ hosp/labevents:
   lab_result:
     code:
       - "Lab Result: Fluid, Test, Priority, Units, Value"
-      - col(fluid)
+      - col(fluid) # Fluid and label instead of itemid
       - col(label)
       - col(priority)
       - col(valueuom)
+      # HACK: To allow for numeric and string values:
+      # - String value: Value is not null + valuenum is null -> value used
+      # - Numeric value: valuenum is not null + value is "Placeholder" -> ETL pipeline deletes Placeholder and numeric value appended or quantiled
+      # - Null: value and valuenum are null -> ETL maps to Unknown
       - col(value)
     time: col(storetime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -155,25 +159,19 @@ hosp/patients:
 hosp/pharmacy:
   medication_start:
     code:
-      - "Hospital Medication Start: Name, Route, Frequency, Doses Per 24 Hrs"
+      - "Hospital Medication Prescribed: Name, Route, Frequency, Doses Per 24 Hrs"
       - col(medication)
       - col(route)
       - col(frequency)
       - col(doses_per_24_hrs)
     time: col(starttime)
-    time_format:
-      - "%Y-%m-%d %H:%M:%S"
-    #  - "%Y-%m-%d" All rows seem to have time of day
-
+    time_format: "%Y-%m-%d %H:%M:%S" #  All rows seem to have time of day
   medication_stop:
     code:
-      - "Hospital Medication Stop"
+      - "Hospital Medication Stopped"
       - col(medication)
     time: col(stoptime)
-    time_format:
-      - "%Y-%m-%d %H:%M:%S"
-    #  - "%Y-%m-%d" All rows seem to have time of day
-
+    time_format: "%Y-%m-%d %H:%M:%S" # All rows seem to have time of day
 
 hosp/procedures_icd:
   procedure:
@@ -202,88 +200,88 @@ hosp/transfers:
 
 ### ICU Tables ###
 
-icu/icustays:
-  icu_admission:
-    code:
-      - Icu Admission
-      - To
-      - col(first_careunit)
-    time: col(intime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-  icu_discharge:
-    code:
-      - Icu Discharge
-      - From
-      - col(last_careunit)
-    time: col(outtime)
-    time_format: "%Y-%m-%d %H:%M:%S"
+# icu/icustays:
+#   icu_admission:
+#     code:
+#       - Icu Admission
+#       - To
+#       - col(first_careunit)
+#     time: col(intime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#   icu_discharge:
+#     code:
+#       - Icu Discharge
+#       - From
+#       - col(last_careunit)
+#     time: col(outtime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
 
-icu/chartevents:
-  event:
-    code:
-      - "Icu Chart Event: Label, Unit, Value"
-      - col(label)
-      - col(valueuom)
-      - col(value)
-    time: col(charttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: valuenum
+# icu/chartevents:
+#   event:
+#     code:
+#       - "Icu Chart Event: Label, Unit, Value"
+#       - col(label)
+#       - col(valueuom)
+#       - col(value)
+#     time: col(charttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: valuenum
 
-icu/procedureevents:
-  start:
-    code:
-      - Icu Procedure Start
-      - col(label)
-    time: col(starttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-  end:
-    code:
-      - Icu Procedure End
-      - col(label)
-    time: col(endtime)
-    time_format: "%Y-%m-%d %H:%M:%S"
+# icu/procedureevents:
+#   start:
+#     code:
+#       - Icu Procedure Start
+#       - col(label)
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#   end:
+#     code:
+#       - Icu Procedure End
+#       - col(label)
+#     time: col(endtime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
 
-icu/inputevents:
-  input_start:
-    code:
-      - "Icu Infusion Start: Name, Administration, Unit, Rate"
-      - col(label)
-      - col(ordercategorydescription)
-      - col(rateuom)
-    numeric_value: rate # TODO: Handle null rate values
-    time: col(starttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-  subject_weight:
-    code:
-      - "Icu Infusion Start: Name, Administration, Unit, Rate" # Not perfect but odd to make own event type
-      - Weight
-      - ""
-      - kg
-    time: col(starttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: patientweight
-  input_end:
-    code:
-      - "Icu Infusion End: Name, Administration, Status, Unit, Amount Administered"
-      - col(label)
-      - col(ordercategorydescription)
-      - col(statusdescription)
-      - col(amountuom)
-    numeric_value: amount
-    time: col(endtime)
-    time_format: "%Y-%m-%d %H:%M:%S"
+# icu/inputevents:
+#   input_start:
+#     code:
+#       - "Icu Infusion Start: Name, Administration, Unit, Rate"
+#       - col(label)
+#       - col(ordercategorydescription)
+#       - col(rateuom)
+#     numeric_value: rate # TODO: Handle null rate values
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#   subject_weight:
+#     code:
+#       - "Icu Infusion Start: Name, Administration, Unit, Rate" # Not perfect but odd to make own event type
+#       - Weight
+#       - ""
+#       - kg
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: patientweight
+#   input_end:
+#     code:
+#       - "Icu Infusion End: Name, Administration, Status, Unit, Amount Administered"
+#       - col(label)
+#       - col(ordercategorydescription)
+#       - col(statusdescription)
+#       - col(amountuom)
+#     numeric_value: amount
+#     time: col(endtime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
 
-icu/outputevents:
-  output:
-    code:
-      - "Icu Fluid Output: Name, Unit, Amount"
-      - col(label)
-      - col(valueuom)
-    time: col(charttime)
-    time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: value
+# icu/outputevents:
+#   output:
+#     code:
+#       - "Icu Fluid Output: Name, Unit, Amount"
+#       - col(label)
+#       - col(valueuom)
+#     time: col(charttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: value
 
-### ED Tables ###
+### ED Tables (not in MEDS-MIMIC config) ###
 
 ed/diagnosis:
   # Same format as hosp/diagnoses_icd
@@ -297,7 +295,7 @@ ed/diagnosis:
 ed/edstays:
   ed_registration_arrival:
     code:
-      - Emergency Department Registration
+      - Emergency Department Admission
       - Arrival Method
       - col(arrival_transport)
     time: col(intime)
@@ -305,21 +303,21 @@ ed/edstays:
   # Same format as hosp/admissions/admission_race etc
   ed_registration_race:
     code:
-      - Emergency Department Registration
+      - Emergency Department Admission
       - Race
       - col(race)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
   ed_registration_gender:
     code:
-      - Emergency Department Registration
+      - Emergency Department Admission
       - Gender
       - col(gender)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
   ed_registration_age:
      code:
-       - Emergency Department Registration
+       - Emergency Department Admission
        - Age
      numeric_value: col(age) # Calculated from hosp/patients anchor_age and anchor_year
      time: col(intime)
@@ -336,7 +334,7 @@ ed/edstays:
 ed/medrecon:
   medication:
     code:
-      - Emergency Department Registration Current Medication
+      - Home Medications
       - col(name)
     time: col(intime) # Use intime instead of chartime so better grouping
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -345,7 +343,7 @@ ed/pyxis:
   medication:
     # Same format as hosp/emar but no event_txt in this table
     code:
-      - Emergency Department Medication Administered
+      - "Emergency Department Medication Administered"
       - col(name)
     time: col(charttime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -356,6 +354,7 @@ ed/triage:
       - "Emergency Department Triage: Name, Unit, Value"
       - col(name)
       - col(unit)
+      # HACK: Same as hosp/labevents
       - col(value)
     numeric_value: value_num
     time: col(intime)
@@ -368,6 +367,7 @@ ed/vitalsign:
       - "Emergency Department Vital Sign: Name, Unit, Value"
       - col(name)
       - col(unit)
+      # HACK: Same as hosp/labevents
       - col(value)
     numeric_value: value_num
     time: col(charttime)
