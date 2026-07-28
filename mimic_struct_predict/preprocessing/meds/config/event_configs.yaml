@@ -287,7 +287,7 @@ ed/diagnosis:
   # Same format as hosp/diagnoses_icd
   diagnosis:
     code:
-      - Emergency Department Diagnosis
+      - ED Diagnosis
       - col(long_title) # Joined from hosp/d_icd_diagnoses (icd_code + icd_version -> long_title)
     time: col(outtime) # Joined from ed/edstays
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -295,7 +295,7 @@ ed/diagnosis:
 ed/edstays:
   ed_registration_arrival:
     code:
-      - Emergency Department Admission
+      - ED Admission
       - Arrival Method
       - col(arrival_transport)
     time: col(intime)
@@ -303,21 +303,21 @@ ed/edstays:
   # Same format as hosp/admissions/admission_race etc
   ed_registration_race:
     code:
-      - Emergency Department Admission
+      - ED Admission
       - Race
       - col(race)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
   ed_registration_gender:
     code:
-      - Emergency Department Admission
+      - ED Admission
       - Gender
       - col(gender)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
   ed_registration_age:
      code:
-       - Emergency Department Admission
+       - ED Admission
        - Age
      numeric_value: col(age) # Calculated from hosp/patients anchor_age and anchor_year
      time: col(intime)
@@ -325,7 +325,7 @@ ed/edstays:
   ed_out:
     # Same format as Hospital Discharge
     code:
-      - Emergency Department Discharge
+      - ED Discharge
       - Location
       - col(disposition)
     time: col(outtime)
@@ -334,7 +334,7 @@ ed/edstays:
 ed/medrecon:
   medication:
     code:
-      - Home Medications
+      - Home Medication
       - col(name)
     time: col(intime) # Use intime instead of chartime so better grouping
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -343,7 +343,7 @@ ed/pyxis:
   medication:
     # Same format as hosp/emar but no event_txt in this table
     code:
-      - "Emergency Department Medication Administered"
+      - "ED Medication Administered"
       - col(name)
     time: col(charttime)
     time_format: "%Y-%m-%d %H:%M:%S"
@@ -351,7 +351,7 @@ ed/pyxis:
 ed/triage:
   triage:
     code:
-      - "Emergency Department Triage: Name, Unit, Value"
+      - "ED Triage: Name, Unit, Value"
       - col(name)
       - col(unit)
       # HACK: Same as hosp/labevents
@@ -364,7 +364,7 @@ ed/vitalsign:
   # Cols not used: rhythm (implict as dropped in premeds, for reasoning see process_ed_vitals_df)
   vital_sign:
     code:
-      - "Emergency Department Vital Sign: Name, Unit, Value"
+      - "ED Vital Sign: Name, Unit, Value"
       - col(name)
       - col(unit)
       # HACK: Same as hosp/labevents

@@ -181,29 +181,27 @@ def _join_icd_code_version_to_title(icd_df: pl.LazyFrame, d_icd_df: pl.LazyFrame
 def process_ed_diagnosis_df(
     ed_diagnosis_df: pl.LazyFrame, ed_edstays_df: pl.LazyFrame, hosp_d_icd_diagnoses_df: pl.LazyFrame
 ) -> pl.LazyFrame:
-    """ED Diagnosis Steps:
-    - Add ed_stays outtime
-    - Join on icd code and version to get long_title
+    """Process ED Diagnosis DataFrame:
+    - Add edstays outtime.
+    - Join on icd code and version to get long_title.
     """
-    ed_diagnosis_df = _add_time_by_id(ed_diagnosis_df, ed_edstays_df, on="stay_id", time_column_name="outtime")
-    ed_diagnosis_df = _join_icd_code_version_to_title(ed_diagnosis_df, hosp_d_icd_diagnoses_df)
-    return ed_diagnosis_df
+    return ed_diagnosis_df.pipe(_add_time_by_id, ed_edstays_df, on="stay_id", time_column_name="outtime").pipe(
+        _join_icd_code_version_to_title, hosp_d_icd_diagnoses_df
+    )
 
 
 def process_ed_edstays_df(ed_edstays_df: pl.LazyFrame, hosp_patients_df: pl.LazyFrame) -> pl.LazyFrame:
-    """ED Stays Steps:
-    - Join patient df to get "anchor_year", "anchor_age"
-    - Map gender F -> Female, M -> Male
-    - race, arrival_transport and disposition to titlecase
-    - Calc age at admission as anchor_age + intime year - anchor_year
+    """Process ED Stays DataFrame:
+    - Join patient df to get "anchor_year", "anchor_age".
+    - Map gender F -> Female, M -> Male.
+    - race, arrival_transport and disposition to titlecase.
+    - Calc age at admission as anchor_age + intime year - anchor_year.
     """
     return (
         ed_edstays_df.join(hosp_patients_df, on="subject_id", how="left")
         .with_columns(
-            pl.col("gender").replace_strict(GENDER_MAP).alias("gender"),
-            pl.col("race").str.to_titlecase().alias("race"),
-            pl.col("arrival_transport").str.to_titlecase().alias("arrival_transport"),
-            pl.col("disposition").str.to_titlecase().alias("disposition"),
+            pl.col("gender").replace_strict(GENDER_MAP),
+            pl.col("race", "arrival_transport", "disposition").str.to_titlecase(),
             age=pl.col("anchor_age") + (pl.col("intime").str.to_datetime().dt.year() - pl.col("anchor_year")),
         )
         .drop(["anchor_age", "anchor_year"])
@@ -211,129 +209,130 @@ def process_ed_edstays_df(ed_edstays_df: pl.LazyFrame, hosp_patients_df: pl.Lazy
 
 
 def process_ed_medrecon_df(ed_medrecon_df: pl.LazyFrame, ed_edstays_df: pl.LazyFrame) -> pl.LazyFrame:
-    """ED Medication Reconciliation Steps:
-    - Add intime from edstays
+    """Process ED Medication Reconciliation DataFrame:
+    - Add intime from edstays.
+    - name to titlecase
     """
-    return _add_time_by_id(ed_medrecon_df, ed_edstays_df, on="stay_id", time_column_name="intime")
+    return ed_medrecon_df.pipe(_add_time_by_id, ed_edstays_df, on="stay_id", time_column_name="intime").with_columns(
+        pl.col("name").str.to_titlecase()
+    )
 
 
 def process_ed_triage_df(ed_triage_df: pl.LazyFrame, ed_edstays_df: pl.LazyFrame) -> pl.LazyFrame:
-    """ED Triage Steps:
-    - Convert Fahrenheit temperatures to Celsius
-    - Add intime from edstays
-    - Unpivot measurements into rows and set unit based on mapping
-    - Split chiefcomplaint by "," into multiple rows ("chiefcomplaint field is usually a
-        comma separated list of entries")
+    """Process ED Triage DataFrame:
+    - Convert Fahrenheit temperatures to Celsius.
+    - Add intime from edstays.
+    - Unpivot measurements into rows and set unit based on mapping.
+    - Split chiefcomplaint by "," into multiple rows.
     """
-    ed_triage_df = _convert_fahrenheit_to_celsius(ed_triage_df)
-    ed_triage_df = _add_time_by_id(ed_triage_df, ed_edstays_df, on="stay_id", time_column_name="intime")
+    ed_triage_df = ed_triage_df.pipe(_convert_fahrenheit_to_celsius).pipe(
+        _add_time_by_id, ed_edstays_df, on="stay_id", time_column_name="intime"
+    )
 
     vital_cols = ["temperature", "heartrate", "resprate", "o2sat", "sbp", "dbp", "pain", "acuity"]
     df_vitals = _unpivot_measurements(ed_triage_df, vital_cols, ["subject_id", "intime"])
 
-    # Process chief complaint separately to efficiently split comma-separated values into multiple rows
+    # Efficiently split comma-separated values into multiple rows
     df_cc = (
         ed_triage_df.select(
-            "subject_id", "intime", pl.col("chiefcomplaint").cast(pl.String).str.split(",").alias("value")
+            "subject_id",
+            "intime",
+            name=pl.lit("Chief Complaint"),
+            unit=pl.lit("NA"),
+            value=pl.col("chiefcomplaint").cast(pl.String).str.split(","),
+            value_num=pl.lit(None).cast(pl.Float32),
         )
         .explode("value")
-        .with_columns(pl.col("value").str.strip_chars())
-        .with_columns(
-            pl.lit("Chief Complaint").alias("name"),
-            pl.lit("NA").alias("unit"),
-            pl.lit(None).cast(pl.Float32).alias("value_num"),
-        )
-        .select(["subject_id", "intime", "name", "unit", "value", "value_num"])
+        .with_columns(pl.col("value").str.strip_chars().str.to_titlecase())
     )
 
     return pl.concat([df_vitals, df_cc], how="vertical")
 
 
 def process_ed_vitalsign_df(ed_vitalsign_df: pl.LazyFrame) -> pl.LazyFrame:
-    """ED Vitals Steps:
-    - Convert Fahrenheit temperatures to Celsius
-    - Unpivot vital signs into rows
-    - Set unit based on mapping
-    - Create value and value_num columns based on data type
+    """Process ED Vitals DataFrame:
+    - Convert Fahrenheit temperatures to Celsius.
+    - Unpivot vital signs into rows.
+    - Set unit based on mapping.
+    - Create value and value_num columns based on data type.
+    - Value to titlecase.
 
     Note: rythmn col not included as only in ~3% of rows as Sinus Tachycardia (high heartrate) which is known
     from the heartrate value.
     """
-    ed_vitalsign_df = _convert_fahrenheit_to_celsius(ed_vitalsign_df)
-
     vital_cols = ["temperature", "heartrate", "resprate", "o2sat", "sbp", "dbp", "pain"]
-    return _unpivot_measurements(ed_vitalsign_df, vital_cols, ["subject_id", "charttime"])
+    return (
+        ed_vitalsign_df.pipe(_convert_fahrenheit_to_celsius)
+        .pipe(_unpivot_measurements, vital_cols, ["subject_id", "charttime"])
+        .with_columns(pl.col("value").str.to_titlecase())
+    )
 
 
 def process_icu_chartevents_df(icu_chartevents_df: pl.LazyFrame, icu_d_items_df: pl.LazyFrame) -> pl.LazyFrame:
-    """ICU Chartevents Steps:
-    - Join with d_items_df to add label
-    - Set "___" to null for 'value'
-    - Set valueuom to NA when null
+    """Process ICU Chartevents DataFrame:
+    - Join with d_items_df to add label.
+    - Set "___" to null for 'value'.
+    - Set valueuom to NA when null.
     - Values:
-        - When valuenum is present we will use it as a numeric value and set value string to empty string
-        - When valuenum is null, use value as a string
+        - When valuenum is present we will use it as a numeric value and set value string to PLACEHOLDER.
+        - When valuenum is null, use value as a string.
     """
-    return (
-        _join_with_items_lookup(icu_chartevents_df, icu_d_items_df, ["label"])
-        .with_columns(
-            pl.col("value").replace("___", None),
-            pl.col("valueuom").fill_null(NA_STRING),
-        )
-        .with_columns(
-            # Use valuenum when we can (so structured can quantiles) otherwise use value as string
-            # When valuenum is present we will use it as a numeric value and set value string to empty string
-            pl.when(pl.col("valuenum").is_not_null())
-            .then(pl.lit(PLACEHOLDER))
-            # Otherwise use value, falling back to null
-            .otherwise(pl.col("value"))
-            .alias("value")
-        )
+    return _join_with_items_lookup(icu_chartevents_df, icu_d_items_df, ["label"]).with_columns(
+        pl.when(pl.col("valuenum").is_not_null())
+        .then(pl.lit(PLACEHOLDER))
+        .otherwise(pl.col("value").replace("___", None))
+        .alias("value"),
+        pl.col("valueuom").fill_null(NA_STRING),
     )
 
 
 def process_icu_procedureevents_df(icu_procedureevents_df: pl.LazyFrame, icu_d_items_df: pl.LazyFrame) -> pl.LazyFrame:
-    """ICU Procedureevents Steps:
-    - Join with d_items_df to add label
+    """Process ICU Procedureevents DataFrame:
+    - Join with d_items_df to add label.
     """
     return _join_with_items_lookup(icu_procedureevents_df, icu_d_items_df, ["label"])
 
 
 def process_icu_inputevents_df(icu_inputevents_df: pl.LazyFrame, icu_d_items_df: pl.LazyFrame) -> pl.LazyFrame:
-    """ICU Inputevents Steps:
-    - Join with d_items_df to add label
+    """Process ICU Inputevents DataFrame:
+    - Join with d_items_df to add label.
     """
     return _join_with_items_lookup(icu_inputevents_df, icu_d_items_df, ["label"])
 
 
 def process_icu_outputevents_df(icu_outputevents_df: pl.LazyFrame, icu_d_items_df: pl.LazyFrame) -> pl.LazyFrame:
-    """ICU Outputevents Steps:
-    - Join with d_items_df to add label
+    """Process ICU Outputevents DataFrame:
+    - Join with d_items_df to add label.
     """
     return _join_with_items_lookup(icu_outputevents_df, icu_d_items_df, ["label"])
 
 
 def process_hosp_admissions_df(hosp_admissions_df: pl.LazyFrame, hosp_patients_df: pl.LazyFrame) -> pl.LazyFrame:
-    """Admissions Steps:
-    - Map patient_df gender: F → Female, M → Male
-    - To title case admission_type, admission_location, discharge_location, insurance, language, marital_status, race
-    - Join admission and patient df to get "gender", "anchor_year", "anchor_age"
-    - Calc age at admission as anchor_age + admittime year - anchor_year
+    """Process Hospital Admissions DataFrame:
+    - Map patient_df gender: F → Female, M → Male.
+    - To title case admission_type, admission_location, discharge_location, insurance, language, marital_status, race.
+    - Join admission and patient df to get "gender", "anchor_year", "anchor_age".
+    - Calc age at admission as anchor_age + admittime year - anchor_year.
     """
-    patients_clean = hosp_patients_df.select("subject_id", "gender", "anchor_year", "anchor_age").with_columns(
-        pl.col("gender").replace_strict(GENDER_MAP).alias("gender")
+    patients_clean = hosp_patients_df.select(
+        "subject_id",
+        pl.col("gender").replace_strict(GENDER_MAP),
+        "anchor_year",
+        "anchor_age",
     )
 
     return (
         hosp_admissions_df.join(patients_clean, on="subject_id", how="left")
         .with_columns(
-            pl.col("admission_type").str.to_titlecase(),
-            pl.col("admission_location").str.to_titlecase(),
-            pl.col("discharge_location").str.to_titlecase(),
-            pl.col("insurance").str.to_titlecase(),
-            pl.col("language").str.to_titlecase(),
-            pl.col("marital_status").str.to_titlecase(),
-            pl.col("race").str.to_titlecase(),
+            pl.col(
+                "admission_type",
+                "admission_location",
+                "discharge_location",
+                "insurance",
+                "language",
+                "marital_status",
+                "race",
+            ).str.to_titlecase(),
             age=pl.col("anchor_age") + (pl.col("admittime").str.to_datetime().dt.year() - pl.col("anchor_year")),
         )
         .drop(["anchor_age", "anchor_year"])
@@ -343,107 +342,93 @@ def process_hosp_admissions_df(hosp_admissions_df: pl.LazyFrame, hosp_patients_d
 def process_hosp_diagnosis_df(
     hosp_diagnosis_df: pl.LazyFrame, hosp_admissions_df: pl.LazyFrame, hosp_d_icd_diagnoses_df: pl.LazyFrame
 ) -> pl.LazyFrame:
-    """Hospital Diagnosis Steps:
-    - Add admission dischtime
-    - Join on icd code and version to get long_title
+    """Process Hospital Diagnosis DataFrame:
+    - Add admission dischtime.
+    - Join on icd code and version to get long_title.
     """
-    diagnosis_df = _add_time_by_id(hosp_diagnosis_df, hosp_admissions_df, on="hadm_id", time_column_name="dischtime")
-    diagnosis_df = _join_icd_code_version_to_title(diagnosis_df, hosp_d_icd_diagnoses_df)
-    return diagnosis_df
+    return hosp_diagnosis_df.pipe(_add_time_by_id, hosp_admissions_df, on="hadm_id", time_column_name="dischtime").pipe(
+        _join_icd_code_version_to_title, hosp_d_icd_diagnoses_df
+    )
 
 
 def process_hosp_drgcodes_df(hosp_drgcodes_df: pl.LazyFrame, hosp_admissions_df: pl.LazyFrame) -> pl.LazyFrame:
-    """DRGCodes (Diagnosis Related Groups) Steps:
-    - Map drg_severity and drg_mortality to free text categorical values
-    - Description to titlecase
-    - Add admission dischtime
+    """Process Hospital DRGCodes (Diagnosis Related Groups) DataFrame:
+    - Map drg_severity and drg_mortality to free text categorical values.
+    - Description to titlecase.
+    - Add admission dischtime.
     """
-    # https://hcup-us.ahrq.gov/db/nation/nis/APR-DRGsV20MethodologyOverviewandBibliography.pdf p.21
+    # Map from https://hcup-us.ahrq.gov/db/nation/nis/APR-DRGsV20MethodologyOverviewandBibliography.pdf p.21
     severity_map = {"1": "Minor", "2": "Moderate", "3": "Major", "4": "Extreme"}
-    hosp_drgcodes_df = hosp_drgcodes_df.with_columns(
-        pl.col("drg_severity").replace_strict(severity_map, default=None).alias("drg_severity"),
-        pl.col("drg_mortality").replace_strict(severity_map, default=None).alias("drg_mortality"),
+    return hosp_drgcodes_df.with_columns(
+        pl.col("drg_severity", "drg_mortality").replace_strict(severity_map, default=pl.lit(NA_STRING)),
         pl.col("description").str.to_titlecase(),
-    )
-    return _add_time_by_id(hosp_drgcodes_df, hosp_admissions_df, on="hadm_id", time_column_name="dischtime")
+    ).pipe(_add_time_by_id, hosp_admissions_df, on="hadm_id", time_column_name="dischtime")
 
 
 def process_hosp_hcpcs_events_df(hosp_hcpcs_events_df: pl.LazyFrame, hosp_d_hcpcs_df: pl.LazyFrame) -> pl.LazyFrame:
-    """HCPCS (Healthcare Common Procedure Coding System) Steps:
-    - Join with d_hcpcs to add procedure descriptions (preferring long, falling back to short)
-    - Convert chartdate to end-of-day timestamps
+    """Process Hospital HCPCS (Healthcare Common Procedure Coding System) DataFrame:
+    - Join with d_hcpcs to add procedure descriptions (preferring long, falling back to short).
+    - Convert chartdate to end-of-day timestamps.
     """
     hosp_d_hcpcs_df = hosp_d_hcpcs_df.select(
         "code",
         pl.coalesce("long_description", "short_description").alias("long_description"),
     )
-    hosp_hcpcs_events_df = hosp_hcpcs_events_df.join(hosp_d_hcpcs_df, left_on="hcpcs_cd", right_on="code", how="left")
-    return _convert_date_to_end_of_day_timestamp(hosp_hcpcs_events_df)
+    return hosp_hcpcs_events_df.join(hosp_d_hcpcs_df, left_on="hcpcs_cd", right_on="code", how="left").pipe(
+        _convert_date_to_end_of_day_timestamp
+    )
 
 
 def process_hosp_lab_events_df(hosp_lab_events_df: pl.LazyFrame, hosp_d_labitems_df: pl.LazyFrame) -> pl.LazyFrame:
-    """Lab event steps:
-    - Join with d_labitems_df to add fluid and label
-    - Set "___" to null for both 'value' and 'comments'
-    - Set null units to NA_STRING
-    - Map priority stat -> urgent
-    - Set comments > 20 chars to empty string
-    - Values:
-        - When valuenum is present we will use it as a numeric value and set value string to empty string
-        - When valuenum is null, coalesce value->comments->None as a string
-    - Set priority and value columns to titlecase
+    """Process Hospital Lab Events DataFrame:
+    - Join with d_labitems_df to add fluid and label.
+    - Set null and " " units to NA_STRING.
+    - Map priority stat -> urgent and to titlecase.
+    - Value:
+        - When valuenum is present we will use it as a numeric value and set value string to PLACEHOLDER.
+        - When valuenum is null,
+            - Use value if not null or "___"
+            - Otherwise use comments (if not > 50 char)
+            - Otherwise null
+        - Set to title case
     """
-    return (
-        _join_with_items_lookup(hosp_lab_events_df, hosp_d_labitems_df, ["fluid", "label"])
-        .with_columns(
-            # Set "___" to null for both 'value' and 'comments'
-            pl.col("value").replace("___", None),
-            pl.col("comments").replace("___", None),
-            pl.col("valueuom").fill_null(NA_STRING),
-            pl.col("priority").replace_strict({"STAT": "URGENT"}, default=pl.col("priority")).alias("priority"),
+    return _join_with_items_lookup(hosp_lab_events_df, hosp_d_labitems_df, ["fluid", "label"]).with_columns(
+        pl.col("valueuom").fill_null(NA_STRING).replace(" ", NA_STRING),
+        pl.col("priority").replace_strict({"STAT": "URGENT"}, default=pl.col("priority")).str.to_titlecase(),
+        pl.when(pl.col("valuenum").is_not_null())
+        .then(pl.lit(PLACEHOLDER))
+        .otherwise(
+            pl.coalesce(
+                pl.col("value").replace("___", None),
+                pl.when(pl.col("comments").str.len_chars() > 50)
+                .then(None)
+                .otherwise(pl.col("comments").replace("___", None)),
+            )
         )
-        .with_columns(
-            # Set comments longer than 50 chars to None. Not ideal but stops v long comments being added
-            # More custom pre-processing could extract values from these edge cases but really we are trying
-            # to capture cases like "NEGATIVE" that are sometimes in comments
-            pl.when(pl.col("comments").str.len_chars() > 50).then(None).otherwise(pl.col("comments")).alias("comments"),
-        )
-        .with_columns(
-            # Use valuenum when we can (so structured can quantiles) otherwise use value as string
-            # When valuenum is present we will use it as a numeric value and set value string to empty string
-            pl.when(pl.col("valuenum").is_not_null())
-            .then(pl.lit(PLACEHOLDER))
-            # Otherwise coalesce value and comments (taking first non-null),
-            # falling back to null (which MEDS->"Unknown")
-            .otherwise(pl.coalesce(["value", "comments"]))
-            .alias("value"),
-        )
-        .with_columns(
-            pl.col("priority").str.to_titlecase(),
-            pl.col("value").str.to_titlecase(),
-        )
+        .str.to_titlecase()
+        .alias("value"),
     )
 
 
 def process_hosp_emar_df(hosp_emar_df: pl.LazyFrame) -> pl.LazyFrame:
-    """emar (electronic medication administration record) Steps:
-    - Drop any rows where medication column is null
-    - Fill any null event_txt with "NA_STRING"
+    """Process Hospital EMAR (electronic medication administration record) DataFrame:
+    - Drop any rows where medication column is null.
+    - Fill any null event_txt with NA_STRING.
     """
     return hosp_emar_df.drop_nulls(subset=["medication"]).with_columns(pl.col("event_txt").fill_null(NA_STRING))
 
 
 def process_hosp_omr_df(hosp_omr_df: pl.LazyFrame) -> pl.LazyFrame:
-    """OMR (Online Medical Record ~misc observations) Steps:
-    - Blood pressure
-        - Split into systolic and diastolic rows
-        - Set unit to "mmHg"
-    - BMI, weight, height
-        - Convert result_value to float
-        - Extract unit into result_unit and keep category in result_name
-    - Merge BP and BMI/weight/height
-    - Convert weight from lbs to kg
-    - Convert chartdate to EOD
+    """Process Hospital OMR (Online Medical Record ~misc observations) DataFrame:
+    - Blood pressure:
+        - Split into systolic and diastolic rows.
+        - Set unit to "mmHg".
+    - BMI, weight, height:
+        - Convert result_value to float.
+        - Extract unit into result_unit and keep category in result_name.
+    - Merge BP and BMI/weight/height.
+    - Convert weight from lbs to kg.
+    - Convert chartdate to EOD.
     """
     output_cols = ["subject_id", "chartdate", "seq_num", "result_name", "result_num", "result_unit"]
 
@@ -458,15 +443,15 @@ def process_hosp_omr_df(hosp_omr_df: pl.LazyFrame) -> pl.LazyFrame:
         .with_columns(
             pl.col("bp_parts").list.get(0).cast(pl.Float32, strict=False).alias("Systolic Blood Pressure"),
             pl.col("bp_parts").list.get(1).cast(pl.Float32, strict=False).alias("Diastolic Blood Pressure"),
+            result_unit=pl.lit("mmHg"),
         )
         .drop("result_name")
         .unpivot(
-            index=["subject_id", "chartdate", "seq_num"],
+            index=["subject_id", "chartdate", "seq_num", "result_unit"],
             on=["Systolic Blood Pressure", "Diastolic Blood Pressure"],
             variable_name="result_name",
             value_name="result_num",
         )
-        .with_columns(pl.lit("mmHg").alias("result_unit"))
         .select(output_cols)
     )
 
@@ -491,14 +476,13 @@ def process_hosp_omr_df(hosp_omr_df: pl.LazyFrame) -> pl.LazyFrame:
         .select(output_cols)
     )
 
-    combined = pl.concat([bp_df, non_bp_df])
-    return combined.pipe(_convert_date_to_end_of_day_timestamp)
+    return pl.concat([bp_df, non_bp_df]).pipe(_convert_date_to_end_of_day_timestamp)
 
 
 def process_hosp_patients_df(hosp_patients_df: pl.LazyFrame, hosp_admissions_df: pl.LazyFrame) -> pl.LazyFrame:
-    """Patients Steps:
-    - Take min death time from admissions_df if it exists
-    - If no death time in admissions, use dod (date only) as fallback and convert to end of day
+    """Process Hospital Patients DataFrame:
+    - Take min death time from admissions_df if it exists.
+    - If no death time in admissions, use dod (date only) as fallback and convert to end of day.
     """
     hosp_admissions_df = (
         hosp_admissions_df.with_columns(pl.col("deathtime").str.to_datetime(format="%Y-%m-%d %H:%M:%S", strict=False))
@@ -515,35 +499,32 @@ def process_hosp_patients_df(hosp_patients_df: pl.LazyFrame, hosp_admissions_df:
     )
 
 
-def process_hosp_pharmacy_df(hosp_pharamcy_df: pl.LazyFrame) -> pl.LazyFrame:
-    """Pharmacy Steps:
-    - Drop rows where medication is null
-    - Set frequency to titlecase
+def process_hosp_pharmacy_df(hosp_pharmacy_df: pl.LazyFrame) -> pl.LazyFrame:
+    """Process Hospital Pharmacy DataFrame:
+    - Drop rows where medication is null.
+    - Set frequency to titlecase.
     """
-    return hosp_pharamcy_df.filter(pl.col("medication").is_not_null()).with_columns(
-        pl.col("frequency").str.to_titlecase()
-    )
+    return hosp_pharmacy_df.drop_nulls(subset=["medication"]).with_columns(pl.col("frequency").str.to_titlecase())
 
 
 def process_hosp_procedures_df(
     hosp_procedures_df: pl.LazyFrame, hosp_admissions_df: pl.LazyFrame, hosp_d_icd_procedures_df: pl.LazyFrame
 ) -> pl.LazyFrame:
-    """Procedure Steps:
-    - Add admission dischtime
-    - Join on icd code and version to get long_title
-    - Convert chartdate to end-of-day timestamps
+    """Process Hospital Procedures DataFrame:
+    - Add admission dischtime.
+    - Join on icd code and version to get long_title.
+    - Convert chartdate to end-of-day timestamps.
     """
-    hosp_procedures_df = _add_time_by_id(
-        hosp_procedures_df, hosp_admissions_df, on="hadm_id", time_column_name="dischtime"
+    return (
+        hosp_procedures_df.pipe(_add_time_by_id, hosp_admissions_df, on="hadm_id", time_column_name="dischtime")
+        .pipe(_join_icd_code_version_to_title, hosp_d_icd_procedures_df)
+        .pipe(_convert_date_to_end_of_day_timestamp)
     )
-    hosp_procedures_df = _join_icd_code_version_to_title(hosp_procedures_df, hosp_d_icd_procedures_df)
-    hosp_procedures_df = _convert_date_to_end_of_day_timestamp(hosp_procedures_df)
-    return hosp_procedures_df
 
 
 def process_hosp_transfers_df(hosp_transfers_df: pl.LazyFrame) -> pl.LazyFrame:
-    """Transfers Steps:
-    - Map eventtype to titlecase
+    """Process Hospital Transfers DataFrame:
+    - Map eventtype to titlecase.
     """
     return hosp_transfers_df.with_columns(pl.col("eventtype").str.to_titlecase())
 

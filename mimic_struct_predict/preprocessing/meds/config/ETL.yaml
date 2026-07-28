@@ -40,23 +40,35 @@ stages:
       column: "code"
       # Fix up repeated/trailing slashes and UNK tokens
       patterns:
+        # Remove placeholder (value, valuenum hack)
         - pattern: "//Placeholder$"
           replacement: ""
-        - pattern: "//UNK//"
-          replacement: "//Unknown//"
-        - pattern: "//UNK$"
-          replacement: "//Unknown"
+        # Replace UNK (MEDS filler for null values) and ? with Unknown (makes more semantic sense)
+        - pattern: '//(UNK|\?)(//|$)'
+          replacement: "//Unknown$2"
+        # Replace extra spaces with single spaces
+        - pattern: " {2,}"
+          replacement: " "
+        # Remove trailing dots or spaces
+        - pattern: '(\.| )(//|$)'
+          replacement: "$2"
+        # Remove preceeding spaces
+        - pattern: '// '
+          replacement: "//"
+        # Remove triple /// (caused by trailing / in code)
+        - pattern: '///'
+          replacement: "//"
   - order_by_code_prefix:
       # Priority from first to last, used when timestamps are equal
       prefix_priority:
         # ED Events
-        - "Emergency Department Admission"
-        - "Emergency Department Triage: Name, Unit, Value"
-        - "Home Medications"
-        - "Emergency Department Vital Sign: Name, Unit, Value"
-        - "Emergency Department Medication Administered"
-        - "Emergency Department Discharge"
-        - "Emergency Department Diagnosis"
+        - "ED Admission"
+        - "ED Triage: Name, Unit, Value"
+        - "Home Medication"
+        - "ED Vital Sign: Name, Unit, Value"
+        - "ED Medication Administered"
+        - "ED Discharge"
+        - "ED Diagnosis"
         # Admissions
         - "Hospital Transfer" # Includes ED->Hospital transfers
         - "Hospital Admission"
@@ -67,13 +79,13 @@ stages:
         - "Hospital Medication Prescribed: Name, Route, Frequency, Doses Per 24 Hrs"
         - "Hospital Medication Administered: Name, Details"
         - "Hospital Medication Stopped"
-        - "Hospital Procedure"
         # Discharge
         - "Death" # (discharge and billing happens after in-hospital death)
         - "Hospital Discharge"
         # Hospital Billing codes
-        - "Hospital Diagnosis"
         - "Diagnosis Related Group: Type, Description, Severity Of Illness, Likelihood Of Mortality"
+        - "Hospital Diagnosis"
+        - "Hospital Procedure"
         - "HCPCS Billing Item"
   - add_prefix_rows:
       header: "####"
