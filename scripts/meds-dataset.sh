@@ -30,16 +30,10 @@ N_WORKERS="${NUM_WORKERS}" \
 uv run MEDS_transform-pipeline \
     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/ETL.yaml \
 
-DEBUG_OUTPUT="${DEBUG_DIR}/meds_output.md"
-mkdir -p "${DEBUG_DIR}"
-echo "Outputting one subject to markdown for debugging at ${DEBUG_OUTPUT}"
-uv run python -c "
-import polars as pl; \
-from pathlib import Path; \
-df = pl.read_parquet('$MIMICIV_MEDS_COHORT_DIR/data/train/'); \
-markdown_str = df.filter(pl.col('subject_id') == df['subject_id'][0]).to_pandas().to_markdown(index=False); \
-Path('$DEBUG_OUTPUT').write_text(markdown_str) \
-"
+echo "Outputting subjects to markdown for debugging at ${DEBUG_DIR}/meds"
+uv run python debug/med_output.py \
+    --output_dir "${DEBUG_DIR}/meds" \
+    --meds_train_dir "${MIMICIV_MEDS_COHORT_DIR}/data/train/"
 
 echo "Running ACES pipeline"
 rm -rf "${ACES_OUTPUT_DIR}"
@@ -55,6 +49,12 @@ for task in ${ACES_TASKS}; do
         hydra/launcher=joblib \
         hydra.launcher.n_jobs="${NUM_WORKERS}" \
         --multirun
+
+    echo "Outputting task ${task} to markdown for debugging at ${DEBUG_DIR}/aces/${task}"
+    uv run python debug/aces_output.py \
+        --output_dir "${DEBUG_DIR}/aces/${task}" \
+        --aces_train_dir "${ACES_OUTPUT_DIR}/${task}/train/" \
+        --meds_train_dir "${MIMICIV_MEDS_COHORT_DIR}/data/train/"
 done
 
 echo "MEDS dataset pipeline completed successfully!"
