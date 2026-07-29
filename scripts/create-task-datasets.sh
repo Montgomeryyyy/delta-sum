@@ -27,28 +27,27 @@ source "./scripts/config.sh"
 
 if [[ "$MODE" == "structured" ]]; then
     CONFIG_NAME="create_task_datasets_structured.yaml"
+    MEDS_DIR="${STRUCTURED_MEDS_DIR}"
     OUTPUT_DIR="${STRUCTURED_TASK_DATA_DIR}"
-    DEBUG_OUTPUT="${DEBUG_DIR}/structured_pretrain_task_output.md"
+    DEBUG_OUTPUT_DIR="${DEBUG_DIR}/tasks/structured"
 else
     CONFIG_NAME="create_task_datasets_nl.yaml"
+    MEDS_DIR="${NATURAL_LANGUAGE_MEDS_DIR}"
     OUTPUT_DIR="${NATURAL_LANGUAGE_TASK_DATA_DIR}"
-    DEBUG_OUTPUT="${DEBUG_DIR}/natural_language_task_output.md"
+    DEBUG_OUTPUT_DIR="${DEBUG_DIR}/tasks/natural_language"
 fi
 
 mkdir -p "${OUTPUT_DIR}"
 
 uv run create_task_datasets \
     --config-name="${CONFIG_NAME}" \
-    meds_dir="${MIMICIV_MEDS_COHORT_DIR}/data" \
+    meds_dir="${MEDS_DIR}" \
     aces_dir="${ACES_OUTPUT_DIR}" \
     output_dir="${OUTPUT_DIR}"
 
 echo "${OUTPUT_DIR}"
 
-echo "Outputting one subject to markdown for debugging at ${DEBUG_OUTPUT}"
-uv run python -c "
-import polars as pl; \
-from pathlib import Path; \
-df = pl.read_parquet(next(Path('${OUTPUT_DIR}').glob('*/train/*.parquet'))); \
-Path('$DEBUG_OUTPUT').write_text(df['ehr_text'][0]) \
-"
+echo "Outputting subjects to markdown for debugging at ${DEBUG_OUTPUT_DIR}"
+uv run python ./debug/task_output.py \
+    --task_dir "${OUTPUT_DIR}" \
+    --debug_dir "${DEBUG_OUTPUT_DIR}"

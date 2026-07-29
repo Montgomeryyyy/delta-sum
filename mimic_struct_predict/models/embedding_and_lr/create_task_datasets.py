@@ -30,6 +30,6 @@ def main(cfg: DictConfig) -> None:
         overwrite=cfg.overwrite,
         tasks=valid_tasks if valid_tasks else None,
         splits=valid_splits,
-        **cfg.preprocessing,
+        **cfg.pre_processing,
     )
     log.info(f"Finished creating raw EHR text datasets. Saved to: {output_dir}")

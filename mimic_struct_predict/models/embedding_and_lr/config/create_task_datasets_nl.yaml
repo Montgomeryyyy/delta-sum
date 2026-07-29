@@ -7,12 +7,12 @@ overwrite: false
 
 splits_to_process: ["train", "tuning", "held_out"]
 
-preprocessing:
+pre_processing:
   delimiter: "//"
-  split_on_delimiter: true
-  append_numeric_values: false
+  delimiter_replacement: " "
+  append_numeric_values: true
+  numeric_values_sig_figs: 2
   code_join_token: "\n\n"
-  numeric_value_sig_figs: null
 
 hydra:
   run:
