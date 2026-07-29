@@ -29,43 +29,31 @@ if [[ "$MODE" == "structured" ]]; then
     CONFIG_NAME="structured.yaml"
     DATASET_DIR="${STRUCTURED_MEDS_DIR}"
     OUTPUT_DIR="${STRUCTURED_PRE_TRAINING_DIR}"
-    DEBUG_OUTPUT="${DEBUG_DIR}/structured_pretrain_text_output.md"
-    pre_trained_tokenizer=null
+    PRE_TRAINED_TOKENIZER=null
+    TOKENIZER_ARG="${OUTPUT_DIR}/tokenizer"
 else
     CONFIG_NAME="natural_language.yaml"
     DATASET_DIR="${NATURAL_LANGUAGE_MEDS_DIR}"
     OUTPUT_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}"
-    DEBUG_OUTPUT="${DEBUG_DIR}/natural_language_pretrain_output.md"
-    pre_trained_tokenizer="${HF_MODEL_NAME}"
+    PRE_TRAINED_TOKENIZER="${HF_MODEL_NAME}"
+    TOKENIZER_ARG="${HF_MODEL_NAME}"
 fi
 
 mkdir -p "${OUTPUT_DIR}"
 
 uv run pre_training_tokenize \
     --config-name="${CONFIG_NAME}" \
-    tokenizer.pre_trained_tokenizer="${pre_trained_tokenizer}" \
+    tokenizer.pre_trained_tokenizer="${PRE_TRAINED_TOKENIZER}" \
     dataset_dir="${DATASET_DIR}" \
     output_dir="${OUTPUT_DIR}" \
     num_workers="${NUM_WORKERS}"
 
-echo "Outputting one subject to markdown for debugging at ${DEBUG_OUTPUT}"
-uv run python -c "
-import polars as pl; \
-from pathlib import Path; \
-df = pl.read_parquet('${OUTPUT_DIR}/raw_data/train/'); \
-Path('$DEBUG_OUTPUT').write_text(df['ehr_text'][0]) \
-"
+DEBUG_OUTPUT_DIR="${DEBUG_DIR}/pretraining/${MODE}"
+mkdir -p "${DEBUG_OUTPUT_DIR}"
+echo "Outputting debug files to ${DEBUG_OUTPUT_DIR}"
 
-if [[ "$MODE" == "structured" ]]; then
-    DEBUG_OUTPUT="${DEBUG_DIR}/structured_pretrain_tokenized_output.txt"
-    echo "Outputting one tokenized subject to markdown for debugging at ${DEBUG_OUTPUT}"
-
-    uv run python -c "
-import datasets
-from pathlib import Path
-from transformers import AutoTokenizer
-tokenizer = AutoTokenizer.from_pretrained('${OUTPUT_DIR}/tokenizer')
-dataset = datasets.load_dataset('${OUTPUT_DIR}/tokenized_dataset')
-Path('${DEBUG_OUTPUT}').write_text(str(tokenizer.convert_ids_to_tokens(dataset['train'][0]['input_ids'])))
-"
-fi
+uv run python debug/pretrain_output.py \
+    --output_dir "${DEBUG_OUTPUT_DIR}" \
+    --raw_data_dir "${OUTPUT_DIR}/raw_data/train/" \
+    --tokenizer_dir "${TOKENIZER_ARG}" \
+    --tokenized_dataset_dir "${OUTPUT_DIR}/tokenized_dataset"
