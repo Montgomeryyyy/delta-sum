@@ -5,9 +5,9 @@ metadata:
 
 predicates:
   ed_registration:
-    code: "####//Emergency Department Registration"
+    code: "####//ED Admission"
   ed_discharge:
-    code: "####//Emergency Department Discharge"
+    code: "####//ED Discharge"
   death:
     code: "####//Death"
 
