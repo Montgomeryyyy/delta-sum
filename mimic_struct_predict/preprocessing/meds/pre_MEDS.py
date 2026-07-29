@@ -641,7 +641,16 @@ def _discover_files(input_dir: Path) -> dict[str, tuple[Path, Callable[..., pl.L
             continue
         # For CSV files, increase schema inference to avoid misdetected types (e.g. float inferred as i64)
         if fp.name.endswith((".csv", ".csv.gz")):
-            read_fn = partial(read_fn, infer_schema_length=100_000)
+            read_kwargs: dict[str, object] = {"infer_schema_length": 100_000}
+            # HACK: Pharamacy still has issues even at 100k rows so hardcode issue columns as strings
+            # (we don't use these columns so format does not matter)
+            if pfx == "hosp/pharmacy":
+                read_kwargs["schema_overrides"] = {
+                    "lockout_interval": pl.String,
+                    "fill_quantity": pl.String,
+                    "one_hr_max": pl.String,
+                }
+            read_fn = partial(read_fn, **read_kwargs)
         files[pfx] = (fp, read_fn)
     return files
 
