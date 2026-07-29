@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import seaborn as sns
-from datasets import disable_caching, disable_progress_bar, load_dataset, load_from_disk
+from datasets import disable_caching, disable_progress_bar, load_dataset
 from transformers import AutoTokenizer
 
 disable_progress_bar()
@@ -39,6 +39,7 @@ LINEWIDTH = 5.5
 CONTEXT_WINDOW = 4096
 NL_COLOR = "#1f77b4"
 STRUCT_COLOR = "#ff7f0e"
+UNTRUNCATED_COLOR = "#2ca02c"
 HF_MODEL_NAME = os.environ["HF_MODEL_NAME"]
 NUM_WORKERS = int(os.environ["NUM_WORKERS"])
 EVAL_PLOTS_DIR = Path(os.environ["EVAL_PLOTS_DIR"])
@@ -46,6 +47,7 @@ EVAL_PLOTS_DIR = Path(os.environ["EVAL_PLOTS_DIR"])
 NL_PRE_TRAINING_DIR = Path(os.environ["NATURAL_LANGUAGE_PRE_TRAINING_DIR"])
 STRUCT_PRE_TRAINING_DIR = Path(os.environ["STRUCTURED_PRE_TRAINING_DIR"])
 HEADER_MEDS_DIR = Path(os.environ["MIMICIV_MEDS_COHORT_DIR"]) / "order_by_code_prefix"
+MEDS_TAB_MEDS_DIR = Path(os.environ["MEDS_TAB_MEDS_DIR"])
 
 EVAL_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -192,19 +194,25 @@ def extract_metrics(input_ids, tokenizer, split_pattern):
     return {"events": events, "time_covered": time_covered}
 
 
-def plot_events_and_timeline_boxplots(nl_tokenizer, struct_tokenizer):
-    print("Loading tokenized datasets...")
-    nl_tok_ds = load_from_disk(str(NL_PRE_TRAINING_DIR / "tokenized_dataset/train"))
-    struct_tok_ds = load_from_disk(str(STRUCT_PRE_TRAINING_DIR / "tokenized_dataset/train"))
+def plot_events_and_timeline_boxplots(nl_raw, struct_raw, nl_tokenizer, struct_tokenizer):
+    def tokenize_and_truncate(examples, tokenizer):
+        return tokenizer(examples["ehr_text"], truncation=True, max_length=CONTEXT_WINDOW, add_special_tokens=True)
 
-    print(f"Filtering sequences below threshold length ({CONTEXT_WINDOW})...")
-    nl_tok_ds = nl_tok_ds.filter(lambda x: len(x["input_ids"]) >= CONTEXT_WINDOW, num_proc=NUM_WORKERS)
-    struct_tok_ds = struct_tok_ds.filter(lambda x: len(x["input_ids"]) >= CONTEXT_WINDOW, num_proc=NUM_WORKERS)
-
-    if len(nl_tok_ds) == 0 or len(struct_tok_ds) == 0:
-        raise ValueError(
-            f"Warning: One or both datasets have 0 sequences >= {CONTEXT_WINDOW} tokens. Skipping boxplot."
-        )
+    print("Tokenizing datasets with truncation...")
+    nl_tok_ds = nl_raw.map(
+        tokenize_and_truncate,
+        fn_kwargs={"tokenizer": nl_tokenizer},
+        batched=True,
+        num_proc=NUM_WORKERS,
+        remove_columns=nl_raw.column_names,
+    )
+    struct_tok_ds = struct_raw.map(
+        tokenize_and_truncate,
+        fn_kwargs={"tokenizer": struct_tokenizer},
+        batched=True,
+        num_proc=NUM_WORKERS,
+        remove_columns=struct_raw.column_names,
+    )
 
     print("Extracting metrics...")
     nl_tok_ds = nl_tok_ds.map(
@@ -224,23 +232,42 @@ def plot_events_and_timeline_boxplots(nl_tokenizer, struct_tokenizer):
     nl_event_counts = np.array(nl_tok_ds["events"])
     struct_event_counts = np.array(struct_tok_ds["events"])
 
+    print("Loading Complete MEDS dataset...")
+    complete_meds = (
+        pl.scan_parquet(str(MEDS_TAB_MEDS_DIR / "train" / "*.parquet"))
+        .group_by("subject_id")
+        .agg([pl.len().alias("events"), (pl.col("time").max() - pl.col("time").min()).alias("time_covered")])
+        .collect()
+    )
+    complete_event_counts = complete_meds["events"].to_numpy()
+    complete_time_covered_vals = complete_meds["time_covered"].dt.total_milliseconds().to_numpy() / (
+        1000 * 60 * 60 * 24
+    )
+
     print("Plotting Boxplot for events...")
     plt.figure(figsize=(LINEWIDTH, 4))
 
     df = pd.DataFrame(
         {
-            "Events": np.concatenate([nl_event_counts, struct_event_counts]),
-            "Dataset": ["Natural Language"] * len(nl_event_counts) + ["Structured"] * len(struct_event_counts),
+            "Events": np.concatenate([nl_event_counts, struct_event_counts, complete_event_counts]),
+            "Dataset": [f"Natural Language\nContext Window={CONTEXT_WINDOW}"] * len(nl_event_counts)
+            + [f"Structured\nContext Window={CONTEXT_WINDOW}"] * len(struct_event_counts)
+            + ["Untruncated"] * len(complete_event_counts),
         }
     )
 
-    palette = {"Natural Language": NL_COLOR, "Structured": STRUCT_COLOR}
+    palette = {
+        f"Natural Language\nContext Window={CONTEXT_WINDOW}": NL_COLOR,
+        f"Structured\nContext Window={CONTEXT_WINDOW}": STRUCT_COLOR,
+        "Untruncated": UNTRUNCATED_COLOR,
+    }
     sns.boxplot(
         x="Dataset", y="Events", data=df, hue="Dataset", palette=palette, showfliers=False, width=0.5, legend=False
     )
 
-    plt.ylabel(f"Events in Timeline\n(Context Window={CONTEXT_WINDOW})")
+    plt.ylabel("Events in Timeline")
     plt.xlabel("")
+    plt.ylim(bottom=0)
     plt.grid(axis="y", linestyle=":", alpha=0.6)
     plt.tight_layout()
 
@@ -257,9 +284,10 @@ def plot_events_and_timeline_boxplots(nl_tokenizer, struct_tokenizer):
 
     df_time = pd.DataFrame(
         {
-            "Days": np.concatenate([nl_time_covered_vals, struct_time_covered_vals]),
-            "Dataset": ["Natural Language"] * len(nl_time_covered_vals)
-            + ["Structured"] * len(struct_time_covered_vals),
+            "Days": np.concatenate([nl_time_covered_vals, struct_time_covered_vals, complete_time_covered_vals]),
+            "Dataset": [f"Natural Language\nContext Window={CONTEXT_WINDOW}"] * len(nl_time_covered_vals)
+            + [f"Structured\nContext Window={CONTEXT_WINDOW}"] * len(struct_time_covered_vals)
+            + ["Untruncated"] * len(complete_time_covered_vals),
         }
     )
 
@@ -267,16 +295,16 @@ def plot_events_and_timeline_boxplots(nl_tokenizer, struct_tokenizer):
         x="Dataset", y="Days", data=df_time, hue="Dataset", palette=palette, showfliers=False, width=0.5, legend=False
     )
 
-    plt.ylabel(f"Days in Timeline\n(Context Window={CONTEXT_WINDOW})")
+    plt.ylabel("Days in Timeline")
     plt.xlabel("")
     plt.ylim(bottom=0)
     plt.grid(axis="y", linestyle=":", alpha=0.6)
     plt.tight_layout()
 
-    time_plot_path = EVAL_PLOTS_DIR / "timeline_length_boxplot.pdf"
-    plt.savefig(time_plot_path)
+    days_plot_path = EVAL_PLOTS_DIR / "days_boxplot.pdf"
+    plt.savefig(days_plot_path)
     plt.close()
-    print(f"Saved Timeline Length Boxplot to {time_plot_path}")
+    print(f"Saved Days Boxplot to {days_plot_path}")
 
 
 def extract_trajectory(example, tokenizer, split_pattern="\n\n"):
@@ -450,9 +478,9 @@ def main():
         "parquet", data_files=str(STRUCT_PRE_TRAINING_DIR / "raw_data/train/*.parquet"), split="train"
     )
 
-    plot_header_counts()
-    plot_cdf_sequence_lengths(nl_raw, struct_raw, nl_tokenizer, struct_tokenizer)
-    plot_events_and_timeline_boxplots(nl_tokenizer, struct_tokenizer)
+    # plot_header_counts()
+    # plot_cdf_sequence_lengths(nl_raw, struct_raw, nl_tokenizer, struct_tokenizer)
+    plot_events_and_timeline_boxplots(nl_raw, struct_raw, nl_tokenizer, struct_tokenizer)
     # plot_trajectory_metrics(nl_raw, struct_raw, nl_tokenizer, struct_tokenizer)
 
     print("Evaluation complete.")
