@@ -172,6 +172,13 @@ def extract_metrics(input_ids, tokenizer, split_pattern):
                 start_time = absolute_time
             else:
                 end_time = absolute_time
+        elif "### Time Unspecified" in line:  # Unspecified is set to EOD
+            absolute_time = current_day + 23 / 24.0 + 59 / (24.0 * 60.0)
+
+            if start_time is None:
+                start_time = absolute_time
+            else:
+                end_time = absolute_time
 
     if start_time is None:
         raise ValueError(f"No start time found in EHR:\n{text}")
