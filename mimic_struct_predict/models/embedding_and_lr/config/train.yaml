@@ -10,8 +10,6 @@ split_names:
   train: train
   val: tuning
 
-num_workers: 10
-
 lr:
   C: 1.0
   solver: lbfgs
@@ -24,8 +22,8 @@ hydra:
       _target_: optuna.samplers.TPESampler
       seed: ${random_seed}
     direction: maximize
-    n_trials: 10
-    n_jobs: ${num_workers}
+    n_trials: 100
+    n_jobs: 10
     params:
       lr.C: tag(log, interval(1e-4, 1e2))
       lr.class_weight: choice("balanced", "null")

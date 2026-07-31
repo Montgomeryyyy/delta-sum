@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from sklearn.pipeline import Pipeline
-from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoModel, PreTrainedModel, PreTrainedTokenizerBase
 
 from mimic_struct_predict.models.embedding_and_lr.inference_embedding_only import batch_embedding_inference
 from mimic_struct_predict.models.utils import (
@@ -27,6 +27,7 @@ def batch_embedding_and_lr_inference(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     lr_pipeline: Pipeline,
+    max_length: int | None,
 ) -> dict[str, list]:
     """Run inference on a batch of EHR texts by
     - Tokenizing the input texts with appropriate padding and truncation
@@ -39,6 +40,7 @@ def batch_embedding_and_lr_inference(
         ehr_texts=ehr_texts,
         model=model,
         tokenizer=tokenizer,
+        max_length=max_length,
     )["embedding"]
 
     # Get probability of positive class from logistic regression model
@@ -78,7 +80,7 @@ def main(cfg: DictConfig) -> None:
     # 2. Load model and tokenizer once
     log.info("Loading model and tokenizer...")
     model, tokenizer = load_model_and_tokenizer(
-        model_class=AutoModelForCausalLM,
+        model_class=AutoModel,
         model_config=cfg.model,
         eval_mode=True,
         padding_side="left",
@@ -144,6 +146,7 @@ def main(cfg: DictConfig) -> None:
                     model=model,
                     lr_pipeline=lr_pipeline,
                     tokenizer=tokenizer,
+                    max_length=cfg.max_length,
                 )
                 for key, values in results.items():
                     batch[key] = values

@@ -1,6 +1,6 @@
 model:
   pretrained_model_name_or_path: ???
-  dtype: float32
+  dtype: bfloat16
 
 
 dataset_dir: ???  # Required: directory of pre-built task prompt datasets
@@ -9,11 +9,17 @@ splits:
   - train
   - tuning
   - held_out
+
+overwrite: false
+
 tasks: null # If null or empty, will run on all tasks in the dataset
 
 num_workers: 4
-batch_size: 64
+batch_size: 32
 log_interval: 1
+
+tokenization:
+  max_length: 4096
 
 hydra:
   run:

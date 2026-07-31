@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 from omegaconf import DictConfig
-from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoModel, PreTrainedModel, PreTrainedTokenizerBase
 
 from mimic_struct_predict.models.utils import (
     load_model_and_tokenizer,
@@ -22,6 +22,7 @@ def batch_embedding_inference(
     ehr_texts: list[str],
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
+    max_length: int | None = None,
 ) -> dict[str, list]:
     """Run inference on a batch of EHR texts by
     - Tokenizing the input texts with appropriate padding and truncation
@@ -34,17 +35,17 @@ def batch_embedding_inference(
     inputs = tokenizer(
         ehr_texts,
         truncation=True,
-        max_length=tokenizer.model_max_length,
         padding=True,
+        max_length=max_length,
         return_tensors="pt",
     ).to(model.device)
 
-    # Forward pass to get logits for the next token (pass tensors explicitly)
+    # Forward pass to get final layer embeddings
     with torch.inference_mode():
-        outputs = model(**inputs, output_hidden_states=True)
+        outputs = model(**inputs)
 
     # Safe to do take [:, -1, :] as last hidden state as padding is on left
-    last_hidden_states = outputs.hidden_states[-1][:, -1, :]
+    last_hidden_states = outputs.last_hidden_state[:, -1, :]
 
     # Can't do straight to numpy as get 'pyarrow.lib.ArrowInvalid: only handle 1-dimensional arrays'
     return {"embedding": list(last_hidden_states.cpu().float().numpy())}
@@ -71,7 +72,7 @@ def main(cfg: DictConfig) -> None:
     # 2. Load model and tokenizer once
     log.info("Loading model and tokenizer...")
     model, tokenizer = load_model_and_tokenizer(
-        model_class=AutoModelForCausalLM,
+        model_class=AutoModel,
         model_config=cfg.model,
         eval_mode=True,
         padding_side="left",
@@ -90,7 +91,7 @@ def main(cfg: DictConfig) -> None:
 
         for split in cfg.splits:
             embeddings_path = out_dir / task_name / split / "embeddings.parquet"
-            if embeddings_path.exists():
+            if not cfg.overwrite and embeddings_path.exists():
                 log.info(
                     f"Embeddings file {embeddings_path} exist for task {task_name} in split {split}."
                     f" Skipping inference."
@@ -125,6 +126,7 @@ def main(cfg: DictConfig) -> None:
                         ehr_texts=batch["ehr_text"],
                         model=model,
                         tokenizer=tokenizer,
+                        max_length=cfg.tokenization.max_length,
                     )
                     for key, values in results.items():
                         batch[key] = values
