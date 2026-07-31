@@ -1,6 +1,7 @@
 """Inference script for structured generative rollout."""
 
 import logging
+import math
 from pathlib import Path
 
 import datasets
@@ -9,6 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 from omegaconf import DictConfig
+from tqdm import tqdm
 from transformers import AutoModel, PreTrainedModel, PreTrainedTokenizerBase
 
 from mimic_struct_predict.models.utils import (
@@ -121,7 +123,14 @@ def main(cfg: DictConfig) -> None:
             embeddings_path.parent.mkdir(parents=True, exist_ok=True)
             log.info(f"Running inference and streaming to {embeddings_path}")
             try:
-                for idx, batch in enumerate(dataset.iter(batch_size=cfg.batch_size)):
+                num_batches = math.ceil(len(dataset) / cfg.batch_size)
+                for idx, batch in enumerate(
+                    tqdm(
+                        dataset.iter(batch_size=cfg.batch_size),
+                        total=num_batches,
+                        desc=f"Inferencing {task_name}/{split}",
+                    )
+                ):
                     results = batch_embedding_inference(
                         ehr_texts=batch["ehr_text"],
                         model=model,
@@ -135,9 +144,6 @@ def main(cfg: DictConfig) -> None:
                     if writer is None:
                         writer = pq.ParquetWriter(embeddings_path, table.schema)
                     writer.write_table(table)
-
-                    if (idx + 1) % cfg.log_interval == 0:
-                        log.info(f"Processed {idx + 1} batches for task {task_name} in split {split}.")
 
             except Exception as e:
                 log.error(f"Error processing task {task_name} at batch index {idx}: {e}", exc_info=True)
