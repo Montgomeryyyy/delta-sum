@@ -102,7 +102,7 @@ hosp/drgcodes:
 hosp/emar:
   medication:
     code:
-      - "Hospital Medication Administered: Name, Details"
+      - "Hospital Medication: Name, Details"
       - col(medication)
       - col(event_txt)
     time: col(charttime)
@@ -156,22 +156,23 @@ hosp/patients:
     time: col(dod)
     time_format: "%Y-%m-%d %H:%M:%S"
 
-hosp/pharmacy:
-  medication_start:
-    code:
-      - "Hospital Medication Prescribed: Name, Route, Frequency, Doses Per 24 Hrs"
-      - col(medication)
-      - col(route)
-      - col(frequency)
-      - col(doses_per_24_hrs)
-    time: col(starttime)
-    time_format: "%Y-%m-%d %H:%M:%S" #  All rows seem to have time of day
-  medication_stop:
-    code:
-      - "Hospital Medication Stopped"
-      - col(medication)
-    time: col(stoptime)
-    time_format: "%Y-%m-%d %H:%M:%S" # All rows seem to have time of day
+# Comment out as ~repeated information from hosp/emar
+# hosp/pharmacy:
+#   medication_start:
+#     code:
+#       - "Hospital Medication Prescribed: Name, Route, Frequency, Doses Per 24 Hrs"
+#       - col(medication)
+#       - col(route)
+#       - col(frequency)
+#       - col(doses_per_24_hrs)
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S" #  All rows seem to have time of day
+#   medication_stop:
+#     code:
+#       - "Hospital Medication Stopped"
+#       - col(medication)
+#     time: col(stoptime)
+#     time_format: "%Y-%m-%d %H:%M:%S" # All rows seem to have time of day
 
 hosp/procedures_icd:
   procedure:
