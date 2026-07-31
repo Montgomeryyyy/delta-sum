@@ -112,7 +112,7 @@ def main(cfg: DictConfig) -> None:
     log.info(f"Loaded {len(dataset[train_split])} train examples and {len(dataset[val_split])} val examples.")
 
     if cfg.tokenizer.pre_trained_tokenizer:
-        log.info(f"Loading existing tokenizer from {output_dir / 'tokenizer'}...")
+        log.info(f"Loading existing tokenizer {cfg.tokenizer.pre_trained_tokenizer}")
         tokenizer = load_tokenizer(cfg.tokenizer.pre_trained_tokenizer, padding_side=cfg.tokenizer.padding_side)
     else:
         log.info("Training custom tokenizer on raw pretraining dataset...")
