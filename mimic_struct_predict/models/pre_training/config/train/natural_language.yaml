@@ -14,7 +14,7 @@ model:
   random_init: false
   config:
     dtype: bfloat16
-    attn_implementation: flash_attention_2 # [liger_kernel.transformers.model.gemma3][WARNING] - It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `flash_attention_2`. Use `eager` with `AutoModelForCausalLM.from_pretrained('<path-to-checkpoint>', attn_implementation='eager')`
+    attn_implementation: eager # [liger_kernel.transformers.model.gemma3][WARNING] - It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `flash_attention_2`. Use `eager` with `AutoModelForCausalLM.from_pretrained('<path-to-checkpoint>', attn_implementation='eager')`
 
 tokenizer_dir: ???
 
@@ -52,7 +52,7 @@ training_args:
   # Evaluation
   eval_strategy: steps
   eval_steps: 0.025
-  per_device_eval_batch_size: 8
+  per_device_eval_batch_size: 6
   prediction_loss_only: true
   # Checkpointing & Saving
   save_strategy: steps
@@ -71,7 +71,7 @@ training_args:
   torch_compile: false
   # torch_compile_mode: default
   # Kernels
-  use_liger_kernel: false
+  use_liger_kernel: true
   # Debugging & Profiling
   skip_memory_metrics: true
 
