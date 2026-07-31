@@ -344,8 +344,9 @@ ed/pyxis:
   medication:
     # Same format as hosp/emar but no event_txt in this table
     code:
-      - "ED Medication Administered"
+      - "ED Medication: Name, Details"
       - col(name)
+      - Administered
     time: col(charttime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
