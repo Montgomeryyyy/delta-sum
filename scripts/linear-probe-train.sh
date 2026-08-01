@@ -24,32 +24,31 @@ MODEL_DIR=${2:-${HF_MODEL_NAME}}
 
 # --- Pipeline Execution ---
 
-# Print commands
-set -x
+IS_ZERO_SHOT=false
+for arg in "$@"; do
+    if [[ "$arg" == "--zero-shot" ]]; then
+        IS_ZERO_SHOT=true
+    fi
+done
 
 if [[ "$MODE" == "structured" ]]; then
-    TASK_DATA_DIR="${STRUCTURED_TASK_DATA_DIR}"
-    EMBEDDING_OUTPUT_DIR="${STRUCTURED_TASK_EMBEDDING_DATA_DIR}"
-    MODEL_OUTPUT_DIR="${STRUCTURED_MODEL_DIR}"
+    EMBEDDING_OUTPUT_DIR="${STRUCTURED_TASK_EMBEDDING_DIR}"
+    LR_MODEL_DIR="${STRUCTURED_LR_MODEL_DIR}"
 else
-    TASK_DATA_DIR="${NATURAL_LANGUAGE_TASK_DATA_DIR}"
-    EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_TASK_EMBEDDING_DATA_DIR}"
-    MODEL_OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}"
+    if [[ "$IS_ZERO_SHOT" == true ]]; then
+        EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/zero_shot/task_embeddings"
+        LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/zero_shot/embedding_lr/models"
+    else
+        EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/cpt/task_embeddings"
+        LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/cpt/embedding_lr/models"
+    fi
 fi
 
-# --- Create Embeddings ---
-
-uv run embedding_and_lr_inference_embedding_only \
-    model.pretrained_model_name_or_path="${MODEL_DIR}" \
-    dataset_dir="${TASK_DATA_DIR}" \
-    output_dir="${EMBEDDING_OUTPUT_DIR}" \
-    splits="[train,tuning]"
-
-for task_dir in "${EMBEDDING_OUTPUT_DIR}"/*/; do
-    [ -d "$task_dir" ] || continue
-    task=$(basename "$task_dir")
+echo "--- Training Logistic Regression Models ---"
+for task in $ACES_TASKS; do
+    task_dir="${EMBEDDING_OUTPUT_DIR}/${task}"
     echo "Training embedding logistic regression for task: $task"
     uv run embedding_and_lr_train --multirun \
         task_dir="$task_dir" \
-        output_dir="${MODEL_OUTPUT_DIR}/embedding_lr/models/$task"
+        output_dir="${LR_MODEL_DIR}/$task"
 done

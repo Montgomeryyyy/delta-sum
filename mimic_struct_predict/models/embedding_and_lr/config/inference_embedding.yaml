@@ -1,0 +1,25 @@
+dataset_dir: ???  # Required: directory of pre-built task prompt datasets
+output_dir: ??? # Required: directory to save outputs
+splits:
+  - train
+  - tuning
+  - held_out
+overwrite: true
+task_name: ??? # Required: task name to process
+
+model:
+  pretrained_model_name_or_path: ???
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  device_map: "auto"
+
+tokenizer:
+  pretrained_model_name_or_path: ${model.pretrained_model_name_or_path}
+  model_max_length: 4096
+
+num_workers: 1
+batch_size: 128
+
+hydra:
+  run:
+    dir: ${output_dir}/.logs/${now:%Y%m%d}/${now:%H%M%S}

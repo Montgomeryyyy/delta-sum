@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 
 # Usage:
-#   ./scripts/linear-probe-train.sh [MODE] [MODEL_DIR]
+#   ./scripts/linear-probe-inference.sh [MODE] [MODEL_DIR]
 #
 # Arguments:
 #   MODE: Either 'natural_language' or 'structured'.
 #   MODEL_DIR: Optional. Path to the model directory. Defaults to HF_MODEL_NAME.
+#   --zero-shot: Optional flag.
+#   --split: Optional flag to specify the split (e.g. 'tuning', 'test'). Defaults to 'tuning'.
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -24,24 +26,56 @@ MODEL_DIR=${2:-${HF_MODEL_NAME}}
 
 # --- Pipeline Execution ---
 
-# Print commands
-set -x
+IS_ZERO_SHOT=false
+SPLIT="tuning"
+for ((i=1; i<=$#; i++)); do
+    if [[ "${!i}" == "--zero-shot" ]]; then
+        IS_ZERO_SHOT=true
+    elif [[ "${!i}" == "--split" ]]; then
+        next=$((i+1))
+        SPLIT="${!next}"
+    fi
+done
 
 if [[ "$MODE" == "structured" ]]; then
-    MODEL_DIR=${HF_MODEL_NAME}
-    TASK_DATA_DIR=${STRUCTURED_TASK_DATA_DIR}
-    OUTPUT_DIR=${STRUCTURED_INFERENCE_DIR}
-    LR_MODEL_DIR=${STRUCTURED_MODEL_DIR}
+    EMBEDDING_OUTPUT_DIR="${STRUCTURED_TASK_EMBEDDING_DIR}"
+    LR_MODEL_DIR="${STRUCTURED_LR_MODEL_DIR}"
+    INFERENCE_OUTPUT_DIR="${STRUCTURED_LR_INFERENCE_DIR}"
 else
-    MODEL_DIR=${HF_MODEL_NAME}
-    TASK_DATA_DIR=${NATURAL_LANGUAGE_TASK_DATA_DIR}
-    OUTPUT_DIR=${NATURAL_LANGUAGE_INFERENCE_DIR}
-    LR_MODEL_DIR=${NATURAL_LANGUAGE_MODEL_DIR}
+    if [[ "$IS_ZERO_SHOT" == true ]]; then
+        EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/zero_shot/task_embeddings"
+        LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/zero_shot/embedding_lr/models"
+        INFERENCE_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/zero_shot/embedding_lr"
+    else
+        EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/cpt/task_embeddings"
+        LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/cpt/embedding_lr/models"
+        INFERENCE_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/cpt/embedding_lr"
+    fi
 fi
 
-uv run embedding_and_lr_inference \
-    model.pretrained_model_name_or_path="${MODEL_DIR}" \
-    dataset_dir="${TASK_DATA_DIR}" \
-    output_dir="${OUTPUT_DIR}" \
-    lr_model_dir="${LR_MODEL_DIR}/embedding_lr/models" \
-    split=tuning
+echo "--- Running Logistic Regression Inference ---"
+
+for task in $ACES_TASKS; do
+    task_dir="${EMBEDDING_OUTPUT_DIR}/${task}"
+
+    if [ ! -d "$task_dir" ]; then
+        echo "Warning: Task directory not found at $task_dir. Skipping."
+        continue
+    fi
+    echo "Running inference for task: $task split: $SPLIT"
+
+    DATASET_PATH="${task_dir}/${SPLIT}/embeddings.parquet"
+
+    # Locate the most recent multirun best_trial model.joblib
+    LR_PATH=$(ls -1td "${LR_MODEL_DIR}/${task}"/multirun_*/best_trial/model.joblib 2>/dev/null | head -n 1 || true)
+
+    if [ -z "$LR_PATH" ]; then
+        echo "Error: No model found for $task at ${LR_MODEL_DIR}/${task}/multirun_*/best_trial/model.joblib"
+        exit 1
+    fi
+
+    uv run embedding_and_lr_inference_lr \
+        dataset_path="${DATASET_PATH}" \
+        output_dir="${INFERENCE_OUTPUT_DIR}/${SPLIT}/${task}" \
+        lr_model_path="${LR_PATH}"
+done

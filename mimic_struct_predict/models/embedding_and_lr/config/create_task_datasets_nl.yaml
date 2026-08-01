@@ -16,4 +16,4 @@ pre_processing:
 
 hydra:
   run:
-    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+    dir: ${output_dir}/.logs/${now:%Y%m%d_%H%M%S}

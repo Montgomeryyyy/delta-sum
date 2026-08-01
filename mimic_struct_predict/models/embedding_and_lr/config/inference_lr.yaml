@@ -1,0 +1,7 @@
+dataset_path: ???  # Required: path to the embeddings.parquet file for a task
+output_dir: ??? # Required: directory to save outputs
+lr_model_path: ??? # Required: path to the trained logistic regression model.joblib
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
