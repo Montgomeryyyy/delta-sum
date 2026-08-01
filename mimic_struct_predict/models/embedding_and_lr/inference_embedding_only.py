@@ -154,3 +154,12 @@ def main(cfg: DictConfig) -> None:
                 # even if an exception was raised during the loop.
                 if writer is not None:
                     writer.close()
+
+                # Clean up intermediate and final cache files to prevent disk explosion during the task loop
+                if "dataset" in locals():
+                    dataset.cleanup_cache_files()
+                    for cache_file in dataset.cache_files:
+                        if "filename" in cache_file:
+                            cache_path = Path(cache_file["filename"])
+                            if cache_path.exists():
+                                cache_path.unlink()

@@ -10,12 +10,12 @@ splits:
   - tuning
   - held_out
 
-overwrite: false
+overwrite: true
 
 tasks: null # If null or empty, will run on all tasks in the dataset
 
 num_workers: 4
-batch_size: 32
+batch_size: 64
 
 tokenization:
   max_length: 4096

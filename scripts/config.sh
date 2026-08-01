@@ -67,3 +67,13 @@ export TRITON_CACHE_DIR="${CACHE_DIR}/triton"
 
 export TRACKIO_DIR="${TRAINING_DIR}/trackio"
 export UV_PROJECT_ENVIRONMENT="${SCRATCH_DIR}/.venv"
+
+
+# Creates a tempdir so can mem offload hugginface operations
+# But cache explodes in size (multiple copies of dataset) and don't care about fast
+# reruns of maps (all are ~quick and should be run once). So delete cache on script exit
+if [ -z "$HF_DATASETS_CACHE" ]; then
+    export HF_DATASETS_CACHE=$(mktemp -d -p "${CACHE_DIR}" hf_datasets_cache_XXXXXX)
+    # Ensure the cache is cleaned up when the script exits
+    trap 'rm -rf "$HF_DATASETS_CACHE"' EXIT
+fi
