@@ -6,7 +6,7 @@
 set -e
 
 # --- Get config ---
-source "./scripts/config_full.sh"
+source "./scripts/config.sh"
 
 # --- Pipeline Execution ---
 
@@ -23,8 +23,17 @@ AGG_SUBSETS=$(uv run generate-subsets "${AGGS}")
 
 echo "Describing MEDS tabular data..."
 uv run meds-tab-describe \
-    "input_dir=${MIMICIV_MEDS_COHORT_DIR}/data" \
+    "input_dir=${MEDS_TAB_MEDS_DIR}" \
     "output_dir=${MEDS_TAB_OUTPUT_DATA_DIR}"
+
+
+# Single thread for when doing multirun
+export POLARS_MAX_THREADS=1
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
 
 for task in ${ACES_TASKS}; do
     echo "Processing task: ${task}"
@@ -36,7 +45,7 @@ for task in ${ACES_TASKS}; do
         --multirun \
         worker="range(0,${N_WORKERS})" \
         hydra/launcher=joblib \
-        "input_dir=${MIMICIV_MEDS_COHORT_DIR}/data" \
+        "input_dir=${MEDS_TAB_MEDS_DIR}" \
         "output_dir=${MEDS_TAB_OUTPUT_DATA_DIR}/training/${task}" \
         "input_label_dir=${ACES_OUTPUT_DIR}/${task}/" \
         "do_overwrite=False" \
@@ -48,7 +57,7 @@ for task in ${ACES_TASKS}; do
     uv run meds-tab-model \
         --multirun \
         model_launcher=xgboost \
-        "input_dir=${MIMICIV_MEDS_COHORT_DIR}/data" \
+        "input_dir=${MEDS_TAB_MEDS_DIR}" \
         "output_dir=${MEDS_TAB_OUTPUT_DATA_DIR}/training/${task}" \
         "input_tabularized_cache_dir=${MEDS_TAB_OUTPUT_DATA_DIR}/training/${task}/tabularize/" \
         "input_label_cache_dir=${ACES_OUTPUT_DIR}/${task}/" \
@@ -56,7 +65,7 @@ for task in ${ACES_TASKS}; do
         "task_name=${task}" \
         "do_overwrite=False" \
         "hydra.sweeper.n_trials=1000" \
-        "hydra.sweeper.n_jobs=${N_WORKERS}" \
+        "hydra.sweeper.n_jobs=64" \
         "tabularization.min_code_inclusion_count=10" \
         "tabularization.window_sizes=${WINDOW_SUBSETS}" \
         "tabularization.aggs=${AGG_SUBSETS}" \
