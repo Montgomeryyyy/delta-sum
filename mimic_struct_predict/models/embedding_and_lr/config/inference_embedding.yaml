@@ -19,6 +19,8 @@ tokenizer:
 
 num_workers: 1
 batch_size: 128
+compile_model: false
+write_batch_size: 1000 # Number of batches to accumulate before writing to parquet
 
 hydra:
   run:
