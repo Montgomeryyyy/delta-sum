@@ -10,7 +10,7 @@ task_name: ??? # Required: task name to process
 model:
   pretrained_model_name_or_path: ???
   dtype: bfloat16
-  attn_implementation: flash_attention_2
+  attn_implementation: sdpa
   device_map: "auto"
 
 tokenizer:
@@ -18,9 +18,10 @@ tokenizer:
   model_max_length: 4096
 
 num_workers: 1
-batch_size: 128
-compile_model: false
+batch_size: 256
+compile_model: true
 write_batch_size: 1000 # Number of batches to accumulate before writing to parquet
+pad_to_multiple_of: 128
 
 hydra:
   run:

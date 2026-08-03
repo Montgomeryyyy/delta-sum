@@ -17,7 +17,7 @@ from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTo
 log = logging.getLogger(__name__)
 
 
-def get_collate_fn(tokenizer: PreTrainedTokenizerBase) -> Callable:
+def get_collate_fn(tokenizer: PreTrainedTokenizerBase, pad_to_multiple_of: int | None) -> Callable:
     """Returns a collate function that pads tokenized inputs."""
 
     def collate_fn(batch_list: list[dict]) -> dict:
@@ -25,7 +25,7 @@ def get_collate_fn(tokenizer: PreTrainedTokenizerBase) -> Callable:
             "input_ids": [item["input_ids"] for item in batch_list],
             "attention_mask": [item["attention_mask"] for item in batch_list],
         }
-        inputs = tokenizer.pad(batch_dict, padding=True, return_tensors="pt")
+        inputs = tokenizer.pad(batch_dict, padding=True, return_tensors="pt", pad_to_multiple_of=pad_to_multiple_of)
         return {
             "inputs": inputs,
             "ehr_text": [item["ehr_text"] for item in batch_list],
@@ -75,6 +75,7 @@ def run_inference_and_save(
     result_path: Path,
     task_name: str,
     split: str,
+    pad_to_multiple_of: int | None,
 ) -> None:
     """Run batch inference on the dataset and stream results to a Parquet file."""
     log.info(f"Running inference and streaming to {result_path}")
@@ -82,7 +83,7 @@ def run_inference_and_save(
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        collate_fn=get_collate_fn(tokenizer),
+        collate_fn=get_collate_fn(tokenizer, pad_to_multiple_of),
         num_workers=num_workers,
         prefetch_factor=2 if num_workers > 0 else None,
     )
@@ -142,7 +143,7 @@ def process_split(
         log.warning(f"No shard files found for task {cfg.task_name} in split {split}. Skipping.")
         return
 
-    dataset = datasets.Dataset.from_parquet([str(p) for p in shards])
+    dataset = datasets.Dataset.from_parquet([str(p) for p in shards]).select(range(4000))
     log.info(f"Loaded {len(dataset)} examples from {split} split.")
 
     if len(dataset) == 0:
@@ -168,6 +169,7 @@ def process_split(
             result_path=embeddings_path,
             task_name=cfg.task_name,
             split=split,
+            pad_to_multiple_of=cfg.pad_to_multiple_of,
         )
     finally:
         dataset.cleanup_cache_files()
@@ -201,6 +203,7 @@ def main(cfg: DictConfig) -> None:
 
     if cfg.get("compile_model", True):
         log.info("Compiling model for faster inference...")
+        torch.set_float32_matmul_precision("high")
         model = torch.compile(model)
 
     tokenizer = AutoTokenizer.from_pretrained(padding_side="left", truncation_side="left", **cfg.tokenizer)
