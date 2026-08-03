@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Based on https://meds-tab.readthedocs.io/en/latest/prediction/
+# Based on https://github.com/mmcdermott/MEDS_Tabular_AutoML/blob/main/MIMICIV_TUTORIAL/task_tabularize_meds.sh
 
 
 # Exit immediately if a command exits with a non-zero status
@@ -26,19 +26,16 @@ uv run meds-tab-describe \
     "input_dir=${MEDS_TAB_MEDS_DIR}" \
     "output_dir=${MEDS_TAB_OUTPUT_DATA_DIR}"
 
-
-# Single thread for when doing multirun
-export POLARS_MAX_THREADS=1
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export VECLIB_MAXIMUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1
-
 for task in ${ACES_TASKS}; do
     echo "Processing task: ${task}"
     mkdir -p "${MEDS_TAB_OUTPUT_DATA_DIR}/training/${task}"
     rsync -r "${MEDS_TAB_OUTPUT_DATA_DIR}/metadata/" "${MEDS_TAB_OUTPUT_DATA_DIR}/training/${task}/metadata"
+
+    # We do not have static evennts (codes with no timestamp) so skip this step
+    # echo "Tabularizing static data"
+    # meds-tab-tabularize-static \
+    #     "input_dir=${MIMICIV_MEDS_DIR}/data" "output_dir=$OUTPUT_TABULARIZATION_DIR/${TASK}" \
+    #     do_overwrite=False "input_label_dir=${TASKS_DIR}/${TASK}/" "$@"
 
     echo "  -> Running task_specific_tabularization"
     uv run meds-tab-tabularize-time-series \
@@ -65,7 +62,8 @@ for task in ${ACES_TASKS}; do
         "task_name=${task}" \
         "do_overwrite=False" \
         "hydra.sweeper.n_trials=1000" \
-        "hydra.sweeper.n_jobs=64" \
+        "hydra.sweeper.n_jobs=8" \
+        "model_launcher.model.nthread=15" \
         "tabularization.min_code_inclusion_count=10" \
         "tabularization.window_sizes=${WINDOW_SUBSETS}" \
         "tabularization.aggs=${AGG_SUBSETS}" \
