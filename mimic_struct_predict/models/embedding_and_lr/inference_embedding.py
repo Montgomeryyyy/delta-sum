@@ -93,7 +93,7 @@ def run_inference_and_save(
     num_accumulated = 0
 
     try:
-        for idx, batch in enumerate(tqdm(dataloader, desc=f"Inferencing {task_name}/{split}")):
+        for idx, batch in enumerate(tqdm(dataloader, desc=f"Embedding Inference {task_name}/{split}", mininterval=30)):
             inputs = batch["inputs"].to(model.device)
 
             with torch.inference_mode():
@@ -108,11 +108,13 @@ def run_inference_and_save(
             num_accumulated += 1
 
             if num_accumulated >= write_batch_size:
+                log.info(f"Writing {num_accumulated} batches to file")
                 writer = flush_writer(writer, accumulated_batches, result_path)
                 accumulated_batches = {"ehr_text": [], "embedding": [], "boolean_value": []}
                 num_accumulated = 0
 
         if num_accumulated > 0:
+            log.info(f"Writing {num_accumulated} batches to file")
             writer = flush_writer(writer, accumulated_batches, result_path)
 
     except Exception as e:
@@ -143,7 +145,7 @@ def process_split(
         log.warning(f"No shard files found for task {cfg.task_name} in split {split}. Skipping.")
         return
 
-    dataset = datasets.Dataset.from_parquet([str(p) for p in shards]).select(range(4000))
+    dataset = datasets.Dataset.from_parquet([str(p) for p in shards])
     log.info(f"Loaded {len(dataset)} examples from {split} split.")
 
     if len(dataset) == 0:
