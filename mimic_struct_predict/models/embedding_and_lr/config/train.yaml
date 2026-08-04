@@ -22,7 +22,7 @@ hydra:
       _target_: optuna.samplers.TPESampler
       seed: ${random_seed}
     direction: maximize
-    n_trials: 10
+    n_trials: 100
     n_jobs: 10
     params:
       lr.C: tag(log, interval(1e-4, 1e2))

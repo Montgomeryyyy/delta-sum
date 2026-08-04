@@ -37,13 +37,9 @@ def get_collate_fn(tokenizer: PreTrainedTokenizerBase, pad_to_multiple_of: int |
 
 def get_tokenize_fn(tokenizer: PreTrainedTokenizerBase) -> Callable:
     """Returns a tokenization function for dataset mapping."""
-    char_limit = (tokenizer.model_max_length * 10) if tokenizer.model_max_length else None
 
     def tokenize_fn(batch: dict) -> Any:
         texts = batch["ehr_text"]
-        if char_limit:
-            texts = [t[-char_limit:] for t in texts]
-
         tokenized = tokenizer(texts, truncation=True, padding=False)
         tokenized["ehr_text"] = texts
         tokenized["token_len"] = [len(ids) for ids in tokenized["input_ids"]]
@@ -160,6 +156,8 @@ def process_split(
         )
         dataset = dataset.sort("token_len", reverse=True)
         dataset = dataset.remove_columns("token_len")
+
+        dataset.cleanup_cache_files()
 
         run_inference_and_save(
             dataset=dataset,
