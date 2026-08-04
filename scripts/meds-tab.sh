@@ -11,7 +11,7 @@ source "./scripts/config.sh"
 # --- Pipeline Execution ---
 
 # Print commands
-set -x
+# set -x
 
 N_WORKERS=$(nproc)
 
@@ -26,6 +26,7 @@ uv run meds-tab-describe \
     "input_dir=${MEDS_TAB_MEDS_DIR}" \
     "output_dir=${MEDS_TAB_OUTPUT_DATA_DIR}"
 
+echo "Running for tasks: ${ACES_TASKS}"
 for task in ${ACES_TASKS}; do
     echo "Processing task: ${task}"
     mkdir -p "${MEDS_TAB_OUTPUT_DATA_DIR}/training/${task}"
@@ -51,6 +52,7 @@ for task in ${ACES_TASKS}; do
         "tabularization.aggs="${AGGS}""
 
     echo "  -> Running xgboost"
+    # Explicitly setting default hyperparamters from https://github.com/mmcdermott/MEDS_Tabular_AutoML/blob/f506448c0dc2e9e29fc95120c6b2875397933451/src/MEDS_tabular_automl/configs/model_launcher/xgboost.yaml#L25
     uv run meds-tab-model \
         --multirun \
         model_launcher=xgboost \
@@ -61,10 +63,18 @@ for task in ${ACES_TASKS}; do
         "output_model_dir=${MEDS_TAB_OUTPUT_MODEL_DIR}/${task}/" \
         "task_name=${task}" \
         "do_overwrite=False" \
-        "hydra.sweeper.n_trials=1000" \
+        "hydra.sweeper.n_trials=100" \
         "hydra.sweeper.n_jobs=8" \
         "model_launcher.model.nthread=15" \
-        "tabularization.min_code_inclusion_count=10" \
+        "+model_launcher.model.eta=tag(log, interval(0.001, 1))" \
+        "+model_launcher.model.lambda=tag(log, interval(0.001, 1))" \
+        "+model_launcher.model.alpha=tag(log, interval(0.001, 1))" \
+        "+model_launcher.model.subsample=interval(0.5, 1)" \
+        "+model_launcher.model.min_child_weight=interval(1e-2, 100)" \
+        "+model_launcher.model.max_depth=range(2, 16)" \
+        "model_launcher.training_params.num_boost_round=range(100, 1000)" \
+        "model_launcher.training_params.early_stopping_rounds=range(1, 10)" \
+        "tabularization.min_code_inclusion_count=tag(log, range(10, 1000000))" \
         "tabularization.window_sizes=${WINDOW_SUBSETS}" \
         "tabularization.aggs=${AGG_SUBSETS}" \
         "delete_below_top_k=1"
