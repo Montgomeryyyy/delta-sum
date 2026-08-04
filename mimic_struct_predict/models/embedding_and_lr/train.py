@@ -83,8 +83,8 @@ def main(cfg: DictConfig) -> float:
             solver=cfg.lr.solver,
             max_iter=cfg.lr.max_iter,
             random_state=cfg.random_seed,
-            # Hack: Hydra doesn't allow null as a choice, so we used the string "null".
-            class_weight=cfg.lr.class_weight if cfg.lr.class_weight != "null" else None,
+            # If the sweep chose "none", pass None to LogisticRegression
+            class_weight=cfg.lr.class_weight if cfg.lr.class_weight != "none" else None,
         ),
     )
     train_X, train_y = shuffle(train_X, train_y, random_state=cfg.random_seed)
@@ -143,10 +143,6 @@ class CleanupCallback(Callback):
                     is_match = True
                     for param_key, param_val in best_params.items():
                         trial_val = OmegaConf.select(trial_cfg, param_key)
-                        # Hack: Hydra doesn't allow null as a choice, so we used the string "null".
-                        # Convert it back here for comparison.
-                        if trial_val == "null":
-                            trial_val = None
                         if isinstance(param_val, float) and isinstance(trial_val, float):
                             if not math.isclose(param_val, trial_val, rel_tol=1e-5):
                                 is_match = False

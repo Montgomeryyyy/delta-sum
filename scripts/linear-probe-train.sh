@@ -50,5 +50,7 @@ for task in $ACES_TASKS; do
     echo "Training embedding logistic regression for task: $task"
     uv run embedding_and_lr_train --multirun \
         task_dir="$task_dir" \
-        output_dir="${LR_MODEL_DIR}/$task"
+        output_dir="${LR_MODEL_DIR}/$task" \
+        hydra/launcher=joblib \
+        hydra.launcher.n_jobs=${NUM_WORKERS}
 done
