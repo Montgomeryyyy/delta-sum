@@ -3,7 +3,7 @@
 ## CREATE Setup commands
 
 Get an interative session
-`srun -p cpu --time 60 --pty /bin/bash -l`
+`srun --cpus-per-task=2 --mem=4G -p slam_cpu --time 1-00:00:00 --pty /bin/bash -l`
 
 ```
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -11,90 +11,187 @@ uv sync
 ```
 
 ```
+huggingface-cli download google/gemma-3-270m-it --local-dir /path/to/shared/scratch/gemma-3-270m-it
+```
+
+
+```
 export MIMIC_USER=
 export MIMIC_PASSWORD=
+export HF_TOKEN=
 export SCRATCH_DIR=/scratch$(pwd)
 source scripts/config.sh
 ```
-Run in interactive shell
-```
-uv run hf auth login
-bash scripts/download_hf_model.sh
-```
 
+SETUP
 ```
 sbatch \
-    --partition biomed_a100_gpu \
+    --partition slam_gpu \
     --gres=gpu:1 \
+    --constraint=h100 \
     --nodes=1 \
-    --ntasks=96 \
+    --ntasks=12 \
     --mem=512G \
-    --time 30 \
+    --time 60 \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR \
+    --export=SCRATCH_DIR,HF_TOKEN \
     --output=/scratch/users/%u/logs/setup_uv/%j.out \
     scripts/setup_uv.sh
 
 
 sbatch\
-    --partition cpu \
+    --partition slam_cpu \
     --time 600 \
     --mem 2G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,MIMIC_USER,MIMIC_PASSWORD, \
+    --export=SCRATCH_DIR,HF_TOKEN,MIMIC_USER,MIMIC_PASSWORD, \
     --output=/scratch/users/%u/logs/download_mimic/%j.out \
     scripts/download_mimic.sh
 
 sbatch\
-    --partition cpu \
-    --time 600 \
+    --partition slam_cpu \
+    --time=1:00:00 \
     --ntasks=1 \
     --cpus-per-task=32 \
     --mem=256G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR \
+    --export=SCRATCH_DIR,HF_TOKEN \
     --output=/scratch/users/%u/logs/meds-dataset/%j.out \
     scripts/meds-dataset.sh
 
+## Pre-training
+
+export MODE=natural_language
+OR
+export MODE=structured
+
 sbatch\
-    --partition cpu \
-    --time 10 \
+    --partition slam_cpu \
+    --time=0:20:00 \
     --ntasks=1 \
-    --cpus-per-task=2 \
-    --mem=32G \
+    --cpus-per-task=32 \
+    --mem=256G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=/scratch/users/%u/logs/meds-dataset/%j.out \
-    scripts/meds-dataset.sh
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/pretrain-tokenize/%j.out \
+    scripts/pretrain-tokenize.sh $MODE
 
 sbatch\
-    --partition cpu \
-    --time 600 \
+    --partition slam_gpu \
+    --time=2-00:00:00 \
+    --gres=gpu:1 \
+    --constraint=h100 \
+    --ntasks=1 \
+    --cpus-per-task=4 \
+    --mem=64G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/pretrain-train/%j.out \
+    scripts/pretrain-train.sh $MODE
+
+## Linear Probe
+
+export MODE=natural_language
+OR
+export MODE=structured
+
+export MODEL_NAME=$HF_MODEL_NAME
+
+sbatch\
+    --partition slam_cpu \
+    --time=1:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=32 \
+    --mem=256G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/create-task-datasets/%j.out \
+    scripts/create-task-datasets.sh $MODE $MODEL_NAME
+
+sbatch\
+    --partition slam_gpu \
+    --time=2-00:00:00 \
+    --gres=gpu:1 \
+    --constraint=h100 \
+    --ntasks=1 \
+    --cpus-per-task=16 \
+    --mem=128G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/linear-probe-embedding/%j.out \
+    scripts/linear-probe-embedding.sh $MODE
+
+sbatch\
+    --partition slam_gpu \
+    --time=2-00:00:00 \
+    --gres=gpu:1 \
+    --constraint=h100 \
+    --ntasks=1 \
+    --cpus-per-task=8 \
+    --mem=128G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/linear-probe-embedding/%j.out \
+    scripts/linear-probe-embedding.sh $MODE /scratch/users/k2692250/mimic-struct-predict/training/structured/pretraining/20260731_172834/final_model
+
+sbatch\
+    --partition slam_cpu \
+    --time=1:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=16 \
+    --mem=128G \
+    --chdir $(pwd) \
+    --output=/scratch/users/%u/logs/linear-probe-train/%j.out \
+    scripts/linear-probe-train.sh $MODE
+
+sbatch\
+    --partition slam_cpu \
+    --time=1:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=16 \
+    --mem=128G \
+    --chdir $(pwd) \
+    --output=/scratch/users/%u/logs/linear-probe-inference/%j.out \
+    scripts/linear-probe-inference.sh $MODE
+
+## MEDS-TAB
+
+sbatch\
+    --partition slam_cpu \
+    --time=7-00:00:00 \
     --nodes=1 \
     --cpus-per-task=124 \
     --mem=950G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR \
+    --export=SCRATCH_DIR,HF_TOKEN \
     --output=/scratch/users/%u/logs/meds-tab/%j.out \
     scripts/meds-tab.sh
 
-sbatch\
-    --partition cpu \
+### SFT
+
+sbatch \
+    --partition slam_gpu \
+    --gres=gpu:2 \
+    --constraint=h100 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
     --cpus-per-task=8 \
-    --mem=256G \
-    --time=15 \
+    --mem=64G \
+    --time 2000 \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
-    scripts/natural-language-dataset-prompts.sh
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/natural_language_train_sft/%j.out \
+    scripts/natural_language_train_sft_multi_gpu.sh \
+    --config-name sft.yaml \
+    --dataset-name direct_yes_no
 
 sbatch\
-    --partition cpu \
-    --cpus-per-task=4 \
-    --mem=32G \
-    --time=15 \
+    --partition slam_cpu \
+    --cpus-per-task=8 \
+    --mem=256G \
+    --time=60 \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR \
+    --export=SCRATCH_DIR,HF_TOKEN \
     --output=/scratch/users/%u/logs/natural-language-dataset-prompts/%j.out \
     scripts/natural-language-dataset-prompts.sh
 
@@ -119,6 +216,47 @@ bash scripts/natural_language_inference.sh \
     --dataset-name direct_yes_no \
     --split tuning
 
+
+### GRPO
+
+sbatch \
+    --partition biomed_a100_gpu \
+    --gres=gpu:8 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task=8 \
+    --mem=64G \
+    --time 2880 \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR \
+    --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
+    scripts/natural-language-train-grpo-multi-gpu.sh \
+    --config-name grpo_probability.yaml \
+    --dataset-name thinking_probability
+
+sbatch \
+    --partition slam_gpu \
+    --gres=gpu:2 \
+    --constraint=h100 \
+    --nodes=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task=8 \
+    --mem=128G \
+    --time 2880 \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR \
+    --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
+    scripts/natural-language-train-grpo-multi-gpu.sh \
+    --config-name grpo_probability.yaml \
+    --dataset-name thinking_probability
+
+
+    --config-name grpo_probability.yaml \
+    --dataset-name thinking_probability
+
+
+### Inference
+
 sbatch \
     --partition biomed_a100_gpu \
     --gres=gpu:1 \
@@ -136,85 +274,57 @@ sbatch \
     --split tuning
 
 sbatch \
-    --partition biomed_a100_gpu \
-    --gres=gpu:1 \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=1 \
-    --mem=16G \
-    --time 10 \
-    --chdir $(pwd) \
-    --get-user-env \
-    --output=/scratch/users/%u/logs/vllm_test/%j.out \
-    outputs/vllm_test.sh \
-    --config-name inference_thinking_probability.yaml \
-    --dataset-name thinking_probability \
-    --split tuning
-
-sbatch \
-    --partition biomed_a100_gpu \
-    --gres=gpu:1 \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=4 \
-    --mem=8G \
-    --time 60 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
-    scripts/natural_language_train_grpo.sh \
-    --config-name grpo_yes_no.yaml \
-    --dataset-name thinking_yes_no
-
-sbatch \
-    --partition biomed_a100_gpu \
+    --partition slam_gpu \
     --gres=gpu:4 \
+    --constraint=l40s \
     --nodes=1 \
     --ntasks-per-node=1 \
-    --cpus-per-task=8 \
+    --cpus-per-task=16 \
     --mem=128G \
-    --time 720 \
+    --time 30 \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
-    scripts/natural-language-train-grpo-multi-gpu.sh \
-    --config-name grpo_probability.yaml \
-    --dataset-name thinking_probability
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/natural_language_inference/%j.out \
+    scripts/natural_language_inference.sh \
+    --config-name inference_direct.yaml \
+    --dataset-name direct_yes_no \
+    --split tuning \
+    --model-path google/gemma-3-270m-it \
+    --lora-adaptor /scratch/users/k2692250/mimic-struct-predict/training/natural_language/sft/direct_yes_no/20260716_221911/final_model
 
 
-sbatch \
-    --partition biomed_a100_gpu \
-    --gres=gpu:4 \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=4 \
-    --mem=64G \
-    --time 600 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=/scratch/users/%u/logs/natural_language_train_grpo/%j.out \
-    scripts/natural-language-train-grpo-multi-gpu.sh \
-    --config-name grpo_yes_no.yaml \
-    --dataset-name thinking_yes_no
+    --model-path google/gemma-3-12b-it
+
+
+    --lora-adaptor /scratch/users/k2692250/mimic-struct-predict/training/natural_language/sft/direct_yes_no/20260714_153800/checkpoint-100
+
+
+
+    --model-path Qwen/Qwen3-8B
+
+## Eval
 
 sbatch\
-    --partition cpu \
-    --time 360 \
-    --mem 16G \
+    --partition slam_cpu \
+    --time=1:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=64 \
+    --mem=256G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=/scratch/users/%u/logs/trackio/%j.out \
-    scripts/trackio.sh
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/evals/%j.out \
+    scripts/eval.sh
 
-bash scripts/trackio.sh
-
-srun -p cpu --time 240 --mem=8G --cpus-per-task=1 --pty /bin/bash -l
-
-srun --partition biomed_a100_gpu --cpus-per-task=1 --gres=gpu:1 --time 20 --mem=16G --pty /bin/bash -l
-
-srun --partition biomed_a100_gpu --cpus-per-task=8 --gres=gpu:1 --time 20 --mem=64G --pty /bin/bash -l
-module load cuda/12.2.1-gcc-13.2.0
-```
+sbatch\
+    --partition slam_cpu \
+    --time=1:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=4 \
+    --mem=32G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/eval_embeddings/%j.out \
+    scripts/eval_embeddings.sh
 
 ## Implemented
 
