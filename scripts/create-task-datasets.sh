@@ -47,15 +47,17 @@ fi
 
 mkdir -p "${OUTPUT_DIR}"
 
-uv run create_task_datasets \
-    --config-name="${CONFIG_NAME}" \
-    meds_dir="${MEDS_DIR}" \
-    aces_dir="${ACES_OUTPUT_DIR}" \
-    output_dir="${OUTPUT_DIR}" \
-    tokenizer.pretrained_model_name_or_path="${TOKENIZER_DIR}" \
-    num_workers="${NUM_WORKERS}"
-
-echo "${OUTPUT_DIR}"
+for TASK_NAME in $ACES_TASKS; do
+    echo "Processing task: ${TASK_NAME}"
+    uv run create_task_datasets \
+        --config-name="${CONFIG_NAME}" \
+        meds_dir="${MEDS_DIR}" \
+        aces_dir="${ACES_OUTPUT_DIR}" \
+        output_dir="${OUTPUT_DIR}" \
+        tokenizer.pretrained_model_name_or_path="${TOKENIZER_DIR}" \
+        num_workers="${NUM_WORKERS}" \
+        "tasks=[${TASK_NAME}]"
+done
 
 echo "Outputting subjects to markdown for debugging at ${DEBUG_OUTPUT_DIR}"
 uv run python ./debug/task_output.py \

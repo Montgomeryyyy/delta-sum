@@ -1,4 +1,5 @@
 import logging
+import shutil
 from pathlib import Path
 from typing import Any, Callable
 
@@ -61,12 +62,6 @@ def tokenize_full_text_directory(
         dataset_dict.save_to_disk(str(tokenized_dir))
         dataset_dict.cleanup_cache_files()
 
-        if cfg.delete_intermediate_texts:
-            log.info(f"Deleting intermediate text parquet files for {task}")
-            for shard_paths in split_to_shard_paths.values():
-                for shard in shard_paths:
-                    shard.unlink()
-
 
 @hydra.main(
     version_base=None,
@@ -97,11 +92,12 @@ def main(cfg: DictConfig) -> None:
     log.info("Proceeding with tokenization...")
 
     task_to_split_to_shard_paths = {
-        task_dir.name: {
-            split: list((task_dir / split).glob("*.parquet")) for split in valid_splits if (task_dir / split).exists()
+        task: {
+            split: list((full_text_output_dir / task / split).glob("*.parquet"))
+            for split in valid_splits
+            if (full_text_output_dir / task / split).exists()
         }
-        for task_dir in full_text_output_dir.iterdir()
-        if task_dir.is_dir()
+        for task in valid_tasks
     }
 
     tokenize_full_text_directory(
@@ -109,3 +105,8 @@ def main(cfg: DictConfig) -> None:
         output_dir=output_dir,
         cfg=cfg,
     )
+
+    if cfg.delete_intermediate_texts:
+        for task in valid_tasks:
+            log.info(f"Deleting full text parquet files for {task}")
+            shutil.rmtree(str(full_text_output_dir / task))

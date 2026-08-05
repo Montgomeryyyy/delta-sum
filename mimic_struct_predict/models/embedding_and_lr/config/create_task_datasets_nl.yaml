@@ -2,6 +2,7 @@
 meds_dir: ???  # Required: directory of pre-built meds datasets
 aces_dir: ???  # Required: directory of pre-built aces datasets
 output_dir: ???          # Required: directory to save outputs
+tasks: ???
 
 overwrite: false
 
