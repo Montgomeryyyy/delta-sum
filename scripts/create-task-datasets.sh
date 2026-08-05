@@ -57,6 +57,10 @@ for TASK_NAME in $ACES_TASKS; do
         tokenizer.pretrained_model_name_or_path="${TOKENIZER_DIR}" \
         num_workers="${NUM_WORKERS}" \
         "tasks=[${TASK_NAME}]"
+
+    # Aggressively delete HF_DATASETS_CACHE and full text directory to prevent disk space exhaustion
+    rm -rf ${HF_DATASETS_CACHE}
+    rm -rf ${OUTPUT_DIR}/full_text/${TASK_NAME}
 done
 
 echo "Outputting subjects to markdown for debugging at ${DEBUG_OUTPUT_DIR}"

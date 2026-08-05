@@ -1,5 +1,4 @@
 import logging
-import shutil
 from pathlib import Path
 from typing import Any, Callable
 
@@ -19,8 +18,7 @@ def get_tokenize_fn(tokenizer: PreTrainedTokenizerBase) -> Callable:
     def tokenize_fn(ehr_texts: list[str]) -> Any:
         # Pad at data collator stage
         tokenized = tokenizer(ehr_texts, truncation=True, padding=False)
-        tokenized["token_len"] = [len(ids) for ids in tokenized["input_ids"]]
-        return tokenized
+        return {"input_ids": tokenized["input_ids"], "token_len": [len(ids) for ids in tokenized["input_ids"]]}
 
     return tokenize_fn
 
@@ -49,8 +47,8 @@ def tokenize_full_text_directory(
             num_proc=cfg.num_workers,
             desc=f"Tokenizing Task: [{task}]",
             input_columns="ehr_text",
+            remove_columns=["ehr_text"],
         )
-        dataset_dict = dataset_dict.remove_columns("ehr_text")
 
         dataset_dict = dataset_dict.sort("token_len", reverse=True)
         dataset_dict = dataset_dict.remove_columns("token_len")
@@ -105,8 +103,3 @@ def main(cfg: DictConfig) -> None:
         output_dir=output_dir,
         cfg=cfg,
     )
-
-    if cfg.delete_intermediate_texts:
-        for task in valid_tasks:
-            log.info(f"Deleting full text parquet files for {task}")
-            shutil.rmtree(str(full_text_output_dir / task))

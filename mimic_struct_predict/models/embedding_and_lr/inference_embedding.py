@@ -23,12 +23,13 @@ def get_collate_fn(tokenizer: PreTrainedTokenizerBase, pad_to_multiple_of: int |
     def collate_fn(batch_list: list[dict]) -> dict:
         batch_dict = {
             "input_ids": [item["input_ids"] for item in batch_list],
-            "attention_mask": [item["attention_mask"] for item in batch_list],
         }
         inputs = tokenizer.pad(batch_dict, padding=True, return_tensors="pt", pad_to_multiple_of=pad_to_multiple_of)
+
+        inputs["attention_mask"] = (inputs["input_ids"] != tokenizer.pad_token_id).long()
+
         return {
             "inputs": inputs,
-            "ehr_text": [item["ehr_text"] for item in batch_list],
             "boolean_value": [item["boolean_value"] for item in batch_list],
         }
 
@@ -85,7 +86,6 @@ def run_inference_and_save(
             last_hidden_states = outputs.last_hidden_state[:, -1, :]
             embeddings = list(last_hidden_states.cpu().float().numpy())
 
-            accumulated_batches["ehr_text"].extend(batch["ehr_text"])
             accumulated_batches["embedding"].extend(embeddings)
             accumulated_batches["boolean_value"].extend(batch["boolean_value"])
             num_accumulated += 1
@@ -93,7 +93,7 @@ def run_inference_and_save(
             if num_accumulated >= write_batch_size:
                 log.info(f"Writing {num_accumulated} batches to file")
                 writer = flush_writer(writer, accumulated_batches, result_path)
-                accumulated_batches = {"ehr_text": [], "embedding": [], "boolean_value": []}
+                accumulated_batches = {"embedding": [], "boolean_value": []}
                 num_accumulated = 0
 
         if num_accumulated > 0:
