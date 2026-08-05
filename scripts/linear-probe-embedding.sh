@@ -46,7 +46,7 @@ for TASK_NAME in $ACES_TASKS; do
 
     uv run embedding_and_lr_inference_embedding \
         model.pretrained_model_name_or_path="${MODEL_DIR}" \
-        dataset_dir="${TASK_DATA_DIR}" \
+        dataset_dir="${TASK_DATA_DIR}/tokenized" \
         output_dir="${EMBEDDING_OUTPUT_DIR}" \
         num_workers="${NUM_WORKERS}" \
         task_name="${TASK_NAME}"

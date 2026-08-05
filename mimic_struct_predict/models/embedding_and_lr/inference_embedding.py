@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import datasets
 import hydra
@@ -33,19 +33,6 @@ def get_collate_fn(tokenizer: PreTrainedTokenizerBase, pad_to_multiple_of: int |
         }
 
     return collate_fn
-
-
-def get_tokenize_fn(tokenizer: PreTrainedTokenizerBase) -> Callable:
-    """Returns a tokenization function for dataset mapping."""
-
-    def tokenize_fn(batch: dict) -> Any:
-        texts = batch["ehr_text"]
-        tokenized = tokenizer(texts, truncation=True, padding=False)
-        tokenized["ehr_text"] = texts
-        tokenized["token_len"] = [len(ids) for ids in tokenized["input_ids"]]
-        return tokenized
-
-    return tokenize_fn
 
 
 def flush_writer(
@@ -136,29 +123,20 @@ def process_split(
         return
     embeddings_path.parent.mkdir(parents=True, exist_ok=True)
 
-    shards = list((task_dir / split).glob("*.parquet"))
-    if not shards:
-        log.warning(f"No shard files found for task {cfg.task_name} in split {split}. Skipping.")
+    dataset_path = task_dir / split
+    if not dataset_path.exists() or not (dataset_path / "dataset_info.json").exists():
+        log.warning(
+            f"No tokenized dataset found for task {cfg.task_name} in split {split} at {dataset_path}. Skipping."
+        )
         return
 
-    dataset = datasets.Dataset.from_parquet([str(p) for p in shards])
+    dataset = datasets.Dataset.load_from_disk(str(dataset_path))
     log.info(f"Loaded {len(dataset)} examples from {split} split.")
 
     if len(dataset) == 0:
         raise ValueError(f"Dataset for task {cfg.task_name} in split {split} is empty.")
 
     try:
-        dataset = dataset.map(
-            get_tokenize_fn(tokenizer),
-            batched=True,
-            num_proc=cfg.num_workers,
-            desc=f"Tokenizing {split}",
-        )
-        dataset = dataset.sort("token_len", reverse=True)
-        dataset = dataset.remove_columns("token_len")
-
-        dataset.cleanup_cache_files()
-
         run_inference_and_save(
             dataset=dataset,
             model=model,

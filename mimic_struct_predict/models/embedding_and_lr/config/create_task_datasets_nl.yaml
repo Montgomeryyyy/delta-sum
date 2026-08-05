@@ -14,6 +14,13 @@ pre_processing:
   numeric_values_sig_figs: 2
   code_join_token: "\n\n"
 
+num_workers: 1
+delete_intermediate_texts: true
+
+tokenizer:
+  pretrained_model_name_or_path: ???
+  model_max_length: 4096
+
 hydra:
   run:
     dir: ${output_dir}/.logs/${now:%Y%m%d_%H%M%S}

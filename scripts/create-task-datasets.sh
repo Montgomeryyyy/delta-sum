@@ -6,6 +6,7 @@
 # Arguments:
 #   MODE: Either 'natural_language' (default) or 'structured'.
 #         Determines which configuration and output directory are used.
+#   TOKENIZER_DIR: Optional. Path to the model directory for tokenizer. Defaults to HF_MODEL_NAME.
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -20,16 +21,20 @@ fi
 # --- Get config ---
 source "./scripts/config.sh"
 
+TOKENIZER_DIR=${2:-${HF_MODEL_NAME}}
+
 # --- Pipeline Execution ---
 
 # Print commands
-# set -x
+set -x
 
+DEBUG_ARGS=""
 if [[ "$MODE" == "structured" ]]; then
     CONFIG_NAME="create_task_datasets_structured.yaml"
     MEDS_DIR="${STRUCTURED_MEDS_DIR}"
     OUTPUT_DIR="${STRUCTURED_TASK_DATA_DIR}"
     DEBUG_OUTPUT_DIR="${DEBUG_DIR}/tasks/structured"
+    DEBUG_ARGS="--structured"
 else
     CONFIG_NAME="create_task_datasets_nl.yaml"
     MEDS_DIR="${NATURAL_LANGUAGE_MEDS_DIR}"
@@ -43,11 +48,15 @@ uv run create_task_datasets \
     --config-name="${CONFIG_NAME}" \
     meds_dir="${MEDS_DIR}" \
     aces_dir="${ACES_OUTPUT_DIR}" \
-    output_dir="${OUTPUT_DIR}"
+    output_dir="${OUTPUT_DIR}" \
+    tokenizer.pretrained_model_name_or_path="${TOKENIZER_DIR}" \
+    num_workers="${NUM_WORKERS}"
 
 echo "${OUTPUT_DIR}"
 
 echo "Outputting subjects to markdown for debugging at ${DEBUG_OUTPUT_DIR}"
 uv run python ./debug/task_output.py \
-    --task_dir "${OUTPUT_DIR}" \
-    --debug_dir "${DEBUG_OUTPUT_DIR}"
+    --task_dir "${OUTPUT_DIR}/tokenized" \
+    --debug_dir "${DEBUG_OUTPUT_DIR}" \
+    --tokenizer_dir "${TOKENIZER_DIR}" \
+    ${DEBUG_ARGS}

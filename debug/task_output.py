@@ -1,13 +1,16 @@
 import argparse
 from pathlib import Path
 
-import polars as pl
+import datasets
+from transformers import AutoTokenizer
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--task_dir", type=str, required=True)
     parser.add_argument("--debug_dir", type=str, required=True)
+    parser.add_argument("--tokenizer_dir", type=str, required=True)
+    parser.add_argument("--structured", action="store_true", help="Convert ids to tokens and join with //")
     args = parser.parse_args()
 
     task_dir = Path(args.task_dir)
@@ -17,40 +20,46 @@ def main():
         print(f"Output directory does not exist: {task_dir}")
         return
 
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
+
     # Iterate over all task directories
     task_dirs = [d for d in task_dir.iterdir() if d.is_dir()]
 
-    for task_dir in task_dirs:
-        task_name = task_dir.name
-        train_dir = task_dir / "train"
+    for t_dir in task_dirs:
+        task_name = t_dir.name
+        train_dir = t_dir / "train"
 
-        if not train_dir.exists():
+        if not train_dir.exists() or not (train_dir / "dataset_info.json").exists():
             continue
 
-        parquet_files = list(train_dir.glob("*.parquet"))
-        if not parquet_files:
+        dataset = datasets.Dataset.load_from_disk(str(train_dir))
+
+        if "input_ids" not in dataset.column_names:
+            print(f"Column 'input_ids' not found in task {task_name}, skipping.")
             continue
-
-        # Read the first parquet file for the task
-        df = pl.read_parquet(parquet_files[0])
-
-        if "ehr_text" not in df.columns:
-            print(f"Column 'ehr_text' not found in task {task_name}, skipping.")
-            continue
-
-        # Determine subjects
-        if "subject_id" in df.columns:
-            subjects = df["subject_id"].unique().head(10).to_list()
-        else:
-            subjects = list(range(min(10, len(df))))
 
         task_debug_dir = debug_dir / task_name
         task_debug_dir.mkdir(parents=True, exist_ok=True)
 
-        for idx, subject_id in enumerate(subjects):
-            subject_df = df.filter(pl.col("subject_id") == subject_id)
+        subjects_processed = set()
+
+        for idx, row in enumerate(dataset):
+            subject_id = row["subject_id"]
+            if subject_id in subjects_processed:
+                continue
+
+            subjects_processed.add(subject_id)
+
             output_file = task_debug_dir / f"{subject_id}.md"
-            output_file.write_text(subject_df["ehr_text"][0], encoding="utf-8")
+            if args.structured:
+                tokens = tokenizer.convert_ids_to_tokens(row["input_ids"])
+                decoded_text = "//".join(tokens)
+            else:
+                decoded_text = tokenizer.decode(row["input_ids"])
+            output_file.write_text(decoded_text, encoding="utf-8")
+
+            if len(subjects_processed) >= 10:
+                break
 
 
 if __name__ == "__main__":
