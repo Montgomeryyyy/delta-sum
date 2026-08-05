@@ -49,6 +49,7 @@ def tokenize_full_text_directory(
             desc=f"Tokenizing Task: [{task}]",
             input_columns="ehr_text",
         )
+        dataset_dict = dataset_dict.remove_columns("ehr_text")
 
         dataset_dict = dataset_dict.sort("token_len", reverse=True)
         dataset_dict = dataset_dict.remove_columns("token_len")

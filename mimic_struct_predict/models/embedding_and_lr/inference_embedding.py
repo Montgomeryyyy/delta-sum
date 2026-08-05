@@ -136,26 +136,18 @@ def process_split(
     if len(dataset) == 0:
         raise ValueError(f"Dataset for task {cfg.task_name} in split {split} is empty.")
 
-    try:
-        run_inference_and_save(
-            dataset=dataset,
-            model=model,
-            tokenizer=tokenizer,
-            batch_size=cfg.batch_size,
-            num_workers=cfg.num_workers,
-            write_batch_size=cfg.write_batch_size,
-            result_path=embeddings_path,
-            task_name=cfg.task_name,
-            split=split,
-            pad_to_multiple_of=cfg.pad_to_multiple_of,
-        )
-    finally:
-        dataset.cleanup_cache_files()
-        for cache_file in dataset.cache_files:
-            if "filename" in cache_file:
-                cache_path = Path(cache_file["filename"])
-                if cache_path.exists():
-                    cache_path.unlink()
+    run_inference_and_save(
+        dataset=dataset,
+        model=model,
+        tokenizer=tokenizer,
+        batch_size=cfg.batch_size,
+        num_workers=cfg.num_workers,
+        write_batch_size=cfg.write_batch_size,
+        result_path=embeddings_path,
+        task_name=cfg.task_name,
+        split=split,
+        pad_to_multiple_of=cfg.pad_to_multiple_of,
+    )
 
 
 @hydra.main(
