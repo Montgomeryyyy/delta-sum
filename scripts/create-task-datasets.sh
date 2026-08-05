@@ -12,21 +12,24 @@
 set -e
 
 MODE=${1}
+TOKENIZER_DIR=${2}
 
 if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
-    echo "Usage: $0 [structured|natural_language]"
+    echo "Usage: $0 [structured|natural_language] [TOKENIZER_DIR]"
+    exit 1
+fi
+if [ -z "$TOKENIZER_DIR" ]; then
+    echo "Error: TOKENIZER_DIR argument not provided."
     exit 1
 fi
 
 # --- Get config ---
 source "./scripts/config.sh"
 
-TOKENIZER_DIR=${2:-${HF_MODEL_NAME}}
-
 # --- Pipeline Execution ---
 
 # Print commands
-set -x
+# set -x
 
 DEBUG_ARGS=""
 if [[ "$MODE" == "structured" ]]; then

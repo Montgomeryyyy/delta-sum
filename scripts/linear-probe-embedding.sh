@@ -13,14 +13,15 @@ set -e
 MODE=${1}
 
 if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
-    echo "Usage: $0 [structured|natural_language] [MODEL_DIR]"
+    echo "Usage: $0 [structured|natural_language] [MODEL_DIR] [OUTPUT_DIRECTORY_NAME]"
     exit 1
 fi
 
 # --- Get config ---
 source "./scripts/config.sh"
 
-MODEL_DIR=${2:-${HF_MODEL_NAME}}
+MODEL_DIR=${2}
+OUTPUT_DIRECTORY_NAME=${3}
 
 # --- Pipeline Execution ---
 
@@ -29,14 +30,10 @@ MODEL_DIR=${2:-${HF_MODEL_NAME}}
 
 if [[ "$MODE" == "structured" ]]; then
     TASK_DATA_DIR="${STRUCTURED_TASK_DATA_DIR}"
-    EMBEDDING_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/pt/task_embeddings"
+    EMBEDDING_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
 else
     TASK_DATA_DIR="${NATURAL_LANGUAGE_TASK_DATA_DIR}"
-    if [[ -z "$2" ]]; then
-        EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/zero_shot/task_embeddings"
-    else
-        EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/cpt/task_embeddings"
-    fi
+    EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
 fi
 
 # --- Create Embeddings ---

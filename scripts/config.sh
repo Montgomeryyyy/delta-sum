@@ -30,7 +30,7 @@ export MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 export ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
 shopt -s nullglob
 # export ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
-export ACES_TASKS=ed_to_hospital_admission
+export ACES_TASKS=hospital_length_of_stay_leq_7_days
 shopt -u nullglob
 export ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 

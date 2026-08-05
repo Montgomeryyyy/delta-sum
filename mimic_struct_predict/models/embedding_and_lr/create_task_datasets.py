@@ -30,35 +30,39 @@ def tokenize_full_text_directory(
     tokenizer = AutoTokenizer.from_pretrained(padding_side="left", truncation_side="left", **cfg.tokenizer)
 
     for task, split_to_shard_paths in task_to_split_to_shard_paths.items():
+        dataset_dict = datasets.DatasetDict()
         for split, shard_paths in split_to_shard_paths.items():
             if not shard_paths:
                 log.warning(f"No full text shards found for Task: [{task}] | Split: [{split}]")
                 continue
+            dataset_dict[split] = datasets.Dataset.from_parquet([str(p) for p in shard_paths])
 
-            log.info(f"Tokenizing Task: [{task}] | Split: [{split}]")
-            dataset = datasets.Dataset.from_parquet([str(p) for p in shard_paths])
+        if not dataset_dict:
+            continue
 
-            dataset = dataset.map(
-                get_tokenize_fn(tokenizer),
-                batched=True,
-                num_proc=cfg.num_workers,
-                desc=f"Tokenizing Task: [{task}] | Split: [{split}]",
-                input_columns="ehr_text",
-            )
+        log.info(f"Tokenizing Task: [{task}]")
 
-            # Sort for efficent inference batching
-            dataset = dataset.sort("token_len", reverse=True)
-            dataset = dataset.remove_columns("token_len")
+        dataset_dict = dataset_dict.map(
+            get_tokenize_fn(tokenizer),
+            batched=True,
+            num_proc=cfg.num_workers,
+            desc=f"Tokenizing Task: [{task}]",
+            input_columns="ehr_text",
+        )
 
-            tokenized_dir = output_dir / "tokenized" / task / split
-            tokenized_dir.mkdir(parents=True, exist_ok=True)
+        dataset_dict = dataset_dict.sort("token_len", reverse=True)
+        dataset_dict = dataset_dict.remove_columns("token_len")
 
-            log.info(f"Saving tokenized dataset to {tokenized_dir}")
-            dataset.save_to_disk(str(tokenized_dir))
-            dataset.cleanup_cache_files()
+        tokenized_dir = output_dir / "tokenized" / task
+        tokenized_dir.mkdir(parents=True, exist_ok=True)
 
-            if cfg.delete_intermediate_texts:
-                log.info(f"Deleting intermediate text parquet files for {task} split {split}")
+        log.info(f"Saving tokenized dataset to {tokenized_dir}")
+        dataset_dict.save_to_disk(str(tokenized_dir))
+        dataset_dict.cleanup_cache_files()
+
+        if cfg.delete_intermediate_texts:
+            log.info(f"Deleting intermediate text parquet files for {task}")
+            for shard_paths in split_to_shard_paths.values():
                 for shard in shard_paths:
                     shard.unlink()
 
@@ -92,8 +96,11 @@ def main(cfg: DictConfig) -> None:
     log.info("Proceeding with tokenization...")
 
     task_to_split_to_shard_paths = {
-        task: {split: list((full_text_output_dir / task / split).glob("*.parquet")) for split in valid_splits}
-        for task in valid_tasks
+        task_dir.name: {
+            split: list((task_dir / split).glob("*.parquet")) for split in valid_splits if (task_dir / split).exists()
+        }
+        for task_dir in full_text_output_dir.iterdir()
+        if task_dir.is_dir()
     }
 
     tokenize_full_text_directory(

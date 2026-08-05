@@ -97,6 +97,8 @@ export MODE=structured
 
 export MODEL_NAME=$HF_MODEL_NAME
 
+export OUTPUT_DIRECTORY=cpt/pt/zero_shot/
+
 sbatch\
     --partition slam_cpu \
     --time=1:00:00 \
@@ -119,20 +121,7 @@ sbatch\
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_TOKEN \
     --output=/scratch/users/%u/logs/linear-probe-embedding/%j.out \
-    scripts/linear-probe-embedding.sh $MODE
-
-sbatch\
-    --partition slam_gpu \
-    --time=2-00:00:00 \
-    --gres=gpu:1 \
-    --constraint=h100 \
-    --ntasks=1 \
-    --cpus-per-task=8 \
-    --mem=128G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=/scratch/users/%u/logs/linear-probe-embedding/%j.out \
-    scripts/linear-probe-embedding.sh $MODE /scratch/users/k2692250/mimic-struct-predict/training/structured/pretraining/20260731_172834/final_model
+    scripts/linear-probe-embedding.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY
 
 sbatch\
     --partition slam_cpu \
@@ -142,7 +131,7 @@ sbatch\
     --mem=128G \
     --chdir $(pwd) \
     --output=/scratch/users/%u/logs/linear-probe-train/%j.out \
-    scripts/linear-probe-train.sh $MODE
+    scripts/linear-probe-train.sh $MODE $OUTPUT_DIRECTORY
 
 sbatch\
     --partition slam_cpu \
@@ -152,7 +141,7 @@ sbatch\
     --mem=128G \
     --chdir $(pwd) \
     --output=/scratch/users/%u/logs/linear-probe-inference/%j.out \
-    scripts/linear-probe-inference.sh $MODE
+    scripts/linear-probe-inference.sh $MODE $OUTPUT_DIRECTORY
 
 ## MEDS-TAB
 

@@ -1,56 +1,49 @@
 #!/usr/bin/env bash
 
 # Usage:
-#   ./scripts/linear-probe-inference.sh [MODE] [MODEL_DIR]
+#   ./scripts/linear-probe-inference.sh [MODE] [OUTPUT_DIRECTORY_NAME] [--split SPLIT]
 #
 # Arguments:
 #   MODE: Either 'natural_language' or 'structured'.
-#   MODEL_DIR: Optional. Path to the model directory. Defaults to HF_MODEL_NAME.
-#   --zero-shot: Optional flag.
-#   --split: Optional flag to specify the split (e.g. 'tuning', 'test'). Defaults to 'tuning'.
+#   OUTPUT_DIRECTORY_NAME: The name of the output directory (directory name in NATURAL_LANGUAGE_INFERENCE_DIR).
+#   --split: Optional flag to specify the split (e.g. 'tuning', 'held_out'). Defaults to 'held_out'.
 
 # Exit immediately if a command exits with a non-zero status
 set -e
 
 MODE=${1}
+OUTPUT_DIRECTORY_NAME=${2}
 
 if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
-    echo "Usage: $0 [structured|natural_language] [MODEL_DIR]"
+    echo "Usage: $0 [structured|natural_language] [OUTPUT_DIRECTORY_NAME]"
+    exit 1
+fi
+if [ -z "$OUTPUT_DIRECTORY_NAME" ]; then
+    echo "Error: OUTPUT_DIRECTORY_NAME argument not provided."
     exit 1
 fi
 
 # --- Get config ---
 source "./scripts/config.sh"
 
-MODEL_DIR=${2:-${HF_MODEL_NAME}}
-
 # --- Pipeline Execution ---
 
-IS_ZERO_SHOT=false
 SPLIT="held_out"
 for ((i=1; i<=$#; i++)); do
-    if [[ "${!i}" == "--zero-shot" ]]; then
-        IS_ZERO_SHOT=true
-    elif [[ "${!i}" == "--split" ]]; then
+    if [[ "${!i}" == "--split" ]]; then
         next=$((i+1))
         SPLIT="${!next}"
     fi
 done
 
 if [[ "$MODE" == "structured" ]]; then
-    EMBEDDING_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/pt/task_embeddings"
+    EMBEDDING_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
     LR_MODEL_DIR="${STRUCTURED_LR_MODEL_DIR}"
     INFERENCE_OUTPUT_DIR="${STRUCTURED_LR_INFERENCE_DIR}"
 else
-    if [[ "$IS_ZERO_SHOT" == true ]]; then
-        EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/zero_shot/task_embeddings"
-        LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/zero_shot/embedding_lr/models"
-        INFERENCE_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/zero_shot/embedding_lr_predictions"
-    else
-        EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/cpt/task_embeddings"
-        LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/cpt/embedding_lr/models"
-        INFERENCE_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/cpt/embedding_lr_predictions"
-    fi
+    EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
+    LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr/models"
+    INFERENCE_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr_predictions"
 fi
 
 echo "--- Running Logistic Regression Inference ---"
