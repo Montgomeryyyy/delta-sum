@@ -1,6 +1,7 @@
 """Inference script for generating embeddings from EHR text."""
 
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import Callable
 
@@ -17,8 +18,11 @@ from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTo
 log = logging.getLogger(__name__)
 
 
-def get_collate_fn(tokenizer: PreTrainedTokenizerBase, pad_to_multiple_of: int | None) -> Callable:
+def get_collate_fn(
+    tokenizer: PreTrainedTokenizerBase, pad_to_multiple_of: int | None, dataset_columns: list[str]
+) -> Callable:
     """Returns a collate function that pads tokenized inputs."""
+    columns_to_keep = [col for col in dataset_columns if col != "input_ids"]
 
     def collate_fn(batch_list: list[dict]) -> dict:
         batch_dict = {
@@ -28,10 +32,10 @@ def get_collate_fn(tokenizer: PreTrainedTokenizerBase, pad_to_multiple_of: int |
 
         inputs["attention_mask"] = (inputs["input_ids"] != tokenizer.pad_token_id).long()
 
-        return {
-            "inputs": inputs,
-            "boolean_value": [item["boolean_value"] for item in batch_list],
-        }
+        result = {"inputs": inputs}
+        for col in columns_to_keep:
+            result[col] = [item[col] for item in batch_list]
+        return result
 
     return collate_fn
 
@@ -67,13 +71,13 @@ def run_inference_and_save(
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        collate_fn=get_collate_fn(tokenizer, pad_to_multiple_of),
+        collate_fn=get_collate_fn(tokenizer, pad_to_multiple_of, dataset.column_names),
         num_workers=num_workers,
         prefetch_factor=2 if num_workers > 0 else None,
     )
 
     writer = None
-    accumulated_batches: dict[str, list] = {"ehr_text": [], "embedding": [], "boolean_value": []}
+    accumulated_batches = defaultdict(list)
     num_accumulated = 0
 
     try:
@@ -86,14 +90,16 @@ def run_inference_and_save(
             last_hidden_states = outputs.last_hidden_state[:, -1, :]
             embeddings = list(last_hidden_states.cpu().float().numpy())
 
+            for col in dataset.column_names:
+                if col != "input_ids":
+                    accumulated_batches[col].extend(batch[col])
             accumulated_batches["embedding"].extend(embeddings)
-            accumulated_batches["boolean_value"].extend(batch["boolean_value"])
             num_accumulated += 1
 
             if num_accumulated >= write_batch_size:
                 log.info(f"Writing {num_accumulated} batches to file")
                 writer = flush_writer(writer, accumulated_batches, result_path)
-                accumulated_batches = {"embedding": [], "boolean_value": []}
+                accumulated_batches.clear()
                 num_accumulated = 0
 
         if num_accumulated > 0:

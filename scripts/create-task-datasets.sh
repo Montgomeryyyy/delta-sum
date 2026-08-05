@@ -59,8 +59,9 @@ for TASK_NAME in $ACES_TASKS; do
         "tasks=[${TASK_NAME}]"
 
     # Aggressively delete HF_DATASETS_CACHE and full text directory to prevent disk space exhaustion
-    rm -rf ${HF_DATASETS_CACHE}
-    rm -rf ${OUTPUT_DIR}/full_text/${TASK_NAME}
+    echo "Deleting ${HF_DATASETS_CACHE} and ${OUTPUT_DIR}/full_text/${TASK_NAME}"
+    rm -rf "${HF_DATASETS_CACHE}"
+    rm -rf "${OUTPUT_DIR}/full_text/${TASK_NAME}"
 done
 
 echo "Outputting subjects to markdown for debugging at ${DEBUG_OUTPUT_DIR}"
