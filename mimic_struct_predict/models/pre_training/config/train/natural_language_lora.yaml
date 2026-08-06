@@ -1,0 +1,10 @@
+defaults:
+  - natural_language
+  - _self_
+
+lora:
+  r: 16
+  lora_alpha: 32
+  target_modules: "all-linear"
+  lora_dropout: 0.05
+  bias: "none"

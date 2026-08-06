@@ -13,8 +13,8 @@ source "./scripts/config.sh"
 
 MODE=${1}
 
-if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
-    echo "Usage: $0 [structured|natural_language]"
+if [[ "$MODE" != "structured" && "$MODE" != "natural_language" && "$MODE" != "natural_language_lora" ]]; then
+    echo "Usage: $0 [structured|natural_language|natural_language_lora]"
     exit 1
 fi
 
@@ -28,11 +28,16 @@ if [[ "$MODE" == "structured" ]]; then
     DATASET_DIR="${STRUCTURED_PRE_TRAINING_DIR}/tokenized_dataset"
     TOKENIZER_DIR="${STRUCTURED_PRE_TRAINING_DIR}/tokenizer"
     OUTPUT_DIR="${STRUCTURED_MODEL_DIR}/pretraining"
-else
+elif [[ "$MODE" == "natural_language" ]]; then
     CONFIG_NAME="natural_language.yaml"
     DATASET_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_dataset"
     TOKENIZER_DIR="${HF_MODEL_NAME}"
     OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining"
+elif [[ "$MODE" == "natural_language_lora" ]]; then
+    CONFIG_NAME="natural_language_lora.yaml"
+    DATASET_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_dataset"
+    TOKENIZER_DIR="${HF_MODEL_NAME}"
+    OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining_lora"
 fi
 
 # (P2P) over PCIe is broken or blocked by the BIOS/IOMMU
