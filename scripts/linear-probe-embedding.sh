@@ -47,4 +47,8 @@ for TASK_NAME in $ACES_TASKS; do
         output_dir="${EMBEDDING_OUTPUT_DIR}" \
         num_workers="${NUM_WORKERS}" \
         task_name="${TASK_NAME}"
+
+    # Aggressively delete HF_DATASETS_CACHE to prevent disk space exhaustion
+    echo "Deleting ${HF_DATASETS_CACHE}"
+    rm -rf "${HF_DATASETS_CACHE}"
 done

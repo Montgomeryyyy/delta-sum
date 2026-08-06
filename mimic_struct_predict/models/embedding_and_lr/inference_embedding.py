@@ -173,7 +173,7 @@ def main(cfg: DictConfig) -> None:
     if not task_dir.is_dir():
         raise ValueError(f"Task directory {task_dir} does not exist.")
 
-    log.info("Loading model and tokenizer...")
+    log.info(f"Loading model and tokenizer ({cfg.model.pretrained_model_name_or_path})...")
     model = AutoModel.from_pretrained(**cfg.model)
     model.eval()
 

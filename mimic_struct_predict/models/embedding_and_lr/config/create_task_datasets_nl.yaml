@@ -4,7 +4,7 @@ aces_dir: ???  # Required: directory of pre-built aces datasets
 output_dir: ???          # Required: directory to save outputs
 tasks: ???
 
-overwrite: true
+overwrite: false
 
 splits_to_process: ["train", "tuning", "held_out"]
 

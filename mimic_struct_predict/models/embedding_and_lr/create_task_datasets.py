@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -88,6 +89,9 @@ def main(cfg: DictConfig) -> None:
     log.info(f"Finished creating raw EHR text datasets. Saved to: {full_text_output_dir}")
 
     log.info("Proceeding with tokenization...")
+
+    # Parellize using map not tokenizer
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     task_to_split_to_shard_paths = {
         task: {

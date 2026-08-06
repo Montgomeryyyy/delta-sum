@@ -43,6 +43,7 @@ def main(cfg: DictConfig) -> float:
     task_name = task_dir.name
 
     # Load datasets
+    log.info(f"Loading data from task directory {task_dir}")
     train_embedding_path = task_dir / cfg.split_names.train / "embeddings.parquet"
     val_embedding_path = task_dir / cfg.split_names.val / "embeddings.parquet"
 
