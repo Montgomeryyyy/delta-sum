@@ -1,5 +1,6 @@
 import logging
 import os
+import textwrap
 import warnings
 from pathlib import Path
 
@@ -274,7 +275,8 @@ def plot_bar_charts(results_dict, task, output_dir):
         plt.ylabel(metric)
 
         if metric in ["AUROC", "AUPRC"]:
-            plt.ylim(0, 1)
+            min_val = min([m - e for m, e in zip(means, lower_errors) if not np.isnan(m)], default=0)
+            plt.ylim(max(0, min_val * 0.95), 1)
         elif metric in ["Brier Score", "ECE"]:
             plt.ylim(bottom=0)
 
@@ -283,18 +285,90 @@ def plot_bar_charts(results_dict, task, output_dir):
         plt.close()
 
 
+def plot_overall_bar_charts(all_metrics, output_dir):
+    """Plots and saves bar charts for each metric comparing models across all tasks."""
+    output_dir = Path(output_dir)
+
+    metrics = ["AUROC", "AUPRC", "Brier Score", "ECE"]
+
+    # Extract unique tasks and models while preserving order
+    tasks = list(dict.fromkeys(row["Task"] for row in all_metrics))
+    models = list(dict.fromkeys(row["Model"] for row in all_metrics))
+
+    for metric in metrics:
+        plt.figure(figsize=(max(5.5, len(tasks) * 1.5), 3.5))
+
+        x = np.arange(len(tasks))
+        width = 0.8 / len(models)
+
+        all_lower_cis = []
+
+        for i, model in enumerate(models):
+            means = []
+            lower_errors = []
+            upper_errors = []
+
+            for task in tasks:
+                # Find the row for this model and task
+                row = next((r for r in all_metrics if r["Task"] == task and r["Model"] == model), None)
+                if row:
+                    mean_val = row[f"{metric} Mean"]
+                    lower_ci = row[f"{metric} 95% CI Lower"]
+                    upper_ci = row[f"{metric} 95% CI Upper"]
+                    means.append(mean_val)
+                    lower_errors.append(mean_val - lower_ci)
+                    upper_errors.append(upper_ci - mean_val)
+                else:
+                    means.append(np.nan)
+                    lower_errors.append(np.nan)
+                    upper_errors.append(np.nan)
+
+            all_lower_cis.extend([m - e for m, e in zip(means, lower_errors) if not np.isnan(m) and not np.isnan(e)])
+
+            lower_errors = [0 if np.isnan(e) else e for e in lower_errors]
+            upper_errors = [0 if np.isnan(e) else e for e in upper_errors]
+            yerr = [lower_errors, upper_errors]
+
+            plt.bar(
+                x + i * width - width * (len(models) - 1) / 2,
+                means,
+                width,
+                yerr=yerr,
+                capsize=3,
+                label=model,
+                alpha=0.8,
+            )
+
+        plt.xlabel("Task")
+        plt.ylabel(metric)
+
+        wrapped_tasks = [textwrap.fill(t.replace("_", " "), width=15) for t in tasks]
+        plt.xticks(x, wrapped_tasks, rotation=45, ha="right")
+        plt.legend()
+
+        if metric in ["AUROC", "AUPRC"]:
+            min_val = min(all_lower_cis, default=0) if all_lower_cis else 0
+            plt.ylim(max(0, min_val * 0.95), 1)
+        elif metric in ["Brier Score", "ECE"]:
+            plt.ylim(bottom=0)
+
+        plt.tight_layout()
+        plt.savefig(output_dir / f'overall_{metric.lower().replace(" ", "_")}_bar.pdf')
+        plt.close()
+
+
 def main():
     # Variables populated from config.sh
     eval_plots_dir = Path(os.environ["EVAL_PLOTS_DIR"]) / "embeddings"
     eval_plots_dir.mkdir(parents=True, exist_ok=True)
-    aces_tasks = ["ed_to_hospital_admission"]  # os.environ.get("ACES_TASKS").split()
+    aces_tasks = os.environ.get("ACES_TASKS").split()
 
     # The mapping from model name to the base directory for inference results
     base_model = os.environ["HF_MODEL_NAME"].split("/")[-1].title()
     model_to_directory_dict = {
+        "MEDS-TAB": Path(os.environ["MEDS_TAB_OUTPUT_MODEL_DIR"]),
         base_model: Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "zero_shot" / "embedding_lr_predictions",
         f"{base_model}-CPT": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "cpt" / "embedding_lr_predictions",
-        "MEDS-TAB": Path(os.environ["MEDS_TAB_OUTPUT_MODEL_DIR"]),
     }
     log.info("Model to directory dictionary: ")
     log.info(model_to_directory_dict)
@@ -358,7 +432,11 @@ def main():
 
     # Save overall metrics across all models and tasks
     if all_metrics:
+        log.info("Generating overall bar charts...")
+        plot_overall_bar_charts(all_metrics, eval_plots_dir)
+
         metrics_df = pl.DataFrame(all_metrics)
+
         log.info("Writing aggregated metrics to file...")
         metrics_df.write_csv(eval_plots_dir / "all_metrics.csv")
         (eval_plots_dir / "all_metrics.md").write_text(metrics_df.to_pandas().to_markdown(index=False))
