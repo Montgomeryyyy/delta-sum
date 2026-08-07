@@ -24,8 +24,8 @@ source "./scripts/config.sh"
 # --- Pipeline Execution ---
 
 if [[ "$MODE" == "structured" ]]; then
-    EMBEDDING_OUTPUT_DIR="${STRUCTURED_TASK_EMBEDDING_DIR}"
-    LR_MODEL_DIR="${STRUCTURED_LR_MODEL_DIR}"
+    EMBEDDING_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
+    LR_MODEL_DIR="${STRUCTURED_MODEL_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr/models"
 else
     EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
     LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr/models"
