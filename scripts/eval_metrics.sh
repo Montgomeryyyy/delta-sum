@@ -5,4 +5,4 @@ set -e
 # --- Get config ---
 source "./scripts/config.sh"
 
-uv run python evals/embeddings.py
+uv run python evals/metrics.py
