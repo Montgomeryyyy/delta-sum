@@ -13,7 +13,6 @@ split_names:
 lr:
   C: 1.0
   solver: lbfgs
-  class_weight: balanced
   max_iter: 5000
 
 hydra:
@@ -26,7 +25,6 @@ hydra:
     n_jobs: 10
     params:
       lr.C: tag(log, interval(1e-4, 1e2))
-      lr.class_weight: choice("balanced", "none")
 
   sweep:
     dir: ${output_dir}/multirun_${now:%Y%m%d_%H%M%S}

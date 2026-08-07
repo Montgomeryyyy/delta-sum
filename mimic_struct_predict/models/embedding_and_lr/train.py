@@ -84,8 +84,6 @@ def main(cfg: DictConfig) -> float:
             solver=cfg.lr.solver,
             max_iter=cfg.lr.max_iter,
             random_state=cfg.random_seed,
-            # If the sweep chose "none", pass None to LogisticRegression
-            class_weight=cfg.lr.class_weight if cfg.lr.class_weight != "none" else None,
         ),
     )
     train_X, train_y = shuffle(train_X, train_y, random_state=cfg.random_seed)
