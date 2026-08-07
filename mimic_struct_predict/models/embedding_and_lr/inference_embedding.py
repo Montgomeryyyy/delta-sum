@@ -11,6 +11,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 from omegaconf import DictConfig
+from peft import PeftModel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
@@ -175,6 +176,13 @@ def main(cfg: DictConfig) -> None:
 
     log.info(f"Loading model and tokenizer ({cfg.model.pretrained_model_name_or_path})...")
     model = AutoModel.from_pretrained(**cfg.model)
+
+    if cfg.get("lora_adapter_path"):
+        log.info(f"Loading LoRA adapter from {cfg.lora_adapter_path}...")
+        model = PeftModel.from_pretrained(model, cfg.lora_adapter_path)
+        log.info("Merging LoRA weights into base model...")
+        model = model.merge_and_unload()
+
     model.eval()
 
     if cfg.get("compile_model", True):

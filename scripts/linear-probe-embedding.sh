@@ -12,8 +12,8 @@ set -e
 
 MODE=${1}
 
-if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
-    echo "Usage: $0 [structured|natural_language] [MODEL_DIR] [OUTPUT_DIRECTORY_NAME]"
+if [[ "$MODE" != "structured" && "$MODE" != "natural_language" && "$MODE" != "natural_language_lora" ]]; then
+    echo "Usage: $0 [structured|natural_language|natural_language_lora] [MODEL_DIR] [OUTPUT_DIRECTORY_NAME] [LORA_ADAPTER_PATH (if natural_language_lora)]"
     exit 1
 fi
 
@@ -22,6 +22,10 @@ source "./scripts/config.sh"
 
 MODEL_DIR=${2}
 OUTPUT_DIRECTORY_NAME=${3}
+LORA_ADAPTER_PATH=${4:-null}
+if [[ "$MODE" != "natural_language_lora" ]]; then
+    LORA_ADAPTER_PATH="null"
+fi
 
 # --- Pipeline Execution ---
 
@@ -43,6 +47,7 @@ for TASK_NAME in $ACES_TASKS; do
 
     uv run embedding_and_lr_inference_embedding \
         model.pretrained_model_name_or_path="${MODEL_DIR}" \
+        lora_adapter_path="${LORA_ADAPTER_PATH}" \
         dataset_dir="${TASK_DATA_DIR}/tokenized" \
         output_dir="${EMBEDDING_OUTPUT_DIR}" \
         num_workers="${NUM_WORKERS}" \
