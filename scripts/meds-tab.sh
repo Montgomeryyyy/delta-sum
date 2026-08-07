@@ -65,7 +65,7 @@ for task in ${ACES_TASKS}; do
         "do_overwrite=False" \
         "hydra.sweeper.n_trials=100" \
         "hydra.sweeper.n_jobs=8" \
-        "model_launcher.model.nthread=15" \
+        "model_launcher.model.nthread=10" \
         "+model_launcher.model.eta=tag(log, interval(0.001, 1))" \
         "+model_launcher.model.lambda=tag(log, interval(0.001, 1))" \
         "+model_launcher.model.alpha=tag(log, interval(0.001, 1))" \
