@@ -1,0 +1,30 @@
+dataset_dir: ???  # Required: directory of pre-built prompt datasets
+output_dir: ???   # Required: directory to save outputs
+split: ???
+tasks: null
+chunk_size: 5000
+seed: 42
+max_eval_samples: 100
+
+model:
+  model: ???
+  dtype: bfloat16
+  tensor_parallel_size: 1
+  max_model_len: 5000
+  gpu_memory_utilization: 0.9
+
+sampling_params:
+  # https://docs.vllm.ai/en/v0.6.4/dev/sampling_params.html
+  max_tokens: 512
+  temperature: 1
+  top_p: 1.0
+  top_k: -1
+  detokenize: false
+  seed: 42
+
+max_input_length: 3584
+keep_first_token: true
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
