@@ -95,6 +95,7 @@ def run_inference_and_save(
                 if col != "input_ids":
                     accumulated_batches[col].extend(batch[col])
             accumulated_batches["embedding"].extend(embeddings)
+            accumulated_batches["len_input_ids"].extend([len(x) for x in batch["inputs"]["input_ids"]])
             num_accumulated += 1
 
             if num_accumulated >= write_batch_size:
@@ -174,14 +175,27 @@ def main(cfg: DictConfig) -> None:
     if not task_dir.is_dir():
         raise ValueError(f"Task directory {task_dir} does not exist.")
 
-    log.info(f"Loading model and tokenizer ({cfg.model.pretrained_model_name_or_path})...")
-    model = AutoModel.from_pretrained(**cfg.model)
-
     if cfg.get("lora_adapter_path"):
+        from transformers import AutoModelForCausalLM
+
+        log.info(f"Loading model ({cfg.model.pretrained_model_name_or_path}) as CausalLM to match LoRA...")
+        model = AutoModelForCausalLM.from_pretrained(**cfg.model)
+
         log.info(f"Loading LoRA adapter from {cfg.lora_adapter_path}...")
         model = PeftModel.from_pretrained(model, cfg.lora_adapter_path)
+
         log.info("Merging LoRA weights into base model...")
         model = model.merge_and_unload()
+
+        # Extract the base model (e.g., Gemma3Model) to match AutoModel's structure
+        # E.g. drop the language head
+        if hasattr(model, "model"):
+            model = model.model
+        elif hasattr(model, "transformer"):
+            model = model.transformer
+    else:
+        log.info(f"Loading model ({cfg.model.pretrained_model_name_or_path})...")
+        model = AutoModel.from_pretrained(**cfg.model)
 
     model.eval()
 

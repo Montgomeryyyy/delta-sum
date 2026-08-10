@@ -63,6 +63,8 @@ sbatch\
 
 export MODE=natural_language
 OR
+export MODE=natural_language_lora
+OR
 export MODE=structured
 
 sbatch\
@@ -94,17 +96,33 @@ sbatch\
 export MODE=natural_language
 OR
 export MODE=structured
+OR
+export MODE=natural_language_lora
+
 
 export MODEL_NAME=$HF_MODEL_NAME
 
-export OUTPUT_DIRECTORY=cpt/pt/zero_shot/
+export OUTPUT_DIRECTORY=cpt/pt/zero_shot/cpt_lora
+
+sbatch\
+    --partition slam_gpu \
+    --time=1-00:00:00 \
+    --gres=gpu:1 \
+    --constraint=h100 \
+    --ntasks=1 \
+    --cpus-per-task=8 \
+    --mem=128G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/linear-probe-embedding/%j.out \
+    scripts/linear-probe-embedding.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY $LORA_ADAPTER_PATH
 
 sbatch\
     --partition slam_cpu \
-    --time=1:00:00 \
+    --time=4:00:00 \
     --ntasks=1 \
-    --cpus-per-task=32 \
-    --mem=256G \
+    --cpus-per-task=64 \
+    --mem=512G \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_TOKEN \
     --output=/scratch/users/%u/logs/create-task-datasets/%j.out \
@@ -112,11 +130,11 @@ sbatch\
 
 sbatch\
     --partition slam_gpu \
-    --time=2-00:00:00 \
+    --time=1-00:00:00 \
     --gres=gpu:1 \
     --constraint=h100 \
     --ntasks=1 \
-    --cpus-per-task=16 \
+    --cpus-per-task=8 \
     --mem=128G \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_TOKEN \
@@ -135,13 +153,13 @@ sbatch\
 
 sbatch\
     --partition slam_cpu \
-    --time=1:00:00 \
+    --time=0:30:00 \
     --ntasks=1 \
     --cpus-per-task=16 \
     --mem=128G \
     --chdir $(pwd) \
     --output=/scratch/users/%u/logs/linear-probe-inference/%j.out \
-    scripts/linear-probe-inference.sh $MODE $OUTPUT_DIRECTORY
+    scripts/linear-probe-inference.sh $MODE $OUTPUT_DIRECTORY --split tuning
 
 ## MEDS-TAB
 
@@ -312,8 +330,8 @@ sbatch\
     --mem=32G \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_TOKEN \
-    --output=/scratch/users/%u/logs/eval_embeddings/%j.out \
-    scripts/eval_embeddings.sh
+    --output=/scratch/users/%u/logs/eval_metrics/%j.out \
+    scripts/eval_metrics.sh
 
 ## Implemented
 
