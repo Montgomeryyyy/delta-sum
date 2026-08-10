@@ -7,22 +7,25 @@ seed: 42
 max_eval_samples: 10
 
 model:
+  # https://docs.vllm.ai/en/v0.7.3/api/offline_inference/llm.html
   model: ???
-  dtype: float16
+  dtype: bfloat16
+  seed: ${seed}
   tensor_parallel_size: 1
-  max_model_len: 512
+  max_model_len: 4096
   gpu_memory_utilization: 0.9
 
 sampling_params:
   # https://docs.vllm.ai/en/v0.6.4/dev/sampling_params.html
-  max_tokens: 256
+  n: 1
   temperature: 1
   top_p: 1.0
   top_k: -1
+  seed: ${seed}
+  max_tokens: 1024
   detokenize: false
-  seed: 42
 
-max_input_length: 256
+max_input_length: 3072
 keep_first_token: true
 
 hydra:

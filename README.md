@@ -99,7 +99,6 @@ export MODE=structured
 OR
 export MODE=natural_language_lora
 
-
 export MODEL_NAME=$HF_MODEL_NAME
 
 export OUTPUT_DIRECTORY=cpt/pt/zero_shot/cpt_lora
@@ -263,6 +262,30 @@ sbatch \
 
 
 ### Inference
+
+export MODE=natural_language
+OR
+export MODE=structured
+OR
+export MODE=natural_language_lora
+
+export MODEL_NAME=$HF_MODEL_NAME
+
+export OUTPUT_DIRECTORY=cpt/pt/zero_shot/cpt_lora
+
+sbatch\
+    --partition biomed_a30_gpu \
+    --time=01:00:00 \
+    --gres=gpu:1 \
+    --constraint=a30 \
+    --ntasks=1 \
+    --cpus-per-task=4 \
+    --mem=64G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=/scratch/users/%u/logs/pretrain-generation/%j.out \
+    scripts/pretrain-generation.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY
+
 
 sbatch \
     --partition biomed_a100_gpu \

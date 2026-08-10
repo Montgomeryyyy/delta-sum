@@ -32,6 +32,8 @@ fi
 # --- Get config ---
 source "./scripts/config.sh"
 
+module load cuda/12.2.1-gcc-13.2.0
+
 # --- Pipeline Execution ---
 
 SPLIT="tuning"
