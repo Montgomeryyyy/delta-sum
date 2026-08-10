@@ -4,25 +4,25 @@ split: ???
 tasks: null
 chunk_size: 5000
 seed: 42
-max_eval_samples: 100
+max_eval_samples: 10
 
 model:
   model: ???
-  dtype: bfloat16
+  dtype: float16
   tensor_parallel_size: 1
-  max_model_len: 5000
+  max_model_len: 512
   gpu_memory_utilization: 0.9
 
 sampling_params:
   # https://docs.vllm.ai/en/v0.6.4/dev/sampling_params.html
-  max_tokens: 512
+  max_tokens: 256
   temperature: 1
   top_p: 1.0
   top_k: -1
   detokenize: false
   seed: 42
 
-max_input_length: 3584
+max_input_length: 256
 keep_first_token: true
 
 hydra:

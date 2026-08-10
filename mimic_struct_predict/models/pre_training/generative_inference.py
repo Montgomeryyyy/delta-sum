@@ -19,8 +19,7 @@ log = logging.getLogger(__name__)
 
 @hydra.main(
     version_base=None,
-    config_path="config/inference_rollout",
-    config_name="natural_language",
+    config_path="config/generative_inference",
 )
 def main(cfg: DictConfig) -> None:
     """Run LLM inference and process outputs into Parquet chunks."""
