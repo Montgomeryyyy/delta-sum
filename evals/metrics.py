@@ -1,6 +1,8 @@
 import collections
 import json
 import logging
+import math
+import multiprocessing
 import os
 import textwrap
 import warnings
@@ -9,7 +11,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-from sklearn.calibration import calibration_curve
 from sklearn.metrics import average_precision_score, brier_score_loss, precision_recall_curve, roc_auc_score, roc_curve
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
@@ -47,7 +48,7 @@ def load_task_results(model_name, task, split, base_dir):
     if not subdirs:
         log.info(f"No run directories found in {task_dir}. Skipping.")
         return None
-    latest_dir = max(subdirs, key=lambda d: d.name)
+    latest_dir = max(subdirs, key=lambda d: d.stat().st_mtime)
 
     results_file = (
         latest_dir / "best_trial" / f"{split}_predictions.parquet"
@@ -73,12 +74,19 @@ def format_x_label(label):
 
 
 def expected_calibration_error(y_true, y_prob, n_bins=10):
-    """Computes Expected Calibration Error (ECE) using sklearn's calibration_curve."""
-    prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins, strategy="uniform")
-    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
-    bin_total, _ = np.histogram(y_prob, bins=bin_edges)
-    nonzero = bin_total > 0
-    ece = np.sum((bin_total[nonzero] / len(y_true)) * np.abs(prob_true - prob_pred))
+    """Computes Expected Calibration Error (ECE)."""
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        mask = (y_prob >= bins[i]) & (y_prob < bins[i + 1])
+        if i == n_bins - 1:
+            mask = (y_prob >= bins[i]) & (y_prob <= bins[i + 1])
+
+        bin_total = np.sum(mask)
+        if bin_total > 0:
+            prob_true = np.mean(y_true[mask])
+            prob_pred = np.mean(y_prob[mask])
+            ece += (bin_total / len(y_true)) * np.abs(prob_true - prob_pred)
     return ece
 
 
@@ -91,12 +99,63 @@ def calculate_metrics(y_true, y_prob):
     return {"AUROC": auroc, "AUPRC": auprc, "Brier Score": brier, "ECE": ece}
 
 
+def _bootstrap_worker(seeds, y_true, y_prob, cohort_task_indices, mean_fpr, mean_recall, bins):
+    results = []
+    n_cohort = len(cohort_task_indices)
+    for seed in seeds:
+        rng = np.random.RandomState(seed)
+        # Sample indices directly rather than string IDs to avoid massive dictionary lookup overhead
+        boot_idx = rng.randint(0, n_cohort, size=n_cohort)
+
+        indices_list_for_boot = [cohort_task_indices[i] for i in boot_idx if len(cohort_task_indices[i]) > 0]
+        if not indices_list_for_boot:
+            results.append((seed, None))
+            continue
+
+        indices = np.concatenate(indices_list_for_boot)
+        y_true_boot = y_true[indices]
+        y_prob_boot = y_prob[indices]
+
+        # Ensure we have both positive and negative samples
+        if len(np.unique(y_true_boot)) < 2:
+            results.append((seed, None))
+            continue
+
+        metrics = calculate_metrics(y_true_boot, y_prob_boot)
+
+        # ROC curve
+        fpr, tpr, _ = roc_curve(y_true_boot, y_prob_boot)
+        tpr_interp = np.interp(mean_fpr, fpr, tpr)
+
+        # PR curve
+        precision, recall, _ = precision_recall_curve(y_true_boot, y_prob_boot)
+        precision_interp = np.interp(mean_recall, recall[::-1], precision[::-1])
+
+        # Calibration curve
+        prob_true = np.zeros(10)
+        for i in range(10):
+            mask = (y_prob_boot >= bins[i]) & (y_prob_boot < bins[i + 1])
+            if i == 9:
+                mask = (y_prob_boot >= bins[i]) & (y_prob_boot <= bins[i + 1])
+            if np.sum(mask) > 0:
+                prob_true[i] = np.mean(y_true_boot[mask])
+            else:
+                prob_true[i] = np.nan
+
+        results.append((seed, (metrics, tpr_interp, precision_interp, prob_true)))
+
+    return results
+
+
 def bootstrap_metrics(y_true, y_prob, task_subject_ids, cohort_subject_ids, bootstrap_seeds):
     """Generates bootstrapped confidence intervals for all metrics and curves."""
     n_bootstraps = len(bootstrap_seeds)
     subj_to_indices = collections.defaultdict(list)
     for i, subj in enumerate(task_subject_ids):
         subj_to_indices[subj].append(i)
+
+    # Pre-calculate indices for each cohort subject to avoid dict lookups in the worker loop
+    cohort_task_indices = [np.array(subj_to_indices.get(subj, []), dtype=int) for subj in cohort_subject_ids]
 
     bootstrapped_results = {
         "AUROC": np.full(n_bootstraps, np.nan),
@@ -115,46 +174,38 @@ def bootstrap_metrics(y_true, y_prob, task_subject_ids, cohort_subject_ids, boot
     bin_centers = (bins[:-1] + bins[1:]) / 2
     prob_trues = np.full((n_bootstraps, 10), np.nan)
 
+    try:
+        num_cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        num_cores = multiprocessing.cpu_count()
+
+    num_cores = min(num_cores, n_bootstraps)
+    chunk_size = math.ceil(n_bootstraps / num_cores) if num_cores > 0 else 1
+    chunks = [bootstrap_seeds[i : i + chunk_size] for i in range(0, n_bootstraps, chunk_size)]
+
+    args_list = [(chunk, y_true, y_prob, cohort_task_indices, mean_fpr, mean_recall, bins) for chunk in chunks]
+
+    with multiprocessing.Pool(processes=num_cores) as pool:
+        results = pool.starmap(_bootstrap_worker, args_list)
+
+    seed_to_result = {}
+    for chunk_res in results:
+        for seed, res in chunk_res:
+            seed_to_result[seed] = res
+
     for b_i, seed in enumerate(bootstrap_seeds):
-        rng = np.random.RandomState(seed)
-        boot_subject_ids = rng.choice(cohort_subject_ids, size=len(cohort_subject_ids), replace=True)
-
-        indices_list_for_boot = [subj_to_indices[subj] for subj in boot_subject_ids if subj in subj_to_indices]
-        if not indices_list_for_boot:
-            log.warning(f"Bootstrap {b_i} has no valid subjects, skipping.")
+        res = seed_to_result.get(seed)
+        if res is None:
+            log.warning(f"Bootstrap {b_i} has no valid subjects or one class, skipping.")
             continue
 
-        indices = np.concatenate(indices_list_for_boot)
-        y_true_boot = y_true[indices]
-        y_prob_boot = y_prob[indices]
+        metrics, tpr_interp, precision_interp, prob_true = res
 
-        # Ensure we have both positive and negative samples
-        if len(np.unique(y_true_boot)) < 2:
-            log.warning(f"Bootstrap {b_i} has only one class, skipping.")
-            continue
-
-        metrics = calculate_metrics(y_true_boot, y_prob_boot)
         for k, v in metrics.items():
             bootstrapped_results[k][b_i] = v
 
-        # ROC curve
-        fpr, tpr, _ = roc_curve(y_true_boot, y_prob_boot)
-        tprs[b_i] = np.interp(mean_fpr, fpr, tpr)
-
-        # PR curve
-        precision, recall, _ = precision_recall_curve(y_true_boot, y_prob_boot)
-        precisions[b_i] = np.interp(mean_recall, recall[::-1], precision[::-1])
-
-        # Calibration curve
-        prob_true = np.zeros(10)
-        for i in range(10):
-            mask = (y_prob_boot >= bins[i]) & (y_prob_boot < bins[i + 1])
-            if i == 9:
-                mask = (y_prob_boot >= bins[i]) & (y_prob_boot <= bins[i + 1])
-            if np.sum(mask) > 0:
-                prob_true[i] = np.mean(y_true_boot[mask])
-            else:
-                prob_true[i] = np.nan
+        tprs[b_i] = tpr_interp
+        precisions[b_i] = precision_interp
         prob_trues[b_i] = prob_true
 
     summary = {}
@@ -209,6 +260,7 @@ def plot_curves(results_dict, task, output_dir):
 
         # Ensure mean_tpr starts at 0 and ends at 1
         if len(mean_tpr) > 0 and not np.isnan(mean_tpr[0]):
+            mean_tpr = mean_tpr.copy()
             mean_tpr[0] = 0.0
             mean_tpr[-1] = 1.0
 
@@ -422,10 +474,81 @@ def plot_overall_bar_charts(all_metrics, output_dir):
         plt.close()
 
 
+def evaluate_task(
+    task_idx,
+    task,
+    split,
+    model_to_directory_dict,
+    cohort_subject_ids,
+    bootstrap_seeds,
+    model_to_task_bootstraps,
+    model_to_prevalence,
+    all_metrics,
+    eval_plots_dir,
+):
+    log.info(f"--- Evaluating Task: {task} ---")
+
+    task_results_dict = {}
+    for model_name, base_dir in model_to_directory_dict.items():
+        df = load_task_results(model_name, task, split, base_dir)
+        if df is None:
+            log.warning(f"No results found for '{model_name}' on task '{task}'. Skipping")
+            continue
+
+        y_true = df["boolean_value"].to_numpy().astype(int)
+        prob_col = "predicted_boolean_probability" if model_name == "MEDS-TAB" else "probability"
+        y_prob = df[prob_col].to_numpy().astype(float)
+        subject_ids_for_task = df["subject_id"].to_numpy()
+
+        log.info(f"Bootstrapping metrics and curves for '{model_name}' on task '{task}'...")
+        metrics_summary, curve_data, bootstrapped_results = bootstrap_metrics(
+            y_true, y_prob, subject_ids_for_task, cohort_subject_ids, bootstrap_seeds
+        )
+
+        for metric_name, bootstrap_array in bootstrapped_results.items():
+            model_to_task_bootstraps[model_name][metric_name][task_idx, :] = bootstrap_array
+
+        prevalence = np.mean(y_true)
+        model_to_prevalence[model_name][task_idx] = prevalence
+
+        row = {"Task": task, "Model": model_name, "Prevalence": prevalence}
+        for metric_name, stats in metrics_summary.items():
+            row[f"{metric_name} Mean"] = stats["mean"]
+            row[f"{metric_name} 95% CI Lower"] = stats["lower_ci"]
+            row[f"{metric_name} 95% CI Upper"] = stats["upper_ci"]
+        all_metrics.append(row)
+
+        task_results_dict[model_name] = {
+            "metrics_summary": metrics_summary,
+            "curve_data": curve_data,
+            "y_prob": y_prob,
+        }
+
+    log.info(f"Generating plots for '{task}'...")
+    plot_curves(task_results_dict, task, eval_plots_dir)
+    plot_bar_charts(task_results_dict, task, eval_plots_dir)
+
+
+def calculate_macro_averages(model_to_directory_dict, model_to_prevalence, model_to_task_bootstraps, all_metrics):
+    for model_name in model_to_directory_dict.keys():
+        log.info(f"Calculating Macro Averages for {model_name} across tasks...")
+        if np.all(np.isnan(model_to_prevalence[model_name])):
+            continue
+        mean_prevalence = np.nanmean(model_to_prevalence[model_name])
+        row = {"Task": "Macro Average", "Model": model_name, "Prevalence": mean_prevalence}
+        for metric_name, task_bootstraps in model_to_task_bootstraps[model_name].items():
+            # task_bootstraps is a numpy array of shape (n_tasks, n_bootstraps)
+            macro_bootstraps = np.nanmean(task_bootstraps, axis=0)  # shape (n_bootstraps,)
+            row[f"{metric_name} Mean"] = np.nanmean(macro_bootstraps)
+            row[f"{metric_name} 95% CI Lower"] = np.nanpercentile(macro_bootstraps, 2.5)
+            row[f"{metric_name} 95% CI Upper"] = np.nanpercentile(macro_bootstraps, 97.5)
+        all_metrics.append(row)
+
+
 def main():
     # Variables populated from config.sh
     split = "tuning"
-    n_bootstraps = 1000
+    n_bootstraps = 10_000
     eval_plots_dir = Path(os.environ["EVAL_PLOTS_DIR"]) / f"metrics_{split}"
     meds_shards_metadata = Path(os.environ["MIMICIV_MEDS_COHORT_DIR"]) / "metadata" / ".shards.json"
     eval_plots_dir.mkdir(parents=True, exist_ok=True)
@@ -438,6 +561,9 @@ def main():
         "Structured (Random Init)": Path(os.environ["STRUCTURED_INFERENCE_DIR"]) / "pt" / "embedding_lr_predictions",
         base_model: Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "zero_shot" / "embedding_lr_predictions",
         f"CPT ({base_model})": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "cpt" / "embedding_lr_predictions",
+        f"CPT LORA ({base_model})": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"])
+        / "cpt_lora"
+        / "embedding_lr_predictions",
     }
     log.info("Model to directory dictionary: ")
     log.info(model_to_directory_dict)
@@ -450,11 +576,12 @@ def main():
         if shard_name.startswith(split):
             cohort_subject_ids.extend(shard_subject_ids)
 
-    # Generate random seeds for the bootstraps
+    # Generate random seeds for the bootstraps, this allows same subject_ids to be repeatadley sampled
+    # And so valid macro calculations of confidence intervals across tasks.
     bootstrap_seeds = RNG.randint(0, 2**31 - 1, size=n_bootstraps)
 
     # Store data for macro average computation
-    # model_name -> metric_name -> list of arrays of shape (n_bootstraps,)
+    # model_name -> metric_name -> array of shape (n_task, n_bootstraps)
     model_to_task_bootstraps = {
         model_name: {
             metric: np.full((len(aces_tasks), n_bootstraps), np.nan, dtype=float)
@@ -462,64 +589,25 @@ def main():
         }
         for model_name in model_to_directory_dict.keys()
     }
-    model_to_prevalence = {model_name: np.zeros(len(aces_tasks)) for model_name in model_to_directory_dict.keys()}
+    model_to_prevalence = {
+        model_name: np.full(len(aces_tasks), np.nan) for model_name in model_to_directory_dict.keys()
+    }
 
     for task_idx, task in enumerate(aces_tasks):
-        log.info(f"--- Evaluating Task: {task} ---")
+        evaluate_task(
+            task_idx,
+            task,
+            split,
+            model_to_directory_dict,
+            cohort_subject_ids,
+            bootstrap_seeds,
+            model_to_task_bootstraps,
+            model_to_prevalence,
+            all_metrics,
+            eval_plots_dir,
+        )
 
-        results_dict = {}
-        for model_name, base_dir in model_to_directory_dict.items():
-            df = load_task_results(model_name, task, split, base_dir)
-            if df is None:
-                log.warning(f"No results found for '{model_name}' on task '{task}'. Skipping")
-                continue
-
-            y_true = df["boolean_value"].to_numpy().astype(int)
-            prob_col = "predicted_boolean_probability" if model_name == "MEDS-TAB" else "probability"
-            y_prob = df[prob_col].to_numpy().astype(float)
-            subject_ids_for_task = df["subject_id"].to_numpy()
-
-            log.info(f"Bootstrapping metrics and curves for '{model_name}' on task '{task}'...")
-            metrics_summary, curve_data, bootstrapped_results = bootstrap_metrics(
-                y_true, y_prob, subject_ids_for_task, cohort_subject_ids, bootstrap_seeds
-            )
-
-            for metric_name, bootstrap_array in bootstrapped_results.items():
-                model_to_task_bootstraps[model_name][metric_name][task_idx, :] = bootstrap_array
-
-            prevalence = np.mean(y_true)
-            model_to_prevalence[model_name][task_idx] = prevalence
-
-            row = {"Task": task, "Model": model_name, "Prevalence": prevalence}
-            for metric_name, stats in metrics_summary.items():
-                row[f"{metric_name} Mean"] = stats["mean"]
-                row[f"{metric_name} 95% CI Lower"] = stats["lower_ci"]
-                row[f"{metric_name} 95% CI Upper"] = stats["upper_ci"]
-            all_metrics.append(row)
-
-            results_dict[model_name] = {
-                "metrics_summary": metrics_summary,
-                "curve_data": curve_data,
-                "y_prob": y_prob,
-            }
-
-        log.info(f"Generating plots for '{task}'...")
-        plot_curves(results_dict, task, eval_plots_dir)
-        plot_bar_charts(results_dict, task, eval_plots_dir)
-
-    for model_name in model_to_directory_dict.keys():
-        log.info(f"Calculating Macro Averages for {model_name} across tasks...")
-        if not model_to_prevalence[model_name]:
-            continue
-        mean_prevalence = np.mean(model_to_prevalence[model_name])
-        row = {"Task": "Macro Average", "Model": model_name, "Prevalence": mean_prevalence}
-        for metric_name, task_bootstraps in model_to_task_bootstraps[model_name].items():
-            # task_bootstraps is a numpy array of shape (n_tasks, n_bootstraps)
-            macro_bootstraps = np.nanmean(task_bootstraps, axis=0)  # shape (n_bootstraps,)
-            row[f"{metric_name} Mean"] = np.nanmean(macro_bootstraps)
-            row[f"{metric_name} 95% CI Lower"] = np.nanpercentile(macro_bootstraps, 2.5)
-            row[f"{metric_name} 95% CI Upper"] = np.nanpercentile(macro_bootstraps, 97.5)
-        all_metrics.append(row)
+    calculate_macro_averages(model_to_directory_dict, model_to_prevalence, model_to_task_bootstraps, all_metrics)
 
     # Save overall metrics across all models and tasks
     log.info("Generating overall bar charts...")

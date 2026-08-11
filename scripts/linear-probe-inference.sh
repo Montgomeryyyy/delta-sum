@@ -14,10 +14,6 @@ set -e
 MODE=${1}
 OUTPUT_DIRECTORY_NAME=${2}
 
-if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
-    echo "Usage: $0 [structured|natural_language] [OUTPUT_DIRECTORY_NAME]"
-    exit 1
-fi
 if [ -z "$OUTPUT_DIRECTORY_NAME" ]; then
     echo "Error: OUTPUT_DIRECTORY_NAME argument not provided."
     exit 1
@@ -40,10 +36,13 @@ if [[ "$MODE" == "structured" ]]; then
     EMBEDDING_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
     LR_MODEL_DIR="${STRUCTURED_MODEL_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr/models"
     INFERENCE_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr_predictions"
-else
+elif [[ "$MODE" == "natural_language" ]] || [[ "$MODE" == "natural_language_lora" ]]; then
     EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
     LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr/models"
     INFERENCE_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr_predictions"
+else
+    echo "Invalid MODE. Please choose one of: structured, natural_language, natural_language_lora"
+    exit 1
 fi
 
 echo "--- Running Logistic Regression Inference ---"

@@ -12,11 +12,6 @@ set -e
 MODE=${1}
 OUTPUT_DIRECTORY_NAME=${2}
 
-if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
-    echo "Usage: $0 [structured|natural_language] [OUTPUT_DIRECTORY_NAME]"
-    exit 1
-fi
-
 # --- Get config ---
 source "./scripts/config.sh"
 
@@ -26,9 +21,12 @@ source "./scripts/config.sh"
 if [[ "$MODE" == "structured" ]]; then
     EMBEDDING_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
     LR_MODEL_DIR="${STRUCTURED_MODEL_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr/models"
-else
+elif [[ "$MODE" == "natural_language" ]] || [[ "$MODE" == "natural_language_lora" ]]; then
     EMBEDDING_OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
     LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr/models"
+else
+    echo "Invalid MODE. Please choose one of: structured, natural_language, natural_language_lora"
+    exit 1
 fi
 
 echo "--- Training Logistic Regression Models ---"
