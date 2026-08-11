@@ -65,6 +65,7 @@ def run_inference_and_save(
     task_name: str,
     split: str,
     pad_to_multiple_of: int | None,
+    mean_pooling: bool = False,
 ) -> None:
     """Run batch inference on the dataset and stream results to a Parquet file."""
     log.info(f"Running inference and streaming to {result_path}")
@@ -88,14 +89,27 @@ def run_inference_and_save(
             with torch.inference_mode():
                 outputs = model(**inputs)
 
-            last_hidden_states = outputs.last_hidden_state[:, -1, :]
-            embeddings = list(last_hidden_states.cpu().float().numpy())
+            if mean_pooling:
+                attention_mask = inputs["attention_mask"]  # (batch_size, seq_len)
+                last_hidden_state = outputs.last_hidden_state  # (batch_size, seq_len, hidden_size)
+                input_mask_expanded = (
+                    attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
+                )  # (batch_size, seq_len, hidden_size)
+                # Sum embeddings for each token apart from masked ones (e.g. pad tokens)
+                sum_embeddings = torch.sum(last_hidden_state * input_mask_expanded, 1)  # (batch_size, hidden_size)
+                # Average by number of non-masked tokens
+                sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)  # (batch_size, hidden_size)
+                pooled_embeddings = sum_embeddings / sum_mask  # (batch_size, hidden_size)
+                embeddings = list(pooled_embeddings.cpu().float().numpy())
+            else:
+                # Extract last token embedding: (batch_size, hidden_size)
+                last_hidden_states = outputs.last_hidden_state[:, -1, :]
+                embeddings = list(last_hidden_states.cpu().float().numpy())
 
             for col in dataset.column_names:
                 if col != "input_ids":
                     accumulated_batches[col].extend(batch[col])
             accumulated_batches["embedding"].extend(embeddings)
-            accumulated_batches["len_input_ids"].extend([len(x) for x in batch["inputs"]["input_ids"]])
             num_accumulated += 1
 
             if num_accumulated >= write_batch_size:
@@ -141,6 +155,14 @@ def process_split(
     dataset = datasets.Dataset.load_from_disk(str(dataset_path))
     log.info(f"Loaded {len(dataset)} examples from {split} split.")
 
+    # Need this for evals and to do before padding
+    dataset = dataset.map(
+        lambda batched_input_ids: {"len_input_ids": [len(input_ids) for input_ids in batched_input_ids]},
+        input_columns="input_ids",
+        num_proc=cfg.num_workers,
+        batched=True,
+    )
+
     if len(dataset) == 0:
         raise ValueError(f"Dataset for task {cfg.task_name} in split {split} is empty.")
 
@@ -155,6 +177,7 @@ def process_split(
         task_name=cfg.task_name,
         split=split,
         pad_to_multiple_of=cfg.pad_to_multiple_of,
+        mean_pooling=cfg.mean_pooling,
     )
 
 
