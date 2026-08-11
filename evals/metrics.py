@@ -564,6 +564,9 @@ def main():
         f"CPT LORA ({base_model})": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"])
         / "cpt_lora"
         / "embedding_lr_predictions",
+        # f"CPT Mean Pooling ({base_model})": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"])
+        # / "cpt_mean_pooling"
+        # / "embedding_lr_predictions",
     }
     log.info("Model to directory dictionary: ")
     log.info(model_to_directory_dict)

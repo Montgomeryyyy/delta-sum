@@ -23,7 +23,7 @@ batch_size: 256
 compile_model: true
 write_batch_size: 100 # Number of batches to accumulate before writing to parquet
 pad_to_multiple_of: 128
-mean_pooling: true
+mean_pooling: false
 
 hydra:
   run:
