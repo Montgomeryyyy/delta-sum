@@ -4,7 +4,8 @@ split: ???
 tasks: null
 chunk_size: 5000
 seed: 42
-max_eval_samples: 10
+max_eval_samples: 100
+num_workers: 1
 
 model:
   # https://docs.vllm.ai/en/v0.7.3/api/offline_inference/llm.html
@@ -31,3 +32,10 @@ keep_first_token: true
 hydra:
   run:
     dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+
+event_extraction:
+  delimiter: " "
+  code_splitter: "\n\n"
+  target_event_regex: ???
+  end_time_days: null
+  end_event_regex: null

@@ -69,5 +69,8 @@ for task in "${ACES_TASKS[@]}"; do
         model.model="${MODEL_DIR}" \
         dataset_dir="${task_dir}" \
         output_dir="${OUTPUT_DIR}/${task}" \
-        split="${SPLIT}"
+        split="${SPLIT}" \
+        num_workers="${NUM_WORKERS}" \
+        event_extraction.event_regex="'^#### ED Admission'" \
+        event_extraction.end_time_days=3.0
 done
