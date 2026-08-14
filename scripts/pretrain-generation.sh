@@ -45,32 +45,27 @@ for ((i=1; i<=$#; i++)); do
 done
 
 if [[ "$MODE" == "structured" ]]; then
-    echo "Structured mode is not implemented yet."
-    exit
-    # EMBEDDING_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/task_embeddings"
-    # LR_MODEL_DIR="${STRUCTURED_MODEL_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr/models"
-    # INFERENCE_OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/embedding_lr_predictions"
+    TASK_DATASET_DIR="${STRUCTURED_TASK_DATA_DIR}/tokenized"
+    OUTPUT_DIR="${STRUCTURED_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/rollout"
+    CONFIG_NAME="structured.yaml"
 else
     TASK_DATASET_DIR="${NATURAL_LANGUAGE_TASK_DATA_DIR}/tokenized"
     OUTPUT_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/${OUTPUT_DIRECTORY_NAME}/rollout"
+    CONFIG_NAME="natural_language.yaml"
 fi
 
-ACES_TASKS=(
-    ed_72hr_reattendance
-)
-
 echo "--- Running vLLM Inference ---"
-echo "Found tasks: ${ACES_TASKS[*]}"
+echo "Found tasks: ${ACES_TASKS}"
 
-for task in "${ACES_TASKS[@]}"; do
+for task in ${ACES_TASKS}; do
+    echo "Starting task ${task}..."
     task_dir="${TASK_DATASET_DIR}/${task}"
     uv run pre_training_generative_inference \
-        --config-name="natural_language.yaml" \
+        --config-name="${CONFIG_NAME}" \
         model.model="${MODEL_DIR}" \
         dataset_dir="${task_dir}" \
         output_dir="${OUTPUT_DIR}/${task}" \
         split="${SPLIT}" \
         num_workers="${NUM_WORKERS}" \
-        event_extraction.event_regex="'^#### ED Admission'" \
-        event_extraction.end_time_days=3.0
+        task="${task}"
 done

@@ -1,10 +1,10 @@
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
 output_dir: ???   # Required: directory to save outputs
 split: ???
-tasks: null
-chunk_size: 5000
+task: ???
+chunk_size: 1000
 seed: 42
-max_eval_samples: 100
+max_eval_samples: 10
 num_workers: 1
 
 model:
@@ -13,12 +13,12 @@ model:
   dtype: bfloat16
   seed: ${seed}
   tensor_parallel_size: 1
-  max_model_len: 4096
+  max_model_len: 5120
   gpu_memory_utilization: 0.9
 
 sampling_params:
   # https://docs.vllm.ai/en/v0.6.4/dev/sampling_params.html
-  n: 1
+  n: 20
   temperature: 1
   top_p: 1.0
   top_k: -1
@@ -26,16 +26,39 @@ sampling_params:
   max_tokens: 1024
   detokenize: false
 
-max_input_length: 3072
-keep_first_token: true
 
 hydra:
   run:
     dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
 
-event_extraction:
+tokenizer:
+  join_with_delimiter: false
+  keep_first_token: true
+  # Truncated in pre-processing
+  max_input_length: null
   delimiter: " "
+
+event_extraction:
+  delimiter: ${tokenizer.delimiter}
   code_splitter: "\n\n"
-  target_event_regex: ???
-  end_time_days: null
-  end_event_regex: null
+  tasks:
+    ed_72hr_reattendance:
+      target_event_regex: '^#### ED Admission'
+      end_time_days: 3.0
+      end_event_regex: null
+    ed_to_hospital_admission:
+      target_event_regex: '^#### ED Discharge${event_extraction.delimiter}Location${event_extraction.delimiter}Admitted$'
+      end_time_days: null
+      end_event_regex: '^#### ED Discharge${event_extraction.delimiter}(?!Location${event_extraction.delimiter}Admitted).*$'
+    hospital_length_of_stay_leq_7_days:
+      target_event_regex: '^#### Hospital Discharge'
+      end_time_days: 7.0
+      end_event_regex: null
+    hospital_post_discharge_30_day_mortality:
+      target_event_regex: '^#### Death'
+      end_time_days: 30.0
+      end_event_regex: null
+    in_hospital_mortality:
+      target_event_regex: '^#### Death'
+      end_time_days: null
+      end_event_regex: '^#### Hospital Discharge'
