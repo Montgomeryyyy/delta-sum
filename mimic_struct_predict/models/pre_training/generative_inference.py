@@ -212,10 +212,10 @@ def main(cfg: DictConfig) -> None:
 
     log.info("Starting LLM Inference")
     hydra_cfg = HydraConfig.get()
-    dataset_dir = Path(cfg.dataset_dir) / cfg.split
+    dataset_dir = Path(cfg.dataset_dir)
     selected_tasks = cfg.get("tasks", None)
     out_dir = Path(hydra_cfg.run.dir)
-    inference_dir = out_dir / cfg.split
+    inference_dir = out_dir
     inference_dir.mkdir(parents=True, exist_ok=True)
     log.info(f"Inference directory: {inference_dir}")
 
