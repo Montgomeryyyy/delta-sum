@@ -21,10 +21,10 @@ tokenizer_dir: ???
 # https://huggingface.co/docs/transformers/en/main_classes/trainer#transformers.TrainingArguments
 training_args:
   # Training Duration and Batch Size
-  per_device_train_batch_size: 8
-  num_train_epochs: 1
+  per_device_train_batch_size: 32
+  num_train_epochs: 5
   # Learning Rate & Scheduler
-  learning_rate: 5e-5
+  learning_rate: 1e-4
   lr_scheduler_type: cosine_with_min_lr
   lr_scheduler_kwargs:
     min_lr_rate: 0.1
@@ -33,14 +33,14 @@ training_args:
   optim: adamw_torch_fused
   weight_decay: 0.01
   # Regularization & Training Stability
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 4
   max_grad_norm: 1.0
   # Mixed Precision Training
   bf16: true
   bf16_full_eval: true
   tf32: true
   # Gradient Checkpointing
-  gradient_checkpointing: false
+  gradient_checkpointing: true
   # Logging & Monitoring Training
   logging_strategy: steps
   logging_steps: 1
@@ -52,7 +52,7 @@ training_args:
   # Evaluation
   eval_strategy: steps
   eval_steps: 0.025
-  per_device_eval_batch_size: 6
+  per_device_eval_batch_size: 8
   prediction_loss_only: true
   # Checkpointing & Saving
   save_strategy: steps
@@ -63,7 +63,7 @@ training_args:
   metric_for_best_model: eval_loss
   greater_is_better: false
   ## Dataloader
-  dataloader_num_workers: 4
+  dataloader_num_workers: 8
   dataloader_prefetch_factor: 4
   # DDP
   ddp_find_unused_parameters: false
