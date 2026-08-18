@@ -2,16 +2,11 @@ defaults:
   - natural_language
   - _self_
 
-max_eval_samples: 10
-
 sampling_params:
   # HF sets id 1 to be eos automatically, so ignore it
   ignore_eos: true
   # We pad model to multiple of 8, so model can produce invalid tokens if not set to true
   set_max_token_id: true
-  # top_p: 0.9
-  temperature: 0
-  n: 1
 
 tokenizer:
   join_with_delimiter: true

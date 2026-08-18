@@ -4,7 +4,7 @@ split: ???
 task: ???
 chunk_size: 1000
 seed: 42
-max_eval_samples: 10
+max_eval_samples: 1000
 num_workers: 1
 
 model:
@@ -43,22 +43,22 @@ event_extraction:
   code_splitter: "\n\n"
   tasks:
     ed_72hr_reattendance:
-      target_event_regex: '^#### ED Admission'
+      target_event_regex: '^####${event_extraction.delimiter}ED Admission'
       end_time_days: 3.0
       end_event_regex: null
     ed_to_hospital_admission:
-      target_event_regex: '^#### ED Discharge${event_extraction.delimiter}Location${event_extraction.delimiter}Admitted$'
+      target_event_regex: '^####${event_extraction.delimiter}ED Discharge${event_extraction.delimiter}Location${event_extraction.delimiter}Admitted$'
       end_time_days: null
-      end_event_regex: '^#### ED Discharge${event_extraction.delimiter}(?!Location${event_extraction.delimiter}Admitted).*$'
+      end_event_regex: '^####${event_extraction.delimiter}ED Discharge${event_extraction.delimiter}(?!Location${event_extraction.delimiter}Admitted).*$'
     hospital_length_of_stay_leq_7_days:
-      target_event_regex: '^#### Hospital Discharge'
+      target_event_regex: '^####${event_extraction.delimiter}Hospital Discharge'
       end_time_days: 7.0
       end_event_regex: null
     hospital_post_discharge_30_day_mortality:
-      target_event_regex: '^#### Death'
+      target_event_regex: '^####${event_extraction.delimiter}Death'
       end_time_days: 30.0
       end_event_regex: null
     in_hospital_mortality:
-      target_event_regex: '^#### Death'
+      target_event_regex: '^####${event_extraction.delimiter}Death'
       end_time_days: null
-      end_event_regex: '^#### Hospital Discharge'
+      end_event_regex: '^####${event_extraction.delimiter}Hospital Discharge'
