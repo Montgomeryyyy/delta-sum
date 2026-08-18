@@ -154,7 +154,6 @@ def detect_outcome(
                     )
                 elif line_idx < len(lines) - 1:
                     # Don't penalize for incorrect time format due to truncation
-                    log.info(f"Incorrect Time Format: {line}")
                     finish_reason = "Incorrect Time Format"
                     format_adherence = False
             elif line.startswith("## Date"):
@@ -163,7 +162,6 @@ def detect_outcome(
                     # Move to next N days
                     next_time = math.floor(current_time) + int(date_match.group("days"))
                 elif line_idx < len(lines) - 1:
-                    log.info(f"Incorrect Date Format: {line}")
                     finish_reason = "Incorrect Date Format"
                     format_adherence = False
             else:
@@ -178,7 +176,7 @@ def detect_outcome(
 
             if next_time != current_time:
                 if next_time < current_time:
-                    finish_reason = "Time went backwards"
+                    finish_reason = "Reverse Time Prediction"
                     format_adherence = False
                 elif end_time_days is not None and (next_time - initial_time_offset) > end_time_days:
                     finish_reason = "End Time Reached"
@@ -188,7 +186,7 @@ def detect_outcome(
 
         # Reached end of generation without matching regex or exceeding max time.
         if finish_reason is None:
-            finish_reason = "Generation ended"
+            finish_reason = "Max New Tokens Reached"
             format_adherence = False
     except Exception as e:
         log.error(f"Error parsing outcome: {e}", exc_info=True)
@@ -229,7 +227,7 @@ def main(cfg: DictConfig) -> None:
     if world_size > 1:
         log.info(f"Running distributed: Rank {rank}/{world_size}. Sharding dataset...")
         dataset = dataset.shard(num_shards=world_size, index=rank)
-    log.info(f"Loaded {len(dataset)} examples from task directory (after sharding).")
+    log.info(f"Loaded {len(dataset)} examples from data directory (after sharding).")
 
     ### Preprocessing ###
     # 1. Truncate and decode batch input ids
@@ -351,8 +349,7 @@ def main(cfg: DictConfig) -> None:
             pq.write_table(table, chunk_file_path)
 
     except Exception as e:
-        task_name = Path(cfg.dataset_dir).name
         batch_info = f" at batch index {i}" if "i" in locals() else ""
-        log.error(f"Error processing task {task_name}{batch_info}: {e}", exc_info=True)
+        log.error(f"Error processing batch {batch_info}: {e}", exc_info=True)
 
     log.info(f"Inference Complete! Outputs saved to {out_dir}")

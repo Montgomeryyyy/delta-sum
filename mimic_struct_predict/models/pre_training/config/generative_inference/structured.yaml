@@ -12,10 +12,6 @@ tokenizer:
   join_with_delimiter: true
   keep_first_token: false
   delimiter: "//"
-  max_input_length: 3072
 
 event_extraction:
   code_splitter: "//\n\n//"
-
-model:
-  max_model_len: 4096
