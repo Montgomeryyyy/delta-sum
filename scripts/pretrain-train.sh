@@ -12,16 +12,31 @@ source "./scripts/config.sh"
 # set -x
 
 MODE=${1}
+shift || true
 
 if [[ "$MODE" != "structured" && "$MODE" != "natural_language" && "$MODE" != "natural_language_lora" ]]; then
-    echo "Usage: $0 [structured|natural_language|natural_language_lora]"
+    echo "Usage: $0 <mode> [options]"
+    echo "Modes: structured | natural_language | natural_language_lora"
+    echo "Options:"
+    echo "  --resume-from-checkpoint <path>   Path to checkpoint directory to resume from"
+    echo "  [...extra hydra overrides...]"
     exit 1
 fi
 
-# --- Get config ---
-source "./scripts/config.sh"
-
-# --- Pipeline Execution ---
+HYDRA_ARGS=()
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --resume-from-checkpoint)
+            HYDRA_ARGS+=("resume_from_checkpoint=$2")
+            shift 2
+            ;;
+        *)
+            # Forward any unknown arguments (like Hydra overrides) directly
+            HYDRA_ARGS+=("$1")
+            shift 1
+            ;;
+    esac
+done
 
 if [[ "$MODE" == "structured" ]]; then
     CONFIG_NAME="structured.yaml"
@@ -51,4 +66,5 @@ uv run accelerate launch \
     dataset_dir="${DATASET_DIR}" \
     output_dir="${OUTPUT_DIR}" \
     model.name="${HF_MODEL_NAME}" \
-    tokenizer_dir="${TOKENIZER_DIR}"
+    tokenizer_dir="${TOKENIZER_DIR}" \
+    "${HYDRA_ARGS[@]}"

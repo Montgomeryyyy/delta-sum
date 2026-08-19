@@ -103,7 +103,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     # --- Train ---
-    train_result = trainer.train()
+    train_result = trainer.train(resume_from_checkpoint=cfg.get("resume_from_checkpoint", None))
     trainer.log_metrics("train", train_result.metrics)
     trainer.save_metrics("train", train_result.metrics)
     trainer.save_state()

@@ -8,6 +8,7 @@ split_names:
 pad_to_multiple_of: 64
 max_eval_samples: 20000
 seed: 42
+resume_from_checkpoint: null
 
 model:
   name: ???
@@ -43,7 +44,7 @@ training_args:
   gradient_checkpointing: true
   # Logging & Monitoring Training
   logging_strategy: steps
-  logging_steps: 1
+  logging_steps: 50
   # Logging
   log_level: "info"
   disable_tqdm: true
@@ -63,7 +64,7 @@ training_args:
   metric_for_best_model: eval_loss
   greater_is_better: false
   ## Dataloader
-  dataloader_num_workers: 8
+  dataloader_num_workers: 18
   dataloader_prefetch_factor: 4
   # DDP
   ddp_find_unused_parameters: false
