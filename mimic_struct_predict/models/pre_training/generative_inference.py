@@ -304,7 +304,7 @@ def main(cfg: DictConfig) -> None:
 
             outputs = llm.generate(prompts, sampling_params=sampling_params)
             flat_output_ids = [output.token_ids for request_output in outputs for output in request_output.outputs]
-            log.info(f"{flat_output_ids[0]}, {cfg.tokenizer.join_with_delimiter}, {cfg.tokenizer.delimiter}")
+
             flat_decoded = batch_ids_to_string(
                 flat_output_ids, tokenizer, cfg.tokenizer.join_with_delimiter, cfg.tokenizer.delimiter
             )

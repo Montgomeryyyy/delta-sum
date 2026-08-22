@@ -84,12 +84,12 @@ sbatch\
     --gres=gpu:1 \
     --constraint=h100 \
     --ntasks=1 \
-    --cpus-per-task=8 \
+    --cpus-per-task=18 \
     --mem=64G \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_TOKEN \
     --output=$SCRATCH_DIR/../logs/pretrain-train/%j.out \
-    scripts/pretrain-train.sh $MODE
+    scripts/pretrain-train.sh $MODE $MODEL_NAME --resume-from-checkpoint /scratch/prj/bhi_ehrfoundationmodels/k2692250/mimic-struct-predict/training/natural_language/pretraining/20260817_225728/checkpoint-8840
 
 ## Linear Probe
 
@@ -285,6 +285,20 @@ sbatch\
     --export=SCRATCH_DIR,HF_TOKEN \
     --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
     scripts/pretrain-generation.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY
+
+
+sbatch\
+    --partition biomed_a30_gpu \
+    --time=0-00:30:00 \
+    --gres=gpu:1 \
+    --constraint=a30 \
+    --ntasks=1 \
+    --cpus-per-task=8 \
+    --mem=16G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/pretrain-inference-prompt/%j.out \
+    scripts/pretrain-inference-prompt.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY
 
 
 sbatch \

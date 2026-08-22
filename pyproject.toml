@@ -65,6 +65,7 @@ meds_tab_inference = "mimic_struct_predict.models.tabular.inference:main"
 pre_training_tokenize = "mimic_struct_predict.models.pre_training.tokenize:main"
 pre_training_train = "mimic_struct_predict.models.pre_training.train:main"
 pre_training_generative_inference = "mimic_struct_predict.models.pre_training.generative_inference:main"
+pre_training_inference_prompt = "mimic_struct_predict.models.pre_training.prompt_inference:main"
 
 create_task_datasets = "mimic_struct_predict.models.embedding_and_lr.create_task_datasets:main"
 

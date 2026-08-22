@@ -1,0 +1,41 @@
+dataset_dir: ???  # Required: directory of pre-built prompt datasets
+output_dir: ???   # Required: directory to save outputs
+task: ???
+chunk_size: 1000
+seed: 42
+num_workers: 1
+
+model:
+  # https://docs.vllm.ai/en/v0.7.3/api/offline_inference/llm.html
+  model: ???
+  dtype: bfloat16
+  seed: ${seed}
+  tensor_parallel_size: 1
+  max_model_len: 4096
+  gpu_memory_utilization: 0.9
+
+structured_outputs:
+  choice:
+    - "Yes"
+    - "No"
+
+yes_token: "Yes"
+no_token: "No"
+default_prob: 0.0
+
+sampling_params:
+  max_tokens: 1
+  logprobs: 20
+  temperature: 0.0
+  seed: 42
+
+prompts:
+  ed_72hr_reattendance: "The patient above has just been discharged from the ED. Will the patient be admitted to the ED again within the next 72 hours? Yes or No?"
+  ed_to_hospital_admission: "The patient above has just been registered and triaged in the ED. Will the patient be admitted to the hospital when discharged from the ED? Yes or No?"
+  hospital_length_of_stay_leq_7_days: "The patient above has just been admitted to the hospital. Will the patient be discharged from hospital within 7 days (inclusive)? Yes or No?"
+  in_hospital_mortality: "The patient has been in hospital for 24 hours. Will the patient die during this hospital stay? Yes or No?"
+  hospital_post_discharge_30_day_mortality: "The patient above has just been discharged from the hospital. Will the patient die within the next 30 days? Yes or No?"
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
