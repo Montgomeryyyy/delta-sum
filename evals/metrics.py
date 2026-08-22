@@ -38,6 +38,10 @@ RNG = np.random.RandomState(42)
 
 def load_task_results(model_name, task, split, base_dir):
     # MEDS_TAB has named parquet files instead of directory structure
+    if model_name == "CPT Rollout" and task in {"hospital_post_discharge_30_day_mortality", "in_hospital_mortality"}:
+        log.info(f"Still doing inference for {model_name} on task {task}.")
+        return None
+
     task_dir = base_dir / task if model_name == "MEDS-TAB" else base_dir / split / task
     if not task_dir.exists():
         log.info(f"Directory {task_dir} does not exist. Skipping model '{model_name}'.")
@@ -48,19 +52,23 @@ def load_task_results(model_name, task, split, base_dir):
     if not subdirs:
         log.info(f"No run directories found in {task_dir}. Skipping.")
         return None
-    latest_dir = max(subdirs, key=lambda d: d.stat().st_mtime)
+    # Directories are timestamped so choose most recent (max alphabetically)
+    latest_dir = max(subdirs, key=lambda d: d.name)
 
-    results_file = (
-        latest_dir / "best_trial" / f"{split}_predictions.parquet"
-        if model_name == "MEDS-TAB"
-        else latest_dir / "results.parquet"
-    )
-    if not results_file.exists():
-        log.info(f"Results file {results_file} not found. Skipping.")
-        return None
+    if model_name == "MEDS-TAB":
+        results_files = latest_dir / "best_trial" / f"{split}_predictions.parquet"
+        if not results_files.exists():
+            log.info(f"Results file {results_files} not found. Skipping.")
+            return None
+    else:
+        results_files = list(latest_dir.glob("*.parquet"))
+        if not results_files:
+            log.info(f"No parquet files found in {latest_dir}. Skipping.")
+            return None
 
+    log.info(f"Loading parquet files: {results_files}")
     # Extract boolean_value and probability
-    return pl.read_parquet(results_file)
+    return pl.read_parquet(results_files)
 
 
 def format_x_label(label):
@@ -273,11 +281,11 @@ def plot_curves(results_dict, task, output_dir):
     plt.plot([0, 1], [0, 1], "k--", alpha=0.5)
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.legend(loc="lower right")
+    plt.legend(loc="center left", bbox_to_anchor=(1.05, 0.5))
     plt.xlim(left=0, right=1)
     plt.ylim(bottom=0, top=1)
     plt.tight_layout()
-    plt.savefig(task_out_dir / "roc_curve.pdf")
+    plt.savefig(task_out_dir / "roc_curve.pdf", bbox_inches="tight")
     plt.close()
 
     # 2. PR Curve
@@ -298,11 +306,11 @@ def plot_curves(results_dict, task, output_dir):
         plt.fill_between(mean_recall, lower_precision, upper_precision, alpha=0.2)
     plt.xlabel("Recall")
     plt.ylabel("Precision")
-    plt.legend(loc="lower left")
+    plt.legend(loc="center left", bbox_to_anchor=(1.05, 0.5))
     plt.xlim(left=0, right=1)
     plt.ylim(bottom=0, top=1)
     plt.tight_layout()
-    plt.savefig(task_out_dir / "pr_curve.pdf")
+    plt.savefig(task_out_dir / "pr_curve.pdf", bbox_inches="tight")
     plt.close()
 
     # 3. Calibration Curve
@@ -337,7 +345,7 @@ def plot_curves(results_dict, task, output_dir):
     ax_main.plot([0, 1], [0, 1], "k:", alpha=0.8, label="Perfectly calibrated")
     ax_main.set_xlabel("Mean predicted probability")
     ax_main.set_ylabel("Fraction of positives")
-    ax_main.legend(loc="lower right")
+    ax_main.legend(loc="center left", bbox_to_anchor=(1.05, 0.5))
     ax_main.set_xlim(left=0, right=1)
     ax_main.set_ylim(bottom=0, top=1)
 
@@ -356,7 +364,7 @@ def plot_curves(results_dict, task, output_dir):
         ax_hist.set_xlim(left=0, right=1)
 
     fig.tight_layout()
-    plt.savefig(task_out_dir / "calibration_curve.pdf")
+    plt.savefig(task_out_dir / "calibration_curve.pdf", bbox_inches="tight")
     plt.close()
 
 
@@ -461,7 +469,7 @@ def plot_overall_bar_charts(all_metrics, output_dir):
 
         wrapped_tasks = [textwrap.fill(format_x_label(t), width=15) for t in tasks]
         plt.xticks(x, wrapped_tasks, rotation=0, ha="center")
-        plt.legend()
+        plt.legend(loc="center left", bbox_to_anchor=(1.05, 0.5))
 
         if metric in ["AUROC", "AUPRC"]:
             min_val = min(all_lower_cis, default=0) if all_lower_cis else 0
@@ -470,7 +478,7 @@ def plot_overall_bar_charts(all_metrics, output_dir):
             plt.ylim(bottom=0)
 
         plt.tight_layout()
-        plt.savefig(output_dir / f'overall_{metric.lower().replace(" ", "_")}_bar.pdf')
+        plt.savefig(output_dir / f'overall_{metric.lower().replace(" ", "_")}_bar.pdf', bbox_inches="tight")
         plt.close()
 
 
@@ -483,6 +491,7 @@ def evaluate_task(
     bootstrap_seeds,
     model_to_task_bootstraps,
     model_to_prevalence,
+    model_to_count,
     all_metrics,
     eval_plots_dir,
 ):
@@ -511,7 +520,10 @@ def evaluate_task(
         prevalence = np.mean(y_true)
         model_to_prevalence[model_name][task_idx] = prevalence
 
-        row = {"Task": task, "Model": model_name, "Prevalence": prevalence}
+        count = len(y_true)
+        model_to_count[model_name][task_idx] = count
+
+        row = {"Task": task, "Model": model_name, "Prevalence": prevalence, "Count": count}
         for metric_name, stats in metrics_summary.items():
             row[f"{metric_name} Mean"] = stats["mean"]
             row[f"{metric_name} 95% CI Lower"] = stats["lower_ci"]
@@ -529,13 +541,16 @@ def evaluate_task(
     plot_bar_charts(task_results_dict, task, eval_plots_dir)
 
 
-def calculate_macro_averages(model_to_directory_dict, model_to_prevalence, model_to_task_bootstraps, all_metrics):
+def calculate_macro_averages(
+    model_to_directory_dict, model_to_prevalence, model_to_count, model_to_task_bootstraps, all_metrics
+):
     for model_name in model_to_directory_dict.keys():
         log.info(f"Calculating Macro Averages for {model_name} across tasks...")
         if np.all(np.isnan(model_to_prevalence[model_name])):
             continue
         mean_prevalence = np.nanmean(model_to_prevalence[model_name])
-        row = {"Task": "Macro Average", "Model": model_name, "Prevalence": mean_prevalence}
+        total_count = np.nansum(model_to_count[model_name])
+        row = {"Task": "Macro Average", "Model": model_name, "Prevalence": mean_prevalence, "Count": total_count}
         for metric_name, task_bootstraps in model_to_task_bootstraps[model_name].items():
             # task_bootstraps is a numpy array of shape (n_tasks, n_bootstraps)
             macro_bootstraps = np.nanmean(task_bootstraps, axis=0)  # shape (n_bootstraps,)
@@ -555,15 +570,20 @@ def main():
     aces_tasks = os.environ.get("ACES_TASKS").split()
 
     # The mapping from model name to the base directory for inference results
-    base_model = os.environ["HF_MODEL_NAME"].split("/")[-1].title()
     model_to_directory_dict = {
         "MEDS-TAB": Path(os.environ["MEDS_TAB_OUTPUT_MODEL_DIR"]),
-        "Structured (Random Init)": Path(os.environ["STRUCTURED_INFERENCE_DIR"]) / "pt" / "embedding_lr_predictions",
-        base_model: Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "zero_shot" / "embedding_lr_predictions",
-        f"CPT ({base_model})": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "cpt" / "embedding_lr_predictions",
-        f"CPT LORA ({base_model})": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"])
-        / "cpt_lora"
+        "Structured Embeddings": Path(os.environ["STRUCTURED_INFERENCE_DIR"]) / "pt" / "embedding_lr_predictions",
+        "Structured Rollout": Path(os.environ["STRUCTURED_INFERENCE_DIR"]) / "pt" / "rollout",
+        "Zero Shot Embeddings": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"])
+        / "zero_shot"
         / "embedding_lr_predictions",
+        "Zero Shot Prompt": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "zero_shot" / "prompt",
+        "CPT Embeddings": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "cpt" / "embedding_lr_predictions",
+        "CPT Rollout": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "cpt" / "rollout",
+        "CPT Prompt": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "cpt" / "prompt",
+        # f"CPT LORA Embeddings": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"])
+        # / "cpt_lora"
+        # / "embedding_lr_predictions",
         # f"CPT Mean Pooling ({base_model})": Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"])
         # / "cpt_mean_pooling"
         # / "embedding_lr_predictions",
@@ -595,6 +615,7 @@ def main():
     model_to_prevalence = {
         model_name: np.full(len(aces_tasks), np.nan) for model_name in model_to_directory_dict.keys()
     }
+    model_to_count = {model_name: np.full(len(aces_tasks), np.nan) for model_name in model_to_directory_dict.keys()}
 
     for task_idx, task in enumerate(aces_tasks):
         evaluate_task(
@@ -606,11 +627,14 @@ def main():
             bootstrap_seeds,
             model_to_task_bootstraps,
             model_to_prevalence,
+            model_to_count,
             all_metrics,
             eval_plots_dir,
         )
 
-    calculate_macro_averages(model_to_directory_dict, model_to_prevalence, model_to_task_bootstraps, all_metrics)
+    calculate_macro_averages(
+        model_to_directory_dict, model_to_prevalence, model_to_count, model_to_task_bootstraps, all_metrics
+    )
 
     # Save overall metrics across all models and tasks
     log.info("Generating overall bar charts...")

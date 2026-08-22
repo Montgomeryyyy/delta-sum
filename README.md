@@ -288,13 +288,13 @@ sbatch\
 
 
 sbatch\
-    --partition biomed_a30_gpu \
-    --time=0-00:30:00 \
-    --gres=gpu:1 \
-    --constraint=a30 \
+    --partition slam_gpu \
+    --time=1-00:00:00 \
+    --gres=gpu:2 \
+    --constraint=l40s \
     --ntasks=1 \
-    --cpus-per-task=8 \
-    --mem=16G \
+    --cpus-per-task=14 \
+    --mem=64G \
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_TOKEN \
     --output=$SCRATCH_DIR/../logs/pretrain-inference-prompt/%j.out \
