@@ -91,6 +91,7 @@ for task in ${ACES_TASKS}; do
             model.model="${MODEL_DIR}" \
             dataset_dir="${task_dir}/${SPLIT}" \
             output_dir="${OUTPUT_DIR}/${task}" \
+            task_prevalence_path="${TASK_PREVALENCES_PATH}" \
             num_workers="${WORKERS_PER_GPU}" \
             hydra.run.dir="$RUN_DIR" \
             task="${task}" > "$RUN_DIR/worker_${RANK}.log" 2>&1 &

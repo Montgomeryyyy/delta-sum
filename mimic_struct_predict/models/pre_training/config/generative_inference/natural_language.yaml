@@ -1,5 +1,6 @@
 dataset_dir: ???  # Required: directory of pre-built prompt datasets
 output_dir: ???   # Required: directory to save outputs
+task_prevalence_path: ???  # Required: path to JSON file containing dict {task_name: prevalence}
 task: ???
 chunk_size: 1000
 seed: 42
@@ -37,26 +38,31 @@ tokenizer:
   delimiter: " "
 
 event_extraction:
+  event_config_path: mimic_struct_predict/preprocessing/meds/config/event_configs.yaml
   delimiter: ${tokenizer.delimiter}
   code_splitter: "\n\n"
+  max_day_gap: 365
+  category_prefix: "####${event_extraction.delimiter}"
+  time_prefix: "### Time${event_extraction.delimiter}"
+  date_prefix: "## Date${event_extraction.delimiter}"
   tasks:
     ed_72hr_reattendance:
-      target_event_regex: '^####${event_extraction.delimiter}ED Admission'
+      target_event_regex: '^${event_extraction.category_prefix}ED Admission'
       end_time_days: 3.0
       end_event_regex: null
     ed_to_hospital_admission:
-      target_event_regex: '^####${event_extraction.delimiter}ED Discharge${event_extraction.delimiter}Location${event_extraction.delimiter}Admitted$'
+      target_event_regex: '^${event_extraction.category_prefix}ED Discharge${event_extraction.delimiter}Location${event_extraction.delimiter}Admitted$'
       end_time_days: null
-      end_event_regex: '^####${event_extraction.delimiter}ED Discharge${event_extraction.delimiter}(?!Location${event_extraction.delimiter}Admitted).*$'
+      end_event_regex: '^${event_extraction.category_prefix}ED Discharge${event_extraction.delimiter}(?!Location${event_extraction.delimiter}Admitted).*$'
     hospital_length_of_stay_leq_7_days:
-      target_event_regex: '^####${event_extraction.delimiter}Hospital Discharge'
+      target_event_regex: '^${event_extraction.category_prefix}Hospital Discharge'
       end_time_days: 7.0
       end_event_regex: null
     hospital_post_discharge_30_day_mortality:
-      target_event_regex: '^####${event_extraction.delimiter}Death'
+      target_event_regex: '^${event_extraction.category_prefix}Death'
       end_time_days: 30.0
       end_event_regex: null
     in_hospital_mortality:
-      target_event_regex: '^####${event_extraction.delimiter}Death'
+      target_event_regex: '^${event_extraction.category_prefix}Death'
       end_time_days: null
-      end_event_regex: '^####${event_extraction.delimiter}Hospital Discharge'
+      end_event_regex: '^${event_extraction.category_prefix}Hospital Discharge'

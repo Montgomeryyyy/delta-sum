@@ -33,6 +33,7 @@ export ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
 # export ACES_TASKS=hospital_length_of_stay_leq_7_days
 shopt -u nullglob
 export ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
+export TASK_PREVALENCES_PATH="${ACES_OUTPUT_DIR}/task_prevalences.json"
 
 export NATURAL_LANGUAGE_MEDS_DIR="${MIMICIV_MEDS_COHORT_DIR}/add_delta_rows"
 export NATURAL_LANGUAGE_DATA_DIR="${DATA_DIR}/natural_language"
