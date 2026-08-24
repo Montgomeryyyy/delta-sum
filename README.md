@@ -104,19 +104,6 @@ export MODEL_NAME=$HF_MODEL_NAME
 export OUTPUT_DIRECTORY=cpt/pt/zero_shot/cpt_lora
 
 sbatch\
-    --partition slam_gpu \
-    --time=1-00:00:00 \
-    --gres=gpu:1 \
-    --constraint=h100 \
-    --ntasks=1 \
-    --cpus-per-task=8 \
-    --mem=128G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/linear-probe-embedding/%j.out \
-    scripts/linear-probe-embedding.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY $LORA_ADAPTER_PATH
-
-sbatch\
     --partition slam_cpu \
     --time=4:00:00 \
     --ntasks=1 \
@@ -129,7 +116,7 @@ sbatch\
 
 sbatch\
     --partition slam_gpu \
-    --time=1-00:00:00 \
+    --time=3-00:00:00 \
     --gres=gpu:1 \
     --constraint=h100 \
     --ntasks=1 \
@@ -284,7 +271,7 @@ sbatch\
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_TOKEN \
     --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
-    scripts/pretrain-generation.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY
+    scripts/pretrain-generation.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split held_out
 
 
 sbatch\
