@@ -288,9 +288,9 @@ def main(cfg: DictConfig) -> None:
     inference_dir.mkdir(parents=True, exist_ok=True)
     log.info(f"Inference directory: {inference_dir}")
 
-    dataset = datasets.load_from_disk(str(dataset_dir)).shuffle(seed=cfg.seed)
+    dataset = datasets.load_from_disk(str(dataset_dir))
     if cfg.get("max_eval_samples") is not None:
-        dataset = dataset.select(range(cfg.max_eval_samples))
+        dataset = dataset.shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     rank = int(os.environ.get("RANK", 0))
     if world_size > 1:
@@ -432,10 +432,13 @@ def main(cfg: DictConfig) -> None:
             valid_outcomes = [1.0 if o is True else 0.0 for o in outcomes if o is not None]
             prob_drop_trajectory = sum(valid_outcomes) / len(valid_outcomes) if valid_outcomes else task_prevalence
 
-            chunk_results["probability_0"].append(prob_0)
-            chunk_results["probability_0_5"].append(prob_0_5)
-            chunk_results["probability_prevalence"].append(prob_prevalence)
-            chunk_results["probability_drop_trajectory"].append(prob_drop_trajectory)
+            sample_rollout_results["probability_0"].append(prob_0)
+            sample_rollout_results["probability_0_5"].append(prob_0_5)
+            sample_rollout_results["probability_prevalence"].append(prob_prevalence)
+            sample_rollout_results["probability_drop_trajectory"].append(prob_drop_trajectory)
+
+            for k, v in sample_rollout_results.items():
+                chunk_results[k].append(v)
 
         chunk.update(chunk_results)
 
