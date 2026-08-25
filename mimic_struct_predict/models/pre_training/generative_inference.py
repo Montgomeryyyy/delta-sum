@@ -196,6 +196,7 @@ def detect_outcome(
     outcome_predicted = None
     finish_reason = None
     num_events = 0
+    line_idx = 0
 
     lines = [line.strip() for line in text.split(code_splitter) if line.strip()]
 
@@ -260,6 +261,7 @@ def detect_outcome(
     except Exception as e:
         log.error(f"Error parsing outcome: {e}", exc_info=True)
         finish_reason = "Formatting Error"
+        line_idx = len(lines) - 1 if lines else 0
 
     format_adherence = finish_reason in SUCCESS_FINISH_REASONS
     time_covered = current_time - initial_time_offset
@@ -269,6 +271,7 @@ def detect_outcome(
         "format_adherence": format_adherence,
         "finish_reason": finish_reason,
         "num_events": num_events,
+        "num_lines": line_idx + 1 if lines else 0,
         "time_covered": time_covered,
     }
 
