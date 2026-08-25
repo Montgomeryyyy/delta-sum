@@ -51,6 +51,7 @@ def load_task_results(base_dir, task, split):
         return None
 
     latest_dir = max(subdirs, key=lambda d: d.name)
+    log.info(f"Loading results from {latest_dir}")
     results_files = list(latest_dir.glob("*.parquet"))
     if not results_files:
         log.info(f"No parquet files found in {latest_dir}. Skipping.")
@@ -179,8 +180,9 @@ def plot_error_rates(df, output_dir):
     plt.tight_layout()
     output_file = output_dir / "combined_error_rates.pdf"
     plt.savefig(output_file, bbox_inches="tight")
+    plt.savefig(output_file.with_suffix(".png"), bbox_inches="tight")
     plt.close()
-    log.info(f"Saved error plot to {output_file}")
+    log.info(f"Saved error plot to {output_dir}")
 
 
 def plot_num_events_vs_adherence(df, output_dir, bin_size=32, last_bin_start=224):
@@ -262,26 +264,17 @@ def load_model_data(name, base_dir, split):
         log.warning(f"No tasks found for {name} in {base_dir / split}")
         return None
 
-    if name == "Natural Language":
-        tasks_filtered = []
-        for task in tasks:
-            if task not in {"hospital_post_discharge_30_day_mortality", "in_hospital_mortality"}:
-                tasks_filtered.append(task)
-        log.info(f"Filtering out tasks {set(tasks) - set(tasks_filtered)}")
-        tasks = tasks_filtered
-
     log.info(f"Tasks: {tasks}")
 
     all_dfs = []
     for task in tasks:
         df = load_task_results(base_dir, task, split)
         if df is not None:
-            required_cols = {"format_adherence", "finish_reason", "num_events"}
-            if required_cols.issubset(set(df.columns)):
-                processed_df = process_data(df, task)
-                all_dfs.append(processed_df)
-            else:
-                log.warning(f"Task {task} missing required columns.")
+            df = df.select(["format_adherence", "finish_reason", "num_events"])
+            processed_df = process_data(df, task)
+            all_dfs.append(processed_df)
+        else:
+            log.warning(f"No data found for {name} on task {task}")
 
     if not all_dfs:
         log.warning(f"No valid data found for {name}")
@@ -293,12 +286,12 @@ def load_model_data(name, base_dir, split):
 
 
 def main():
-    split = "tuning"
+    split = "held_out"
 
     nl_dir = Path(os.environ["NATURAL_LANGUAGE_INFERENCE_DIR"]) / "cpt" / "rollout"
     struct_dir = Path(os.environ["STRUCTURED_INFERENCE_DIR"]) / "pt" / "rollout"
 
-    eval_plots_dir = Path(os.environ["EVAL_PLOTS_DIR"]) / f"rollout_{split}"
+    eval_plots_dir = Path(os.environ["EVAL_PLOTS_DIR"]) / "rollout"
     eval_plots_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Loading Natural Language rollout from {nl_dir}")
@@ -315,8 +308,8 @@ def main():
 
     if all_dfs:
         combined_all = pl.concat(all_dfs)
-        # plot_error_rates(combined_all, eval_plots_dir)
-        plot_num_events_vs_adherence(combined_all, eval_plots_dir)
+        plot_error_rates(combined_all, eval_plots_dir)
+        # plot_num_events_vs_adherence(combined_all, eval_plots_dir)
 
 
 if __name__ == "__main__":
