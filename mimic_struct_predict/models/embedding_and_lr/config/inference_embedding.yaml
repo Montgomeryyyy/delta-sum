@@ -4,7 +4,7 @@ splits:
   - train
   - tuning
   - held_out
-overwrite: false
+overwrite: true
 task_name: ??? # Required: task name to process
 
 model:

@@ -62,7 +62,7 @@ def meds_to_string_dataset(
 ) -> None:
     # Format shards: split/shard.parquet
     shards = sorted(shard for shard in meds_dir.glob("*/*.parquet") if (splits is None or shard.parent.name in splits))
-    agg_expr = get_agg_expr(code_join_token, delimiter_replacement, delimiter)
+    agg_expr = get_agg_expr(code_join_token, delimiter_replacement, delimiter, sort_by="meds_row_idx")
 
     for shard in shards:
         split, name = shard.parent.name, shard.name
@@ -76,7 +76,7 @@ def meds_to_string_dataset(
             log.info(f"Processing Split: [{split}] | Shard: {name}")
 
             # Simple scan and agg
-            df = pl.scan_parquet(shard)
+            df = pl.scan_parquet(shard).with_row_index("meds_row_idx")
             if append_numeric_values:
                 df = df.with_columns(
                     code=append_numeric_values_to_codes_expr(
