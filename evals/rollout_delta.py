@@ -1,6 +1,5 @@
 import argparse
 import collections
-import json
 import logging
 import math
 import multiprocessing
@@ -11,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import seaborn as sns
+from matplotlib.patches import Patch
 from sklearn.metrics import brier_score_loss, roc_auc_score
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -29,6 +29,7 @@ plt.rcParams.update(
         "ytick.labelsize": 8,
         "legend.fontsize": 7.5,
         "figure.dpi": 300,
+        "hatch.linewidth": 0.7,
     }
 )
 
@@ -49,243 +50,240 @@ TASK_MAP = {
     "hospital_length_of_stay_leq_7_days": "Hospital LOS\n$\\leq$ 7 Days",
     "hospital_post_discharge_30_day_mortality": "30-Day\nMortality",
     "in_hospital_mortality": "In-Hospital\nMortality",
-    "Macro Average": "Macro\nAverage",
 }
 
 
-def format_task(label: str) -> str:
-    if label in TASK_MAP:
-        return TASK_MAP[label]
-    return " ".join(
-        "ED" if word.lower() == "ed" else (word.title() if word.islower() else word)
-        for word in label.replace("_", " ").split()
-    )
-
-
-def load_predictions(base_dir: Path, task: str, split: str, is_xgb: bool = False) -> pl.DataFrame | None:
+def load_predictions(base_dir: Path, task: str, split: str, is_xgb: bool = False) -> pl.DataFrame:
     """Loads prediction parquets for XGBoost or Rollout models."""
     task_dir = base_dir / task if is_xgb else base_dir / split / task
-    if not task_dir.exists():
-        if not is_xgb and (base_dir / task / split).exists():
-            task_dir = base_dir / task / split
-        else:
-            return None
-    subdirs = [dir_path for dir_path in task_dir.iterdir() if dir_path.is_dir()]
-    if not subdirs:
-        return None
-    latest = max(subdirs, key=lambda dir_path: dir_path.name)
+    latest = max(d for d in task_dir.iterdir() if d.is_dir())
     if is_xgb:
-        file_path = latest / "best_trial" / f"{split}_predictions.parquet"
-        return pl.read_parquet(file_path) if file_path.exists() else None
-    files = list(latest.glob("*.parquet"))
-    return pl.read_parquet(files) if files else None
+        return pl.read_parquet(latest / "best_trial" / f"{split}_predictions.parquet")
+    return pl.read_parquet(list(latest.glob("*.parquet")))
 
 
-def align_dfs(df_xgb: pl.DataFrame, df_roll: pl.DataFrame) -> pl.DataFrame | None:
+def align_dfs(df_xgb: pl.DataFrame, df_roll: pl.DataFrame) -> pl.DataFrame:
     """Aligns predictions between XGBoost and Rollout by joining on patient/time keys."""
     keys = ["subject_id", "prediction_time", "boolean_value"]
     xgb = df_xgb.select([*keys, pl.col("predicted_boolean_probability").alias("prob_xgb")])
-    roll_cols = [col for col in METHODS if col in df_roll.columns]
-    if not roll_cols:
-        return None
-    roll = df_roll.select(
-        [
-            *keys,
-            *[pl.col(col).list.get(0) if isinstance(df_roll[col].dtype, pl.List) else pl.col(col) for col in roll_cols],
-        ]
-    )
-    return xgb.join(roll, on=keys, how="inner").drop_nulls()
+    roll_cols = [pl.col(col).list.get(0) if isinstance(df_roll[col].dtype, pl.List) else pl.col(col) for col in METHODS]
+    roll = df_roll.select([*keys, *roll_cols, pl.col("format_adherence")])
+    return xgb.join(roll, on=keys, how="inner").drop_nulls(subset=[*keys, "prob_xgb", *METHODS])
 
 
-def _bootstrap_worker(chunk_seeds, y_true, prob_xgb, roll_dict, cohort_task_indices, metric_name):
-    """Worker computing paired deltas for a chunk of random seeds across the global cohort."""
-    n_cohort = len(cohort_task_indices)
+def compute_valid_trajectory_mask(df: pl.DataFrame) -> np.ndarray:
+    """Computes a boolean mask where True indicates at least one trajectory adhered to format."""
+    return df["format_adherence"].list.any().to_numpy()
+
+
+def _bootstrap_worker(
+    chunk_seeds: np.ndarray,
+    y_true: np.ndarray,
+    prob_xgb: np.ndarray,
+    roll_dict: dict[str, np.ndarray],
+    patient_row_indices: list[list[int]],
+    metric_name: str,
+    drop_valid_mask: np.ndarray,
+):
+    """Worker computing paired deltas for a chunk of random seeds across patient clusters."""
+    n_patients = len(patient_row_indices)
     metric_fn = roc_auc_score if metric_name == "auroc" else brier_score_loss
     results = []
 
     for seed in chunk_seeds:
         rng = np.random.RandomState(seed)
-        # 1. Resample global cohort patient indices with replacement (ensures identical patient sampling across tasks)
-        boot_subj_idx = rng.randint(0, n_cohort, size=n_cohort)
+        boot_subj_idx = rng.randint(0, n_patients, size=n_patients)
 
-        # 2. Gather row indices for resampled patients
         boot_indices = []
         for subj_idx in boot_subj_idx:
-            boot_indices.extend(cohort_task_indices[subj_idx])
+            boot_indices.extend(patient_row_indices[subj_idx])
 
         indices = np.array(boot_indices, dtype=np.int32)
         y_boot = y_true[indices]
 
-        # 3. Skip if resampled cohort does not contain both positive and negative labels
         if len(np.unique(y_boot)) < 2:
             results.append(None)
             continue
 
-        # 4. Compute metric score for XGBoost baseline on the resampled cohort
         xgb_score = metric_fn(y_boot, prob_xgb[indices])
 
-        # 5. Compute paired delta = Rollout - XGBoost for each error-handling probability method
-        deltas = {method: metric_fn(y_boot, roll_dict[method][indices]) - xgb_score for method in roll_dict}
+        deltas = {}
+        for method, prob_roll in roll_dict.items():
+            if method == "probability_drop_trajectory":
+                drop_indices = indices[drop_valid_mask[indices]]
+                y_boot_drop = y_true[drop_indices]
+                if len(np.unique(y_boot_drop)) < 2:
+                    deltas[method] = np.nan
+                else:
+                    xgb_score_drop = metric_fn(y_boot_drop, prob_xgb[drop_indices])
+                    deltas[method] = metric_fn(y_boot_drop, prob_roll[drop_indices]) - xgb_score_drop
+            else:
+                deltas[method] = metric_fn(y_boot, prob_roll[indices]) - xgb_score
+
         results.append(deltas)
 
     return results
 
 
 def run_paired_bootstrap(
-    merged: pl.DataFrame, cohort_ids: list, seeds: np.ndarray, metric_name: str, num_workers: int = 1
-):
-    """Runs parallel patient-level paired bootstrap to compute the distribution of deltas (Rollout - XGBoost).
-
-    Args:
-        merged: DataFrame containing aligned ground truth labels and predicted probabilities.
-        cohort_ids: List of unique patient IDs defining the global evaluation split cohort.
-        seeds: Fixed array of random seeds for reproducible bootstrap sampling across tasks.
-        metric_name: Target metric ("auroc" or "brier_score").
-        num_workers: Number of parallel worker processes.
-
-    Returns:
-        Dictionary mapping each error-handling method to an array of bootstrap deltas of shape (n_bootstraps,).
-    """
+    merged: pl.DataFrame,
+    metric_name: str,
+    drop_valid_mask: np.ndarray,
+    n_bootstraps: int = 10_000,
+    num_workers: int = 1,
+    seed: int = 42,
+) -> dict[str, np.ndarray]:
+    """Runs parallel patient-level paired bootstrap to compute the distribution of deltas (Rollout - XGBoost)."""
     y_true = merged["boolean_value"].to_numpy().astype(int)
     prob_xgb = merged["prob_xgb"].to_numpy().astype(float)
-    roll_dict = {method: merged[method].to_numpy().astype(float) for method in METHODS if method in merged.columns}
+    roll_dict = {method: merged[method].to_numpy().astype(float) for method in METHODS}
 
-    # Step 1: Pre-index row indices for each patient in the global cohort as lightweight integer lists.
     subj_map = collections.defaultdict(list)
     for row_idx, subj_id in enumerate(merged["subject_id"].to_numpy()):
         subj_map[subj_id].append(row_idx)
+    patient_row_indices = list(subj_map.values())
 
-    cohort_task_indices = [subj_map.get(subj_id, []) for subj_id in cohort_ids]
-
-    # Step 2: Split seeds into balanced chunks for parallel execution
+    seeds = np.random.RandomState(seed).randint(0, 2**31 - 1, size=n_bootstraps)
     n_cores = min(num_workers, len(seeds))
     chunk_sz = math.ceil(len(seeds) / n_cores) if n_cores > 0 else 1
     chunks = [seeds[start_idx : start_idx + chunk_sz] for start_idx in range(0, len(seeds), chunk_sz)]
 
-    # Step 3: Run parallel bootstrap across worker pool
     with multiprocessing.Pool(processes=n_cores) as pool:
         worker_results = pool.starmap(
             _bootstrap_worker,
-            [(chunk, y_true, prob_xgb, roll_dict, cohort_task_indices, metric_name) for chunk in chunks],
+            [
+                (chunk, y_true, prob_xgb, roll_dict, patient_row_indices, metric_name, drop_valid_mask)
+                for chunk in chunks
+            ],
         )
 
-    # Step 4: Aggregate chunk results into delta arrays (shape: n_bootstraps)
-    deltas = {method: np.full(len(seeds), np.nan) for method in roll_dict}
+    deltas = {method: np.full(n_bootstraps, np.nan) for method in roll_dict}
     bootstrap_idx = 0
     for chunk_res in worker_results:
         for res in chunk_res:
             if res is not None:
                 for method in roll_dict:
-                    deltas[method][bootstrap_idx] = res[method]
+                    deltas[method][bootstrap_idx] = res.get(method, np.nan)
             bootstrap_idx += 1
 
     return deltas
 
 
 def calc_ci(arr: np.ndarray) -> dict[str, float]:
-    valid_values = arr[~np.isnan(arr)]
-    if len(valid_values) == 0:
-        return {"mean": np.nan, "lower_ci": np.nan, "upper_ci": np.nan}
     return {
-        "mean": float(np.mean(valid_values)),
-        "lower_ci": float(np.percentile(valid_values, 2.5)),
-        "upper_ci": float(np.percentile(valid_values, 97.5)),
+        "mean": float(np.nanmean(arr)),
+        "lower_ci": float(np.nanpercentile(arr, 2.5)),
+        "upper_ci": float(np.nanpercentile(arr, 97.5)),
     }
 
 
-def plot_bars(
-    task_stats: dict[str, dict[str, dict]],
-    macro_stats: dict[str, dict],
+def plot_combined_bars(
+    all_modality_stats: dict[str, dict[str, dict[str, dict]]],
     metric: str,
+    tasks: list[str],
     out_dir: Path,
-    modality_name: str,
 ):
-    """Generates a single plot with all tasks on one x-axis and error methods in the legend."""
-    if not task_stats:
-        return
-
-    tasks = list(task_stats.keys())
-    all_x = tasks + (["Macro Average"] if macro_stats else [])
-    x_positions = np.arange(len(all_x))
-
-    fig, ax = plt.subplots(figsize=(max(5.5, len(all_x) * 1.15), 3.2))
-
+    """Generates a combined bar plot comparing Structured and Natural Language rollouts side-by-side per task."""
+    modalities = list(all_modality_stats.keys())
+    x_positions = np.arange(len(tasks))
     methods = list(METHODS.keys())
-    width = 0.8 / len(methods)
+    n_methods = len(methods)
+    n_mods = len(modalities)
+
+    bar_width = 0.082
+    inter_method_gap = 0.035
+    pair_span = n_mods * bar_width
+
+    mod_styles = {
+        "Structured Rollout": {"hatch": None, "alpha": 0.95, "prefix": "S"},
+        "Natural Language Rollout": {"hatch": "///", "alpha": 0.90, "prefix": "NL"},
+    }
+
+    fig, ax = plt.subplots(figsize=(max(6.5, len(tasks) * 1.5), 3.5))
     y_min, y_max = 0.0, 0.0
 
     for method_idx, method in enumerate(methods):
-        means, low_err, up_err = [], [], []
-        for task in tasks:
-            stat = task_stats[task].get(method, {})
-            mean_val = stat.get("mean", np.nan)
-            lower_ci = stat.get("lower_ci", np.nan)
-            upper_ci = stat.get("upper_ci", np.nan)
-            means.append(mean_val)
-            low_err.append(mean_val - lower_ci if not np.isnan(mean_val) else 0.0)
-            up_err.append(upper_ci - mean_val if not np.isnan(mean_val) else 0.0)
+        method_center_offset = (method_idx - (n_methods - 1) / 2) * (pair_span + inter_method_gap)
+        color = COLORS[method_idx % len(COLORS)]
 
-        if macro_stats:
-            stat = macro_stats.get(method, {})
-            mean_val = stat.get("mean", np.nan)
-            lower_ci = stat.get("lower_ci", np.nan)
-            upper_ci = stat.get("upper_ci", np.nan)
-            means.append(mean_val)
-            low_err.append(mean_val - lower_ci if not np.isnan(mean_val) else 0.0)
-            up_err.append(upper_ci - mean_val if not np.isnan(mean_val) else 0.0)
+        for mod_idx, mod_name in enumerate(modalities):
+            style = mod_styles[mod_name]
+            mod_offset = (mod_idx - (n_mods - 1) / 2) * bar_width
+            bar_x = x_positions + method_center_offset + mod_offset
 
-        for mean_val, lower_err, upper_err in zip(means, low_err, up_err):
-            if not np.isnan(mean_val):
-                y_min = min(y_min, mean_val - lower_err)
-                y_max = max(y_max, mean_val + upper_err)
+            means = [all_modality_stats[mod_name][task][method]["mean"] for task in tasks]
+            low_err = [m - all_modality_stats[mod_name][task][method]["lower_ci"] for m, task in zip(means, tasks)]
+            up_err = [all_modality_stats[mod_name][task][method]["upper_ci"] - m for m, task in zip(means, tasks)]
 
-        ax.bar(
-            x_positions + (method_idx - (len(methods) - 1) / 2) * width,
-            means,
-            width * 0.90,
-            yerr=[low_err, up_err],
-            capsize=2.5,
-            error_kw={"elinewidth": 0.8, "capthick": 0.8, "ecolor": "#222222"},
-            label=METHODS[method],
-            color=COLORS[method_idx % len(COLORS)],
-            edgecolor="#222222",
-            linewidth=0.6,
-            zorder=3,
-            alpha=0.92,
-        )
+            for m, l_err, u_err in zip(means, low_err, up_err):
+                y_min = min(y_min, m - l_err)
+                y_max = max(y_max, m + u_err)
+
+            ax.bar(
+                bar_x,
+                means,
+                bar_width * 0.92,
+                yerr=[low_err, up_err],
+                capsize=2.0,
+                error_kw={"elinewidth": 0.7, "capthick": 0.7, "ecolor": "#222222"},
+                color=color,
+                hatch=style["hatch"],
+                edgecolor="#222222",
+                linewidth=0.6,
+                zorder=3,
+                alpha=style["alpha"],
+            )
+
+    # Subtle separator lines between task clusters
+    for sep_x in x_positions[:-1] + 0.5:
+        ax.axvline(sep_x, color="#e0e0e0", linestyle=":", linewidth=0.7, zorder=1)
 
     ax.grid(axis="y", linestyle="--", alpha=0.3, linewidth=0.5, zorder=0)
     ax.axhline(0, color="black", linestyle="-", linewidth=0.8, zorder=4)
-    if macro_stats:
-        ax.axvline(len(tasks) - 0.5, color="gray", linestyle=":", linewidth=0.8, alpha=0.6, zorder=2)
 
     ax.set_xticks(x_positions)
-    ax.set_xticklabels([format_task(task) for task in all_x], rotation=0, ha="center")
+    ax.set_xticklabels([TASK_MAP[task] for task in tasks], rotation=0, ha="center")
     ax.set_ylabel(f"$\\Delta$ {metric} (Rollout - XGBoost)", fontweight="bold")
 
-    pad = max(0.02, (y_max - y_min) * 0.08) if y_max != y_min else 0.05
+    pad = max(0.02, (y_max - y_min) * 0.10)
     ax.set_ylim(y_min - pad, y_max + pad)
 
+    legend_handles = [
+        Patch(
+            facecolor=COLORS[method_idx % len(COLORS)],
+            edgecolor="#222222",
+            hatch=mod_styles[mod_name]["hatch"],
+            label=f"{mod_styles[mod_name]['prefix']}: {METHODS[method]}",
+            linewidth=0.6,
+            alpha=mod_styles[mod_name]["alpha"],
+        )
+        for method_idx, method in enumerate(methods)
+        for mod_name in modalities
+    ]
+
     ax.legend(
+        handles=legend_handles,
         loc="upper center",
-        bbox_to_anchor=(0.5, 1.18),
-        ncol=4 if len(all_x) >= 5 else 2,
+        bbox_to_anchor=(0.5, 1.20),
+        ncol=4,
         frameon=False,
         fontsize=7.5,
-        columnspacing=1.0,
+        columnspacing=0.9,
         handletextpad=0.4,
+        handlelength=1.3,
+        handleheight=0.85,
     )
+
     sns.despine(ax=ax, trim=False)
     plt.tight_layout()
 
-    modality_slug = modality_name.lower().replace(" ", "_")
-    slug = f"delta_{metric.lower().replace(' ', '_')}_{modality_slug}"
-    out_pdf = out_dir / f"{slug}.pdf"
-    out_png = out_dir / f"{slug}.png"
+    metric_slug = metric.lower().replace(" ", "_")
+    out_pdf = out_dir / f"delta_{metric_slug}_rollout.pdf"
+    out_png = out_dir / f"delta_{metric_slug}_rollout.png"
     plt.savefig(out_pdf, bbox_inches="tight", pad_inches=0.02)
     plt.savefig(out_png, bbox_inches="tight", pad_inches=0.02, dpi=300)
     plt.close()
-    log.info(f"Saved delta plot to {out_pdf} and {out_png}")
+    log.info(f"Saved combined delta plot to {out_pdf} and {out_png}")
 
 
 def main():
@@ -308,52 +306,47 @@ def main():
     parser.add_argument(
         "--nl_dir", type=Path, default=Path(os.environ.get("NATURAL_LANGUAGE_INFERENCE_DIR", "")) / "cpt" / "rollout"
     )
-    parser.add_argument("--meds_cohort_dir", type=Path, default=Path(os.environ.get("MIMICIV_MEDS_COHORT_DIR", "")))
     parser.add_argument("--output_dir", type=Path, default=Path(os.environ.get("EVAL_PLOTS_DIR", "")) / "rollout_delta")
     args = parser.parse_args()
     log.info(args)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    cohort_ids = []
-    shards_file = args.meds_cohort_dir / "metadata" / ".shards.json"
-    if shards_file.exists():
-        for shard_name, shard_subject_ids in json.loads(shards_file.read_text()).items():
-            if shard_name.startswith(args.split):
-                cohort_ids.extend(shard_subject_ids)
-
-    seeds = np.random.RandomState(42).randint(0, 2**31 - 1, size=args.n_bootstraps)
     sources = {"Structured Rollout": args.struct_dir, "Natural Language Rollout": args.nl_dir}
     metric_display = "AUROC" if args.metric == "auroc" else "Brier Score"
 
     summary_rows = []
+    all_modality_stats = {}
 
     for mod_name, mod_dir in sources.items():
         log.info(f"--- Evaluating {mod_name} ({metric_display}) ---")
         task_stats = {}
-        boot_accum = collections.defaultdict(list)
 
         for task in args.tasks:
             xgb_df = load_predictions(args.xgboost_dir, task, args.split, is_xgb=True)
             roll_df = load_predictions(mod_dir, task, args.split, is_xgb=False)
-            if xgb_df is None or roll_df is None:
-                log.warning(f"Skipping task '{task}' - missing XGBoost or Rollout predictions")
-                continue
             log.info(f"Loaded {len(xgb_df)} XGBoost prediction rows for task '{task}'")
             log.info(f"Loaded {len(roll_df)} Rollout prediction rows for task '{task}'")
 
             merged = align_dfs(xgb_df, roll_df)
-            if merged is None or merged.height == 0 or xgb_df.height != merged.height:
-                log.warning(f"Skipping task '{task}' - no overlapping predictions")
-                continue
+            assert merged.height == xgb_df.height == roll_df.height, f"Row count mismatch for task '{task}'"
             log.info(f"Merged {len(merged)} prediction rows for task '{task}'")
 
+            drop_valid_mask = compute_valid_trajectory_mask(merged)
+            n_dropped = int(np.sum(~drop_valid_mask))
+
             log.info(f"Processing task '{task}' ({merged.height} rows)")
-            deltas = run_paired_bootstrap(merged, cohort_ids, seeds, args.metric, num_workers=args.num_workers)
+            deltas = run_paired_bootstrap(
+                merged,
+                metric_name=args.metric,
+                drop_valid_mask=drop_valid_mask,
+                n_bootstraps=args.n_bootstraps,
+                num_workers=args.num_workers,
+            )
 
-            task_stats[task] = {method: calc_ci(deltas[method]) for method in deltas}
+            task_stats[task] = {method: calc_ci(deltas[method]) for method in METHODS}
 
-            for method in deltas:
-                boot_accum[method].append(deltas[method])
+            for method in METHODS:
+                n_samples = merged.height - n_dropped if method == "probability_drop_trajectory" else merged.height
                 summary_rows.append(
                     {
                         "Modality": mod_name,
@@ -362,40 +355,22 @@ def main():
                         f"Delta {metric_display} Mean": task_stats[task][method]["mean"],
                         f"Delta {metric_display} 95% CI Lower": task_stats[task][method]["lower_ci"],
                         f"Delta {metric_display} 95% CI Upper": task_stats[task][method]["upper_ci"],
-                        "N Samples": merged.height,
+                        "N Samples": n_samples,
                     }
                 )
 
-        # Macro averages
-        macro_stats = {}
-        for method in METHODS:
-            if boot_accum[method]:
-                macro_arr = np.nanmean(np.array(boot_accum[method]), axis=0)
-                macro_stats[method] = calc_ci(macro_arr)
-                summary_rows.append(
-                    {
-                        "Modality": mod_name,
-                        "Task": "Macro Average",
-                        "Error Handling Method": METHODS[method],
-                        f"Delta {metric_display} Mean": macro_stats[method]["mean"],
-                        f"Delta {metric_display} 95% CI Lower": macro_stats[method]["lower_ci"],
-                        f"Delta {metric_display} 95% CI Upper": macro_stats[method]["upper_ci"],
-                        "N Samples": np.nan,
-                    }
-                )
+        all_modality_stats[mod_name] = task_stats
 
-        # Render single-axis plot with all tasks for this modality
-        if task_stats:
-            plot_bars(task_stats, macro_stats, metric_display, args.output_dir, mod_name)
+    # Render unified combined plot comparing modalities across all tasks
+    plot_combined_bars(all_modality_stats, metric_display, args.tasks, args.output_dir)
 
-    if summary_rows:
-        df = pl.DataFrame(summary_rows)
-        metric_slug = args.metric.lower()
-        csv_path = args.output_dir / f"rollout_deltas_{metric_slug}.csv"
-        md_path = args.output_dir / f"rollout_deltas_{metric_slug}.md"
-        df.write_csv(csv_path)
-        md_path.write_text(df.to_pandas().to_markdown(index=False))
-        log.info(f"Saved summary tables to {csv_path}")
+    df = pl.DataFrame(summary_rows)
+    metric_slug = args.metric.lower()
+    csv_path = args.output_dir / f"rollout_deltas_{metric_slug}.csv"
+    md_path = args.output_dir / f"rollout_deltas_{metric_slug}.md"
+    df.write_csv(csv_path)
+    md_path.write_text(df.to_pandas().to_markdown(index=False))
+    log.info(f"Saved summary tables to {csv_path}")
 
 
 if __name__ == "__main__":
