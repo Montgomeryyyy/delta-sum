@@ -13,44 +13,24 @@ import seaborn as sns
 from matplotlib.patches import Patch
 from sklearn.metrics import brier_score_loss, roc_auc_score
 
+from evals.plot_style import (
+    COLORS,
+    ERRORBAR_KW,
+    METHODS,
+    MODALITY_STYLES,
+    NEURIPS_TEXTWIDTH_INCHES,
+    SEPARATOR_LINE_KW,
+    TASK_MAP,
+    ZERO_LINE_KW,
+    apply_neurips_style,
+    save_figure,
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger(__name__)
 
-# Configure matplotlib for NeurIPS style camera-ready plots
-sns.set_theme(style="ticks", context="paper", font_scale=1.0)
-plt.rcParams.update(
-    {
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
-        "font.size": 9,
-        "axes.labelsize": 9.5,
-        "axes.titlesize": 9.5,
-        "xtick.labelsize": 8,
-        "ytick.labelsize": 8,
-        "legend.fontsize": 7.5,
-        "figure.dpi": 300,
-        "hatch.linewidth": 0.7,
-    }
-)
-
-METHODS = {
-    "probability_0": "Non-occurrence ($y=0$)",
-    "probability_0_5": "Uninformative prior ($y=0.5$)",
-    "probability_prevalence": "Training Prevalence",
-    "probability_drop_trajectory": "Drop trajectories",
-}
-
-# Okabe-Ito Colorblind-safe palette (NeurIPS/ICML standard, high contrast, clean greyscale reproduction)
-COLORS = ["#56B4E9", "#0072B2", "#009E73", "#D55E00"]
-
-# Standardized 2-line labels ensuring identical vertical baselines across all x-axis ticks
-TASK_MAP = {
-    "ed_72hr_reattendance": "ED 72-Hour\nReattendance",
-    "ed_to_hospital_admission": "ED to Hosp.\nAdmission",
-    "hospital_length_of_stay_leq_7_days": "Hospital LOS\n$\\leq$ 7 Days",
-    "hospital_post_discharge_30_day_mortality": "30-Day\nMortality",
-    "in_hospital_mortality": "In-Hospital\nMortality",
-}
+# Apply NeurIPS style across the module
+apply_neurips_style()
 
 
 def load_predictions(base_dir: Path, task: str, split: str, is_xgb: bool = False) -> pl.DataFrame:
@@ -190,16 +170,11 @@ def plot_combined_bars(
     n_methods = len(methods)
     n_mods = len(modalities)
 
-    bar_width = 0.082
-    inter_method_gap = 0.035
+    bar_width = 0.078
+    inter_method_gap = 0.032
     pair_span = n_mods * bar_width
 
-    mod_styles = {
-        "Structured Rollout": {"hatch": None, "alpha": 0.95, "prefix": "S"},
-        "Natural Language Rollout": {"hatch": "///", "alpha": 0.90, "prefix": "NL"},
-    }
-
-    fig, ax = plt.subplots(figsize=(max(6.5, len(tasks) * 1.5), 3.5))
+    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, 3))
     y_min, y_max = 0.0, 0.0
 
     for method_idx, method in enumerate(methods):
@@ -207,7 +182,7 @@ def plot_combined_bars(
         color = COLORS[method_idx % len(COLORS)]
 
         for mod_idx, mod_name in enumerate(modalities):
-            style = mod_styles[mod_name]
+            style = MODALITY_STYLES[mod_name]
             mod_offset = (mod_idx - (n_mods - 1) / 2) * bar_width
             bar_x = x_positions + method_center_offset + mod_offset
 
@@ -224,38 +199,33 @@ def plot_combined_bars(
                 means,
                 bar_width * 0.92,
                 yerr=[low_err, up_err],
-                capsize=2.0,
-                error_kw={"elinewidth": 0.7, "capthick": 0.7, "ecolor": "#222222"},
+                error_kw=ERRORBAR_KW,
                 color=color,
                 hatch=style["hatch"],
-                edgecolor="#222222",
-                linewidth=0.6,
                 zorder=3,
                 alpha=style["alpha"],
             )
 
     # Subtle separator lines between task clusters
     for sep_x in x_positions[:-1] + 0.5:
-        ax.axvline(sep_x, color="#e0e0e0", linestyle=":", linewidth=0.7, zorder=1)
+        ax.axvline(sep_x, **SEPARATOR_LINE_KW)
 
-    ax.grid(axis="y", linestyle="--", alpha=0.3, linewidth=0.5, zorder=0)
-    ax.axhline(0, color="black", linestyle="-", linewidth=0.8, zorder=4)
+    ax.axhline(0, **ZERO_LINE_KW)
 
     ax.set_xticks(x_positions)
     ax.set_xticklabels([TASK_MAP[task] for task in tasks], rotation=0, ha="center")
-    ax.set_ylabel(f"$\\Delta$ {metric} (Rollout - XGBoost)", fontweight="bold")
+    ax.set_ylabel(f"$\\Delta$ {metric} (Rollout $-$ XGBoost)")
 
-    pad = max(0.02, (y_max - y_min) * 0.10)
+    pad = max(0.015, (y_max - y_min) * 0.12)
     ax.set_ylim(y_min - pad, y_max + pad)
 
+    # Clean 2-row x 4-col legend: Row 1 = Structured (S), Row 2 = Natural Language (NL)
     legend_handles = [
         Patch(
             facecolor=COLORS[method_idx % len(COLORS)],
-            edgecolor="#222222",
-            hatch=mod_styles[mod_name]["hatch"],
-            label=f"{mod_styles[mod_name]['prefix']}: {METHODS[method]}",
-            linewidth=0.6,
-            alpha=mod_styles[mod_name]["alpha"],
+            hatch=MODALITY_STYLES[mod_name]["hatch"],
+            label=f"{MODALITY_STYLES[mod_name]['prefix']}: {METHODS[method]}",
+            alpha=MODALITY_STYLES[mod_name]["alpha"],
         )
         for method_idx, method in enumerate(methods)
         for mod_name in modalities
@@ -264,26 +234,18 @@ def plot_combined_bars(
     ax.legend(
         handles=legend_handles,
         loc="upper center",
-        bbox_to_anchor=(0.5, 1.20),
+        bbox_to_anchor=(0.5, 1.25),
         ncol=4,
-        frameon=False,
-        fontsize=7.5,
-        columnspacing=0.9,
-        handletextpad=0.4,
-        handlelength=1.3,
-        handleheight=0.85,
     )
 
     sns.despine(ax=ax, trim=False)
     plt.tight_layout()
 
     metric_slug = metric.lower().replace(" ", "_")
-    out_pdf = out_dir / f"delta_{metric_slug}_rollout.pdf"
-    out_png = out_dir / f"delta_{metric_slug}_rollout.png"
-    plt.savefig(out_pdf, bbox_inches="tight", pad_inches=0.02)
-    plt.savefig(out_png, bbox_inches="tight", pad_inches=0.02, dpi=300)
+    stem = f"delta_{metric_slug}_rollout"
+    save_figure(out_dir, stem, formats=("pdf", "png"))
     plt.close()
-    log.info(f"Saved combined delta plot to {out_pdf} and {out_png}")
+    log.info(f"Saved combined delta plot to {out_dir / f'{stem}.pdf'} and {out_dir / f'{stem}.png'}")
 
 
 def main():
@@ -324,17 +286,14 @@ def main():
         for task in args.tasks:
             xgb_df = load_predictions(args.xgboost_dir, task, args.split, is_xgb=True)
             roll_df = load_predictions(mod_dir, task, args.split, is_xgb=False)
-            log.info(f"Loaded {len(xgb_df)} XGBoost prediction rows for task '{task}'")
-            log.info(f"Loaded {len(roll_df)} Rollout prediction rows for task '{task}'")
 
             merged = align_dfs(xgb_df, roll_df)
             assert merged.height == xgb_df.height == roll_df.height, f"Row count mismatch for task '{task}'"
-            log.info(f"Merged {len(merged)} prediction rows for task '{task}'")
 
             drop_valid_mask = compute_valid_trajectory_mask(merged)
             n_dropped = int(np.sum(~drop_valid_mask))
 
-            log.info(f"Processing task '{task}' ({merged.height} rows)")
+            log.info(f"Processing task '{mod_name} {task}' ({merged.height} rows)")
             deltas = run_paired_bootstrap(
                 merged,
                 metric_name=args.metric,
