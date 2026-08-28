@@ -2,7 +2,6 @@ import argparse
 import logging
 import os
 import re
-import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +11,14 @@ import seaborn as sns
 from omegaconf import DictConfig, OmegaConf
 from transformers import PreTrainedTokenizerBase
 
+from evals.plot_style import (
+    NEURIPS_TEXTWIDTH_INCHES,
+    OKABE_ITO_PALETTE,
+    SEPARATOR_LINE_KW,
+    apply_neurips_style,
+    format_task_label,
+    save_figure,
+)
 from mimic_struct_predict.models.pre_training.generative_inference import (
     detect_outcome,
 )
@@ -22,6 +29,9 @@ from mimic_struct_predict.models.utils.preprocessing import (
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger(__name__)
+
+# Apply NeurIPS style across the module
+apply_neurips_style()
 
 
 def get_regex_patterns(cfg: DictConfig) -> tuple[re.Pattern, re.Pattern]:
@@ -376,16 +386,7 @@ def main():
 
     # Clean up task names for presentation
     unique_tasks = df["task"].unique().to_list()
-    task_name_mapping = {
-        t: {
-            "ed_72hr_reattendance": "ED Reattendance",
-            "ed_to_hospital_admission": "ED to Hosp. Admission",
-            "hospital_length_of_stay_leq_7_days": "LOS $\\leq$ 7 Days",
-            "hospital_post_discharge_30_day_mortality": "30-Day Mortality",
-            "in_hospital_mortality": "In-Hospital Mortality",
-        }.get(t, t.replace("_", " ").title())
-        for t in unique_tasks
-    }
+    task_name_mapping = {t: format_task_label(t) for t in unique_tasks}
 
     # Generate the grouped boxplot
     plot_df = df.select(["task", "nl_tokens", "struct_tokens"]).unpivot(
@@ -399,73 +400,76 @@ def main():
         pl.col("task").replace(task_name_mapping),
     )
 
-    # NeurIPS camera-ready styling
-    # Use "ticks" style for cleaner paper aesthetic
-    sns.set_theme(style="ticks", context="paper", font_scale=1.1)
+    # Colorblind-friendly palette (Okabe-Ito colors from plot_style)
+    palette = {
+        "Natural Language": OKABE_ITO_PALETTE["blue"],
+        "Structured": OKABE_ITO_PALETTE["vermilion"],
+    }
 
-    # NeurIPS single column width is exactly 5.5 inches
-    plt.figure(figsize=(5.5, 3.5))
+    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, 3))
 
-    # Colorblind-friendly palette (Okabe-Ito colors)
-    palette = {"Natural Language": "#0072B2", "Structured": "#D55E00"}
+    flierprops = dict(
+        marker="o",
+        markersize=0.8,
+        alpha=0.15,
+        markeredgewidth=0,
+        markerfacecolor="#333333",
+    )
 
-    ax = sns.boxplot(
+    sns.boxplot(
         data=plot_df.to_pandas(),
         x="task",
         y="tokens",
         hue="modality",
         palette=palette,
-        fliersize=1.5,  # Smaller fliers so they don't dominate the plot
-        linewidth=1.0,  # Thinner lines for vector graphics
-        whis=[5, 95],  # Shows 5th and 95th percentiles
-        boxprops=dict(alpha=0.9),  # Slight transparency
-        gap=0.1,  # Add a gap between dodged boxes
+        flierprops=flierprops,
+        linewidth=0.6,
+        whis=[5, 95],
+        boxprops=dict(alpha=0.9),
+        gap=0.1,
+        ax=ax,
     )
 
-    # Add max limit line; use a striking red dashed line to ensure it doesn't get lost
-    plt.axhline(
+    # Subtle separator lines between task clusters
+    for sep_x in range(len(unique_tasks) - 1):
+        ax.axvline(sep_x + 0.5, **SEPARATOR_LINE_KW)
+
+    # Add max limit line; prominent dashed line indicating token generation budget
+    ax.axhline(
         y=args.max_tokens,
         color="#c44e52",
         linestyle="--",
-        linewidth=2.0,
-        label=f"{args.max_tokens} Max New Tokens",
-        zorder=5,
+        linewidth=1.2,
+        label=f"{args.max_tokens} Generation Length",
+        zorder=3,
     )
 
     ax.set_yscale("log")
+    ax.set_ylim(bottom=1)
+    ax.set_xlabel("")
+    ax.set_ylabel("Ground Truth Trajectory Length (Tokens)")
 
-    # Titles are typically omitted in papers (placed in caption instead)
-    plt.xlabel("")  # Task is self-evident
-    plt.ylabel("Ground Truth Output Token Length")
-
-    # Wrap x-tick labels and keep them horizontal
-    labels = [textwrap.fill(label.get_text(), width=12) for label in ax.get_xticklabels()]
+    # Format ticks and despine
     ax.set_xticks(ax.get_xticks())
-    ax.set_xticklabels(labels, rotation=0, ha="center")
-
-    # Despine top and right axes for a cleaner look
-    sns.despine(offset=5, trim=False)
+    ax.set_xticklabels([label.get_text() for label in ax.get_xticklabels()], rotation=0, ha="center")
+    sns.despine(ax=ax, offset=4, trim=False)
 
     # Refine legend for paper style
     handles, labels = ax.get_legend_handles_labels()
-    plt.legend(
+    ax.legend(
         handles=handles,
         labels=labels,
         loc="upper center",
-        bbox_to_anchor=(0.5, 1.15),  # Place slightly above the plot
+        bbox_to_anchor=(0.5, 1.18),
         ncol=3,
-        frameon=False,
-        fontsize=9,
     )
 
     plt.tight_layout()
 
-    pdf_path = out_dir / "token_lengths_grouped_boxplot.pdf"
-    png_path = out_dir / "token_lengths_grouped_boxplot.png"
-    # PDF is preferred for NeurIPS
-    plt.savefig(pdf_path, format="pdf", bbox_inches="tight", dpi=300)
-    plt.savefig(png_path, format="png", bbox_inches="tight", dpi=300)
-    log.info(f"Saved NeurIPS camera-ready token length plots to {pdf_path} and {png_path}")
+    stem = "token_lengths_grouped_boxplot"
+    save_figure(out_dir, stem, formats=("pdf", "png"))
+    plt.close()
+    log.info(f"Saved camera-ready token length plots to {out_dir / f'{stem}.pdf'} and {out_dir / f'{stem}.png'}")
 
 
 if __name__ == "__main__":
