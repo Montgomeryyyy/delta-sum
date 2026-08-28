@@ -5,23 +5,27 @@ import re
 from pathlib import Path
 from typing import Any
 
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import numpy as np
 import polars as pl
 import seaborn as sns
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from omegaconf import DictConfig, OmegaConf
-from transformers import PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from evals.plot_style import (
+    DEFAULT_FIG_HEIGHT_INCHES,
     NEURIPS_TEXTWIDTH_INCHES,
-    OKABE_ITO_PALETTE,
     SEPARATOR_LINE_KW,
+    TIMELINE_PALETTE,
     apply_neurips_style,
     format_task_label,
     save_figure,
+    sort_tasks,
 )
-from mimic_struct_predict.models.pre_training.generative_inference import (
-    detect_outcome,
-)
+from mimic_struct_predict.models.pre_training.generative_inference import detect_outcome, get_valid_categories
 from mimic_struct_predict.models.utils.preprocessing import (
     append_numeric_values_to_codes_expr,
     get_agg_expr,
@@ -251,6 +255,118 @@ def process_shard(
     return pl.DataFrame(records)
 
 
+def plot_trajectory_lengths(
+    df: pl.DataFrame,
+    tasks: list[str],
+    max_tokens: int,
+    out_dir: Path,
+):
+    """Plots ground truth trajectory length distributions for Structured and Natural Language."""
+    tasks = sort_tasks(tasks)
+    plot_df = (
+        df.filter(pl.col("task").is_in(tasks))
+        .select(["task", "struct_tokens", "nl_tokens"])
+        .unpivot(index=["task"], variable_name="modality", value_name="tokens")
+        .filter((pl.col("tokens").is_not_null()) & (pl.col("tokens") > 0))
+        .with_columns(
+            pl.col("modality").replace({"struct_tokens": "Structured (GT)", "nl_tokens": "Natural Language (GT)"}),
+            pl.col("task").replace({t: format_task_label(t) for t in tasks}),
+        )
+    )
+
+    task_labels = [format_task_label(t) for t in tasks]
+    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, DEFAULT_FIG_HEIGHT_INCHES))
+
+    sns.boxplot(
+        data=plot_df.to_pandas(),
+        x="task",
+        y="tokens",
+        hue="modality",
+        order=task_labels,
+        hue_order=["Structured (GT)", "Natural Language (GT)"],
+        palette=TIMELINE_PALETTE,
+        saturation=1,
+        linewidth=0.6,
+        whis=[5, 95],
+        gap=0.1,
+        flierprops=dict(marker="o", markersize=0.8, alpha=0.15, markeredgewidth=0, markerfacecolor="#333333"),
+        ax=ax,
+    )
+
+    # Apply diagonal hatching to Natural Language (GT) boxes for cross-figure texture consistency
+    nl_rgba = mcolors.to_rgba(TIMELINE_PALETTE["Natural Language (GT)"])
+    for patch in ax.patches:
+        patch_fc = patch.get_facecolor()
+        if np.allclose(patch_fc[:3], nl_rgba[:3], atol=1e-2):
+            patch.set_hatch("///")
+            patch.set_edgecolor("#222222")
+            patch.set_linewidth(0.6)
+
+    for artist in ax.artists:
+        artist_fc = artist.get_facecolor()
+        if np.allclose(artist_fc[:3], nl_rgba[:3], atol=1e-2):
+            artist.set_hatch("///")
+            artist.set_edgecolor("#222222")
+            artist.set_linewidth(0.6)
+
+    for sep_x in range(len(task_labels) - 1):
+        ax.axvline(sep_x + 0.5, **SEPARATOR_LINE_KW)
+
+    ax.axhline(
+        y=max_tokens,
+        color=TIMELINE_PALETTE["threshold_line"],
+        linestyle="--",
+        linewidth=1.2,
+        label=f"Our Max New Tokens ({max_tokens})",
+        zorder=3,
+    )
+
+    ax.set_yscale("log")
+    ax.yaxis.set_minor_locator(plt.NullLocator())
+    ax.set_ylim(bottom=1)
+    ax.set_xlabel("")
+    ax.set_ylabel("Ground Truth Trajectory Length (Tokens)")
+    sns.despine(ax=ax, trim=False)
+
+    legend_handles = [
+        Patch(
+            facecolor=TIMELINE_PALETTE["Structured (GT)"],
+            edgecolor="#222222",
+            linewidth=0.5,
+            label="Structured (GT)",
+        ),
+        Patch(
+            facecolor=TIMELINE_PALETTE["Natural Language (GT)"],
+            hatch="///",
+            edgecolor="#222222",
+            linewidth=0.5,
+            label="Natural Language (GT)",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=TIMELINE_PALETTE["threshold_line"],
+            linestyle="--",
+            linewidth=1.2,
+            label=f"Our Max New Tokens ({max_tokens})",
+        ),
+    ]
+
+    ax.legend(
+        handles=legend_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.05),
+        ncol=3,
+    )
+
+    plt.tight_layout()
+
+    stem = "token_lengths_grouped_boxplot"
+    save_figure(out_dir, stem)
+    plt.close()
+    log.info(f"Saved camera-ready token length plots to {out_dir / f'{stem}.png'}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Extract token counts up to exit event for generative sequences.")
     parser.add_argument("--tasks", nargs="+", default=os.environ.get("ACES_TASKS").split())
@@ -301,9 +417,10 @@ def main():
     parser.add_argument("--nl_tokenizer_path", type=str, required=True)
     parser.add_argument("--struct_tokenizer_path", type=str, required=True)
 
-    parser.add_argument("--output_dir", type=str, default=f"{os.environ.get('EVAL_PLOTS_DIR')}/token_counts")
+    parser.add_argument("--output_dir", type=str, default=f"{os.environ.get('EVAL_PLOTS_DIR')}/gt_trajectory_lengths")
     parser.add_argument("--max_tokens", type=int, default=1024, help="Token limit for the plot")
     args = parser.parse_args()
+    args.tasks = sort_tasks(args.tasks)
     log.info(args)
 
     aces_base = Path(args.aces_dir)
@@ -321,62 +438,62 @@ def main():
     nl_prep_cfg = OmegaConf.load(args.nl_prep_config)
     struct_prep_cfg = OmegaConf.merge(nl_prep_cfg, OmegaConf.load(args.struct_prep_config))
 
-    # nl_tokenizer = AutoTokenizer.from_pretrained(args.nl_tokenizer_path)
-    # struct_tokenizer = AutoTokenizer.from_pretrained(args.struct_tokenizer_path)
+    nl_tokenizer = AutoTokenizer.from_pretrained(args.nl_tokenizer_path)
+    struct_tokenizer = AutoTokenizer.from_pretrained(args.struct_tokenizer_path)
 
-    # # Note: If running from repo root, this relative path from the config works.
-    # nl_valid_cats = get_valid_categories(nl_cfg.event_extraction.event_config_path)
-    # struct_valid_cats = get_valid_categories(struct_cfg.event_extraction.event_config_path)
+    # Note: If running from repo root, this relative path from the config works.
+    nl_valid_cats = get_valid_categories(nl_cfg.event_extraction.event_config_path)
+    struct_valid_cats = get_valid_categories(struct_cfg.event_extraction.event_config_path)
 
-    # all_dfs = []
-    # for task_name in args.tasks:
-    #     if task_name not in nl_cfg.event_extraction.tasks:
-    #         log.warning(f"Task {task_name} not found in NL config. Skipping.")
-    #         continue
+    all_dfs = []
+    for task_name in args.tasks:
+        if task_name not in nl_cfg.event_extraction.tasks:
+            log.warning(f"Task {task_name} not found in NL config. Skipping.")
+            continue
 
-    #     aces_split_dir = aces_base / task_name / args.split
+        aces_split_dir = aces_base / task_name / args.split
 
-    #     if not aces_split_dir.exists():
-    #         log.warning(f"Split {args.split} not found for task {task_name}. Skipping.")
-    #         continue
+        if not aces_split_dir.exists():
+            log.warning(f"Split {args.split} not found for task {task_name}. Skipping.")
+            continue
 
-    #     aces_shards = sorted(aces_split_dir.glob("*.parquet"))
-    #     log.info(f"Processing Task: [{task_name}] | Split: [{args.split}] | Shards: {len(aces_shards)}")
+        aces_shards = sorted(aces_split_dir.glob("*.parquet"))
+        log.info(f"Processing Task: [{task_name}] | Split: [{args.split}] | Shards: {len(aces_shards)}")
 
-    #     for aces_shard in aces_shards:
-    #         log.info(f"Processing shard: {aces_shard}")
-    #         nl_meds_shard = nl_meds_base / args.split / aces_shard.name
-    #         struct_meds_shard = struct_meds_base / args.split / aces_shard.name
+        for aces_shard in aces_shards:
+            log.info(f"Processing shard: {aces_shard}")
+            nl_meds_shard = nl_meds_base / args.split / aces_shard.name
+            struct_meds_shard = struct_meds_base / args.split / aces_shard.name
 
-    #         df_shard = process_shard(
-    #             aces_shard,
-    #             nl_meds_shard,
-    #             struct_meds_shard,
-    #             nl_cfg,
-    #             struct_cfg,
-    #             nl_prep_cfg,
-    #             struct_prep_cfg,
-    #             nl_tokenizer,
-    #             struct_tokenizer,
-    #             task_name,
-    #             nl_valid_cats,
-    #             struct_valid_cats,
-    #         )
-    #         if df_shard is not None:
-    #             all_dfs.append(df_shard)
+            df_shard = process_shard(
+                aces_shard,
+                nl_meds_shard,
+                struct_meds_shard,
+                nl_cfg,
+                struct_cfg,
+                nl_prep_cfg,
+                struct_prep_cfg,
+                nl_tokenizer,
+                struct_tokenizer,
+                task_name,
+                nl_valid_cats,
+                struct_valid_cats,
+            )
+            if df_shard is not None:
+                all_dfs.append(df_shard)
 
-    # if not all_dfs:
-    #     log.warning("No records found to process.")
-    #     return
+    if not all_dfs:
+        log.warning("No records found to process.")
+        return
 
-    # df = pl.concat(all_dfs)
+    df = pl.concat(all_dfs)
 
-    # parquet_out = out_dir / "exit_events_metrics.parquet"
-    # df.write_parquet(parquet_out)
-    # log.info(f"Saved raw metrics to {parquet_out}")
+    parquet_out = out_dir / "gt_trajectory_lengths.parquet"
+    df.write_parquet(parquet_out)
+    log.info(f"Saved raw metrics to {parquet_out}")
 
     # Load previously saved metrics if data generation is commented out
-    parquet_out = out_dir / "exit_events_metrics.parquet"
+    parquet_out = out_dir / "gt_trajectory_lengths.parquet"
     if "df" not in locals():
         if parquet_out.exists():
             df = pl.read_parquet(parquet_out)
@@ -384,92 +501,7 @@ def main():
             log.error(f"Dataframe 'df' not defined and {parquet_out} not found. Please uncomment data generation.")
             return
 
-    # Clean up task names for presentation
-    unique_tasks = df["task"].unique().to_list()
-    task_name_mapping = {t: format_task_label(t) for t in unique_tasks}
-
-    # Generate the grouped boxplot
-    plot_df = df.select(["task", "nl_tokens", "struct_tokens"]).unpivot(
-        index=["task"], variable_name="modality", value_name="tokens"
-    )
-
-    # Filter 0 or null
-    plot_df = plot_df.filter((pl.col("tokens").is_not_null()) & (pl.col("tokens") > 0))
-    plot_df = plot_df.with_columns(
-        pl.col("modality").replace({"nl_tokens": "Natural Language", "struct_tokens": "Structured"}),
-        pl.col("task").replace(task_name_mapping),
-    )
-
-    # Colorblind-friendly palette (Okabe-Ito colors from plot_style)
-    palette = {
-        "Natural Language": OKABE_ITO_PALETTE["blue"],
-        "Structured": OKABE_ITO_PALETTE["vermilion"],
-    }
-
-    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, 3))
-
-    flierprops = dict(
-        marker="o",
-        markersize=0.8,
-        alpha=0.15,
-        markeredgewidth=0,
-        markerfacecolor="#333333",
-    )
-
-    sns.boxplot(
-        data=plot_df.to_pandas(),
-        x="task",
-        y="tokens",
-        hue="modality",
-        palette=palette,
-        flierprops=flierprops,
-        linewidth=0.6,
-        whis=[5, 95],
-        boxprops=dict(alpha=0.9),
-        gap=0.1,
-        ax=ax,
-    )
-
-    # Subtle separator lines between task clusters
-    for sep_x in range(len(unique_tasks) - 1):
-        ax.axvline(sep_x + 0.5, **SEPARATOR_LINE_KW)
-
-    # Add max limit line; prominent dashed line indicating token generation budget
-    ax.axhline(
-        y=args.max_tokens,
-        color="#c44e52",
-        linestyle="--",
-        linewidth=1.2,
-        label=f"{args.max_tokens} Generation Length",
-        zorder=3,
-    )
-
-    ax.set_yscale("log")
-    ax.set_ylim(bottom=1)
-    ax.set_xlabel("")
-    ax.set_ylabel("Ground Truth Trajectory Length (Tokens)")
-
-    # Format ticks and despine
-    ax.set_xticks(ax.get_xticks())
-    ax.set_xticklabels([label.get_text() for label in ax.get_xticklabels()], rotation=0, ha="center")
-    sns.despine(ax=ax, offset=4, trim=False)
-
-    # Refine legend for paper style
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(
-        handles=handles,
-        labels=labels,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1.18),
-        ncol=3,
-    )
-
-    plt.tight_layout()
-
-    stem = "token_lengths_grouped_boxplot"
-    save_figure(out_dir, stem, formats=("pdf", "png"))
-    plt.close()
-    log.info(f"Saved camera-ready token length plots to {out_dir / f'{stem}.pdf'} and {out_dir / f'{stem}.png'}")
+    plot_trajectory_lengths(df, args.tasks, args.max_tokens, out_dir)
 
 
 if __name__ == "__main__":

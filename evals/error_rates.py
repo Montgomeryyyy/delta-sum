@@ -11,13 +11,16 @@ import seaborn as sns
 from matplotlib.patches import Patch
 
 from evals.plot_style import (
+    DEFAULT_FIG_HEIGHT_INCHES,
+    ERROR_RATES_PALETTE,
     MODALITY_STYLES,
     NEURIPS_TEXTWIDTH_INCHES,
-    OKABE_ITO_PALETTE,
     SEPARATOR_LINE_KW,
     TASK_MAP,
     apply_neurips_style,
+    get_modality_legend_handles,
     save_figure,
+    sort_tasks,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -44,11 +47,17 @@ def plot_error_rates(
     x_positions = np.arange(len(tasks))
     bar_width = 0.35
 
-    all_reasons = sorted({r for mod in all_modality_stats.values() for t in tasks for r in mod.get(t, {})})
-    palette = list(OKABE_ITO_PALETTE.values())
-    reason_colors = {r: palette[i % len(palette)] for i, r in enumerate(all_reasons)}
+    all_reasons = {r for mod in all_modality_stats.values() for t in tasks for r in mod.get(t, {})}
+    unknown_reasons = all_reasons - ERROR_RATES_PALETTE.keys()
+    if unknown_reasons:
+        raise ValueError(
+            f"Encountered unexpected finish reasons: {unknown_reasons}. "
+            f"Allowed reasons must be defined in ERROR_RATES_PALETTE: {list(ERROR_RATES_PALETTE.keys())}"
+        )
 
-    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, 2.6))
+    ordered_reasons = [r for r in ERROR_RATES_PALETTE if r in all_reasons]
+
+    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, DEFAULT_FIG_HEIGHT_INCHES))
     y_max = 0.05
 
     for mod_idx, mod_name in enumerate(modalities):
@@ -57,14 +66,14 @@ def plot_error_rates(
         bar_x = x_positions + mod_offset
         bottoms = np.zeros(len(tasks))
 
-        for reason in all_reasons:
+        for reason in ordered_reasons:
             props = [all_modality_stats[mod_name][task].get(reason, 0.0) for task in tasks]
             ax.bar(
                 bar_x,
                 props,
                 bar_width * 0.92,
                 bottom=bottoms,
-                color=reason_colors[reason],
+                color=ERROR_RATES_PALETTE[reason],
                 hatch=style["hatch"],
                 alpha=style["alpha"],
                 edgecolor="#222222",
@@ -94,31 +103,27 @@ def plot_error_rates(
 
     ax.set_ylim(0, max(0.05, y_max * 1.15))
 
-    legend_handles = [
-        Patch(facecolor=reason_colors[r], edgecolor="#222222", linewidth=0.5, label=r.replace("_", " ").title())
-        for r in all_reasons
-    ] + [
-        Patch(
-            facecolor="#e0e0e0",
-            hatch=MODALITY_STYLES[mod]["hatch"],
-            edgecolor="#222222",
-            linewidth=0.5,
-            label=f"{MODALITY_STYLES[mod]['prefix']}: {mod}",
-            alpha=MODALITY_STYLES[mod]["alpha"],
-        )
-        for mod in modalities
+    # Clean 2-row legend: Row 1 = Error types, Row 2 = Modalities (S vs NL)
+    reason_handles = [
+        Patch(facecolor=ERROR_RATES_PALETTE[r], edgecolor="#222222", linewidth=0.5, label=r) for r in ordered_reasons
     ]
+    modality_handles = get_modality_legend_handles(facecolor="white")
+    legend_handles = reason_handles + modality_handles
 
-    ncol = len(legend_handles) if len(legend_handles) <= 5 else int(np.ceil(len(legend_handles) / 2))
-    ax.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.25), ncol=ncol)
+    ax.legend(
+        handles=legend_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.25),
+        ncol=3,
+    )
 
     sns.despine(ax=ax, trim=False)
     plt.tight_layout()
 
     stem = "combined_error_rates"
-    save_figure(out_dir, stem, formats=("pdf", "png"))
+    save_figure(out_dir, stem)
     plt.close()
-    log.info(f"Saved error plot to {out_dir / f'{stem}.pdf'} and {out_dir / f'{stem}.png'}")
+    log.info(f"Saved error plot to {out_dir / f'{stem}.png'}")
 
 
 def main():
@@ -141,6 +146,7 @@ def main():
         default=Path(os.environ.get("EVAL_PLOTS_DIR", "")) / "error_rates",
     )
     args = parser.parse_args()
+    args.tasks = sort_tasks(args.tasks)
     log.info(args)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)

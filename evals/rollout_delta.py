@@ -14,16 +14,19 @@ from matplotlib.patches import Patch
 from sklearn.metrics import brier_score_loss, roc_auc_score
 
 from evals.plot_style import (
-    COLORS,
+    DEFAULT_FIG_HEIGHT_INCHES,
     ERRORBAR_KW,
     METHODS,
+    METHODS_PALETTE,
     MODALITY_STYLES,
     NEURIPS_TEXTWIDTH_INCHES,
     SEPARATOR_LINE_KW,
     TASK_MAP,
     ZERO_LINE_KW,
     apply_neurips_style,
+    get_modality_legend_handles,
     save_figure,
+    sort_tasks,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -164,6 +167,7 @@ def plot_combined_bars(
     out_dir: Path,
 ):
     """Generates a combined bar plot comparing Structured and Natural Language rollouts side-by-side per task."""
+    tasks = sort_tasks(tasks)
     modalities = list(all_modality_stats.keys())
     x_positions = np.arange(len(tasks))
     methods = list(METHODS.keys())
@@ -174,12 +178,12 @@ def plot_combined_bars(
     inter_method_gap = 0.032
     pair_span = n_mods * bar_width
 
-    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, 3))
+    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, DEFAULT_FIG_HEIGHT_INCHES))
     y_min, y_max = 0.0, 0.0
 
     for method_idx, method in enumerate(methods):
         method_center_offset = (method_idx - (n_methods - 1) / 2) * (pair_span + inter_method_gap)
-        color = COLORS[method_idx % len(COLORS)]
+        color = METHODS_PALETTE[method]
 
         for mod_idx, mod_name in enumerate(modalities):
             style = MODALITY_STYLES[mod_name]
@@ -204,6 +208,8 @@ def plot_combined_bars(
                 hatch=style["hatch"],
                 zorder=3,
                 alpha=style["alpha"],
+                edgecolor="#222222",
+                linewidth=0.5,
             )
 
     # Subtle separator lines between task clusters
@@ -219,23 +225,25 @@ def plot_combined_bars(
     pad = max(0.015, (y_max - y_min) * 0.12)
     ax.set_ylim(y_min - pad, y_max + pad)
 
-    # Clean 2-row x 4-col legend: Row 1 = Structured (S), Row 2 = Natural Language (NL)
-    legend_handles = [
+    # Clean 2-row legend matching error_rates.py:
+    # Row 1 = Methods (colored patches), Row 2 = Modalities (S solid, NL hatched)
+    method_handles = [
         Patch(
-            facecolor=COLORS[method_idx % len(COLORS)],
-            hatch=MODALITY_STYLES[mod_name]["hatch"],
-            label=f"{MODALITY_STYLES[mod_name]['prefix']}: {METHODS[method]}",
-            alpha=MODALITY_STYLES[mod_name]["alpha"],
+            facecolor=METHODS_PALETTE[method],
+            edgecolor="#222222",
+            linewidth=0.5,
+            label=METHODS[method],
         )
-        for method_idx, method in enumerate(methods)
-        for mod_name in modalities
+        for method in methods
     ]
+    modality_handles = get_modality_legend_handles(facecolor="white", include_prefix=False)
+    legend_handles = method_handles + modality_handles
 
     ax.legend(
         handles=legend_handles,
         loc="upper center",
         bbox_to_anchor=(0.5, 1.25),
-        ncol=4,
+        ncol=3,
     )
 
     sns.despine(ax=ax, trim=False)
@@ -243,9 +251,9 @@ def plot_combined_bars(
 
     metric_slug = metric.lower().replace(" ", "_")
     stem = f"delta_{metric_slug}_rollout"
-    save_figure(out_dir, stem, formats=("pdf", "png"))
+    save_figure(out_dir, stem)
     plt.close()
-    log.info(f"Saved combined delta plot to {out_dir / f'{stem}.pdf'} and {out_dir / f'{stem}.png'}")
+    log.info(f"Saved combined delta plot to {out_dir / f'{stem}.png'}")
 
 
 def main():
@@ -270,6 +278,7 @@ def main():
     )
     parser.add_argument("--output_dir", type=Path, default=Path(os.environ.get("EVAL_PLOTS_DIR", "")) / "rollout_delta")
     args = parser.parse_args()
+    args.tasks = sort_tasks(args.tasks)
     log.info(args)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
