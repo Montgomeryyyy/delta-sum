@@ -4,9 +4,9 @@ aces_dir: ???  # Required: directory of pre-built aces datasets
 output_dir: ???          # Required: directory to save outputs
 tasks: ???
 
-overwrite: false
+overwrite: true
 
-splits_to_process: ["train", "tuning", "held_out"]
+splits_to_process: ["held_out"]
 
 pre_processing:
   delimiter: "//"
@@ -19,7 +19,7 @@ num_workers: 1
 
 tokenizer:
   pretrained_model_name_or_path: ???
-  model_max_length: 4096
+  model_max_length: 3072
 
 hydra:
   run:

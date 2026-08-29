@@ -69,7 +69,7 @@ def batch_ids_to_string(
         # HACK: Batch decode always joins using spaces, so do slightly slower way to allow for delimiter
         # join for word-level tokenizers e.g. structured
         return [
-            delimiter.join(tokenizer.convert_ids_to_tokens(token_ids, skip_special_tokens=True))
+            delimiter + delimiter.join(tokenizer.convert_ids_to_tokens(token_ids, skip_special_tokens=True))
             for token_ids in batch_token_ids
         ]
     else:
@@ -273,6 +273,7 @@ def detect_outcome(
         "num_events": num_events,
         "num_lines": line_idx + 1 if lines else 0,
         "time_covered": time_covered,
+        "error_line": lines[line_idx] if not format_adherence else "",
     }
 
 

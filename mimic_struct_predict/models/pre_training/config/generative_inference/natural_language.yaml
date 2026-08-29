@@ -12,7 +12,7 @@ model:
   dtype: bfloat16
   seed: ${seed}
   tensor_parallel_size: 1
-  max_model_len: 5120
+  max_model_len: 4096
   gpu_memory_utilization: 0.9
 
 sampling_params:
