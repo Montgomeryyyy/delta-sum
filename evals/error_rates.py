@@ -18,6 +18,7 @@ from evals.plot_style import (
     SEPARATOR_LINE_KW,
     TASK_MAP,
     apply_neurips_style,
+    format_task_title,
     get_modality_legend_handles,
     save_figure,
     sort_tasks,
@@ -34,6 +35,27 @@ def load_predictions(base_dir: Path, task: str, split: str) -> pl.DataFrame:
     task_dir = base_dir / split / task
     latest = max(d for d in task_dir.iterdir() if d.is_dir())
     return pl.read_parquet(list(latest.glob("*.parquet")))
+
+
+def format_error_pct(val: float) -> str:
+    """Formats percentage values to 2 decimal places, bucketing small errors (< 0.01%) as '$<0.01$'."""
+    if val < 0.01:
+        return "$<0.01$"
+    return f"{val:.2f}"
+
+
+def save_latex_table(df: pl.DataFrame, out_path: Path) -> None:
+    """Generates a camera-ready LaTeX table using pandas DataFrame.to_latex()."""
+    pdf = df.to_pandas().rename(columns=lambda c: c.replace("%", r"\%"))
+    numeric_cols = [c for c in pdf.columns if c not in ["Modality", "Task"]]
+
+    latex_table = pdf.to_latex(
+        index=False,
+        escape=False,
+        formatters={c: format_error_pct for c in numeric_cols},
+    )
+    out_path.write_text(latex_table)
+    log.info(f"Saved LaTeX table to {out_path}")
 
 
 def plot_error_rates(
@@ -169,23 +191,23 @@ def main():
             errors_df = exploded.filter(~pl.col("format_adherence"))
             n_errors = errors_df.height
 
-            reason_props = {}
-            if n_errors > 0:
-                counts = errors_df["finish_reason"].value_counts()
-                for row in counts.iter_rows(named=True):
-                    r, count = row["finish_reason"], row["count"]
-                    prop = count / n_total
-                    reason_props[r] = prop
-                    summary_rows.append(
-                        {
-                            "Modality": mod_name,
-                            "Task": task,
-                            "Finish Reason": r,
-                            "Count": count,
-                            "Total Trajectories": n_total,
-                            "Error Rate": prop,
-                        }
-                    )
+            reason_props = (
+                {r: c / n_total for r, c in errors_df["finish_reason"].value_counts().iter_rows()}
+                if n_errors > 0
+                else {}
+            )
+
+            summary_rows.append(
+                {
+                    "Modality": mod_name,
+                    "Task": format_task_title(task),
+                    "Date Error (%)": reason_props.get("Date Error", 0.0) * 100,
+                    "Time Error (%)": reason_props.get("Time Error", 0.0) * 100,
+                    "Category Error (%)": reason_props.get("Category Error", 0.0) * 100,
+                    "Max New Token Reached (%)": reason_props.get("Max New Tokens Reached", 0.0) * 100,
+                    "Total Error (%)": (n_errors / n_total * 100) if n_total > 0 else 0.0,
+                }
+            )
 
             task_stats[task] = reason_props
             log.info(f"Task '{task}': {n_errors}/{n_total} errors ({(n_errors/n_total*100):.2f}%)")
@@ -196,9 +218,11 @@ def main():
 
     df = pl.DataFrame(summary_rows)
     csv_path = args.output_dir / "rollout_error_rates.csv"
+    tex_path = args.output_dir / "rollout_error_rates.tex"
     md_path = args.output_dir / "rollout_error_rates.md"
     df.write_csv(csv_path)
-    md_path.write_text(df.to_pandas().to_markdown(index=False))
+    save_latex_table(df, tex_path)
+    md_path.write_text(df.to_pandas().to_markdown(index=False, floatfmt=".2f"))
     log.info(f"Saved summary tables to {csv_path}")
 
 
