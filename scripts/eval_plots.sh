@@ -46,10 +46,14 @@ fi
 # --- Get config ---
 source "./scripts/config.sh"
 
-uv run python evals/error_rates.py
+uv run python evals/dataset_count.py
 
-uv run python evals/gt_trajectory_lengths.py --nl_tokenizer_path "$NL_TOKENIZER_PATH" --struct_tokenizer_path "$STRUCT_TOKENIZER_PATH"
+uv run python evals/training_details.py
+
+uv run python evals/error_rates.py
 
 uv run python evals/rollout_delta.py --metric auroc
 
-uv run python evals/rollout_delta.py --metric breir_score
+uv run python evals/rollout_delta.py --metric brier_score
+
+uv run python evals/gt_trajectory_lengths.py --nl_tokenizer_path "$NL_TOKENIZER_PATH" --struct_tokenizer_path "$STRUCT_TOKENIZER_PATH"

@@ -1,5 +1,6 @@
 """Shared plotting style and layout configuration for NeurIPS camera-ready figures."""
 
+import logging
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -26,6 +27,14 @@ NEURIPS_RCPARAMS = {
     "axes.labelweight": "normal",
     "xtick.labelsize": 7.5,
     "ytick.labelsize": 7.5,
+    "xtick.major.width": 0.6,
+    "ytick.major.width": 0.6,
+    "xtick.minor.width": 0.5,
+    "ytick.minor.width": 0.5,
+    "xtick.major.size": 3.0,
+    "ytick.major.size": 3.0,
+    "xtick.minor.size": 1.5,
+    "ytick.minor.size": 1.5,
     "legend.fontsize": 6.8,
     # Legend layout defaults
     "legend.frameon": False,
@@ -55,6 +64,8 @@ NEURIPS_RCPARAMS = {
     "savefig.dpi": DEFAULT_DPI,
     "savefig.bbox": "tight",
     "savefig.pad_inches": 0.02,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 # Standard reusable element kwargs
@@ -67,6 +78,9 @@ def apply_neurips_style(style: str = "ticks", context: str = "paper"):
     """Applies NeurIPS publication theme and typography to matplotlib."""
     sns.set_theme(style=style, context=context, palette="tab10")
     plt.rcParams.update(NEURIPS_RCPARAMS)
+    # Suppress verbose font subsetting and layout logs from fontTools / matplotlib
+    logging.getLogger("fontTools").setLevel(logging.WARNING)
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
 # ---- Matplotlib Tab10 Color Palette ----
@@ -142,7 +156,7 @@ def sort_tasks(tasks: list[str]) -> list[str]:
 
 
 def format_task_label(task: str) -> str:
-    """Formats a task name into a standard display label."""
+    """Formats a task name into a standard multi-line display label for plots."""
     if task in TASK_MAP:
         return TASK_MAP[task]
 
@@ -150,6 +164,11 @@ def format_task_label(task: str) -> str:
         return "ED" if w.lower() == "ed" else ("LOS" if w.lower() == "los" else (w.title() if w.islower() else w))
 
     return " ".join(_process_word(w) for w in task.replace("_", " ").split())
+
+
+def format_task_title(task: str) -> str:
+    """Formats a task name into a standard single-line display title (TASK_MAP without newlines)."""
+    return format_task_label(task).replace("\n", " ")
 
 
 def get_modality_legend_handles(facecolor: str = "white", include_prefix=True) -> list[Patch]:
