@@ -8,6 +8,7 @@ from typing import Any
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 import seaborn as sns
 from matplotlib.lines import Line2D
@@ -22,6 +23,7 @@ from evals.plot_style import (
     TIMELINE_PALETTE,
     apply_neurips_style,
     format_task_label,
+    format_task_title,
     save_figure,
     sort_tasks,
 )
@@ -367,6 +369,40 @@ def plot_trajectory_lengths(
     log.info(f"Saved camera-ready token length plots to {out_dir / f'{stem}.png'}")
 
 
+def save_exceed_max_tokens_tables(
+    df: pl.DataFrame,
+    tasks: list[str],
+    max_tokens: int,
+    out_dir: Path,
+    stem: str = "token_lengths_exceeded_max_tokens",
+) -> pd.DataFrame:
+    """Calculates the percentage of timelines longer than max_tokens for Structured and Natural Language
+
+    and exports Markdown (.md), LaTeX (.tex) tables using pandas.
+    """
+    tasks = sort_tasks(tasks)
+    rows = []
+    for modality_label, col_name in [("Structured", "struct_tokens"), ("Natural Language", "nl_tokens")]:
+        row: dict[str, Any] = {"Modality": modality_label}
+        for task in tasks:
+            task_df = df.filter(pl.col("task") == task)
+            total = task_df.height
+            pct = (task_df.filter(pl.col(col_name) > max_tokens).height / total * 100.0) if total > 0 else 0.0
+            row[format_task_title(task)] = pct
+        rows.append(row)
+
+    pdf = pd.DataFrame(rows)
+    md_path = out_dir / f"{stem}.md"
+    tex_path = out_dir / f"{stem}.tex"
+
+    md_path.write_text(pdf.to_markdown(index=False, floatfmt=".2f"))
+    pdf_tex = pdf.map(lambda v: v.replace("%", r"\%") if isinstance(v, str) else v)
+    tex_path.write_text(pdf_tex.to_latex(index=False, escape=False, float_format="%.2f"))
+
+    log.info(f"Saved token length exceedance tables to {md_path}, {tex_path}")
+    return pdf
+
+
 def main():
     parser = argparse.ArgumentParser(description="Extract token counts up to exit event for generative sequences.")
     parser.add_argument("--tasks", nargs="+", default=os.environ.get("ACES_TASKS").split())
@@ -445,52 +481,52 @@ def main():
     nl_valid_cats = get_valid_categories(nl_cfg.event_extraction.event_config_path)
     struct_valid_cats = get_valid_categories(struct_cfg.event_extraction.event_config_path)
 
-    all_dfs = []
-    for task_name in args.tasks:
-        if task_name not in nl_cfg.event_extraction.tasks:
-            log.warning(f"Task {task_name} not found in NL config. Skipping.")
-            continue
+    # all_dfs = []
+    # for task_name in args.tasks:
+    #     if task_name not in nl_cfg.event_extraction.tasks:
+    #         log.warning(f"Task {task_name} not found in NL config. Skipping.")
+    #         continue
 
-        aces_split_dir = aces_base / task_name / args.split
+    #     aces_split_dir = aces_base / task_name / args.split
 
-        if not aces_split_dir.exists():
-            log.warning(f"Split {args.split} not found for task {task_name}. Skipping.")
-            continue
+    #     if not aces_split_dir.exists():
+    #         log.warning(f"Split {args.split} not found for task {task_name}. Skipping.")
+    #         continue
 
-        aces_shards = sorted(aces_split_dir.glob("*.parquet"))
-        log.info(f"Processing Task: [{task_name}] | Split: [{args.split}] | Shards: {len(aces_shards)}")
+    #     aces_shards = sorted(aces_split_dir.glob("*.parquet"))
+    #     log.info(f"Processing Task: [{task_name}] | Split: [{args.split}] | Shards: {len(aces_shards)}")
 
-        for aces_shard in aces_shards:
-            log.info(f"Processing shard: {aces_shard}")
-            nl_meds_shard = nl_meds_base / args.split / aces_shard.name
-            struct_meds_shard = struct_meds_base / args.split / aces_shard.name
+    #     for aces_shard in aces_shards:
+    #         log.info(f"Processing shard: {aces_shard}")
+    #         nl_meds_shard = nl_meds_base / args.split / aces_shard.name
+    #         struct_meds_shard = struct_meds_base / args.split / aces_shard.name
 
-            df_shard = process_shard(
-                aces_shard,
-                nl_meds_shard,
-                struct_meds_shard,
-                nl_cfg,
-                struct_cfg,
-                nl_prep_cfg,
-                struct_prep_cfg,
-                nl_tokenizer,
-                struct_tokenizer,
-                task_name,
-                nl_valid_cats,
-                struct_valid_cats,
-            )
-            if df_shard is not None:
-                all_dfs.append(df_shard)
+    #         df_shard = process_shard(
+    #             aces_shard,
+    #             nl_meds_shard,
+    #             struct_meds_shard,
+    #             nl_cfg,
+    #             struct_cfg,
+    #             nl_prep_cfg,
+    #             struct_prep_cfg,
+    #             nl_tokenizer,
+    #             struct_tokenizer,
+    #             task_name,
+    #             nl_valid_cats,
+    #             struct_valid_cats,
+    #         )
+    #         if df_shard is not None:
+    #             all_dfs.append(df_shard)
 
-    if not all_dfs:
-        log.warning("No records found to process.")
-        return
+    # if not all_dfs:
+    #     log.warning("No records found to process.")
+    #     return
 
-    df = pl.concat(all_dfs)
+    # df = pl.concat(all_dfs)
 
-    parquet_out = out_dir / "gt_trajectory_lengths.parquet"
-    df.write_parquet(parquet_out)
-    log.info(f"Saved raw metrics to {parquet_out}")
+    # parquet_out = out_dir / "gt_trajectory_lengths.parquet"
+    # df.write_parquet(parquet_out)
+    # log.info(f"Saved raw metrics to {parquet_out}")
 
     # Load previously saved metrics if data generation is commented out
     parquet_out = out_dir / "gt_trajectory_lengths.parquet"
@@ -502,6 +538,7 @@ def main():
             return
 
     plot_trajectory_lengths(df, args.tasks, args.max_tokens, out_dir)
+    save_exceed_max_tokens_tables(df, args.tasks, args.max_tokens, out_dir)
 
 
 if __name__ == "__main__":
