@@ -24,6 +24,7 @@ from evals.plot_style import (
     TASK_MAP,
     ZERO_LINE_KW,
     apply_neurips_style,
+    format_task_title,
     get_modality_legend_handles,
     save_figure,
     sort_tasks,
@@ -68,7 +69,7 @@ def _bootstrap_worker(
     metric_name: str,
     drop_valid_mask: np.ndarray,
 ):
-    """Worker computing paired deltas for a chunk of random seeds across patient clusters."""
+    """Worker computing paired deltas and actual scores for a chunk of random seeds across patient clusters."""
     n_patients = len(patient_row_indices)
     metric_fn = roc_auc_score if metric_name == "auroc" else brier_score_loss
     results = []
@@ -88,22 +89,35 @@ def _bootstrap_worker(
             results.append(None)
             continue
 
-        xgb_score = metric_fn(y_boot, prob_xgb[indices])
+        # Step 1: Calculate absolute metrics for XGBoost and all rollout methods
+        actuals = {"XGBoost": metric_fn(y_boot, prob_xgb[indices])}
+        drop_indices = None
+        y_boot_drop = None
 
-        deltas = {}
         for method, prob_roll in roll_dict.items():
             if method == "probability_drop_trajectory":
                 drop_indices = indices[drop_valid_mask[indices]]
                 y_boot_drop = y_true[drop_indices]
                 if len(np.unique(y_boot_drop)) < 2:
+                    actuals[method] = np.nan
+                else:
+                    actuals[method] = metric_fn(y_boot_drop, prob_roll[drop_indices])
+            else:
+                actuals[method] = metric_fn(y_boot, prob_roll[indices])
+
+        # Step 2: Calculate paired deltas (Rollout - XGBoost)
+        deltas = {}
+        for method in roll_dict:
+            if method == "probability_drop_trajectory":
+                if np.isnan(actuals[method]):
                     deltas[method] = np.nan
                 else:
                     xgb_score_drop = metric_fn(y_boot_drop, prob_xgb[drop_indices])
-                    deltas[method] = metric_fn(y_boot_drop, prob_roll[drop_indices]) - xgb_score_drop
+                    deltas[method] = actuals[method] - xgb_score_drop
             else:
-                deltas[method] = metric_fn(y_boot, prob_roll[indices]) - xgb_score
+                deltas[method] = actuals[method] - actuals["XGBoost"]
 
-        results.append(deltas)
+        results.append((deltas, actuals))
 
     return results
 
@@ -115,8 +129,8 @@ def run_paired_bootstrap(
     n_bootstraps: int = 10_000,
     num_workers: int = 1,
     seed: int = 42,
-) -> dict[str, np.ndarray]:
-    """Runs parallel patient-level paired bootstrap to compute the distribution of deltas (Rollout - XGBoost)."""
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """Runs parallel patient-level paired bootstrap to compute distribution of deltas and actual scores."""
     y_true = merged["boolean_value"].to_numpy().astype(int)
     prob_xgb = merged["prob_xgb"].to_numpy().astype(float)
     roll_dict = {method: merged[method].to_numpy().astype(float) for method in METHODS}
@@ -141,15 +155,20 @@ def run_paired_bootstrap(
         )
 
     deltas = {method: np.full(n_bootstraps, np.nan) for method in roll_dict}
+    actuals = {key: np.full(n_bootstraps, np.nan) for key in ["XGBoost", *roll_dict.keys()]}
+
     bootstrap_idx = 0
     for chunk_res in worker_results:
         for res in chunk_res:
             if res is not None:
+                d_res, a_res = res
                 for method in roll_dict:
-                    deltas[method][bootstrap_idx] = res.get(method, np.nan)
+                    deltas[method][bootstrap_idx] = d_res.get(method, np.nan)
+                for key in actuals:
+                    actuals[key][bootstrap_idx] = a_res.get(key, np.nan)
             bootstrap_idx += 1
 
-    return deltas
+    return deltas, actuals
 
 
 def calc_ci(arr: np.ndarray) -> dict[str, float]:
@@ -158,6 +177,17 @@ def calc_ci(arr: np.ndarray) -> dict[str, float]:
         "lower_ci": float(np.nanpercentile(arr, 2.5)),
         "upper_ci": float(np.nanpercentile(arr, 97.5)),
     }
+
+
+def format_cell_ci(stats: dict[str, float], metric: str) -> str:
+    """Formats metric mean and 95% confidence interval into a publication-ready string."""
+    decimals = 4 if metric == "brier_score" else 3
+    mean = stats["mean"]
+    low = stats["lower_ci"]
+    up = stats["upper_ci"]
+    if np.isnan(mean):
+        return "N/A"
+    return f"{mean:.{decimals}f} [{low:.{decimals}f}, {up:.{decimals}f}]"
 
 
 def plot_combined_bars(
@@ -256,6 +286,17 @@ def plot_combined_bars(
     log.info(f"Saved combined delta plot to {out_dir / f'{stem}.png'}")
 
 
+def save_tables(df: pl.DataFrame, out_path_without_ext: Path) -> None:
+    """Saves DataFrame as Markdown (.md) and LaTeX (.tex) tables."""
+    md_path = out_path_without_ext.with_suffix(".md")
+    tex_path = out_path_without_ext.with_suffix(".tex")
+
+    md_path.write_text(df.to_pandas().to_markdown(index=False))
+    pdf_tex = df.to_pandas().map(lambda v: v.replace("%", r"\%") if isinstance(v, str) else v)
+    tex_path.write_text(pdf_tex.to_latex(index=False, escape=False))
+    log.info(f"Saved tables to {md_path} and {tex_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate metric deltas between XGBoost and Rollouts.")
     parser.add_argument(
@@ -288,6 +329,14 @@ def main():
     summary_rows = []
     all_modality_stats = {}
 
+    # Record actual (non-relative) metrics: modality -> model -> task -> stats
+    task_actual_stats = {
+        "Tabular": {"XGBoost": {}},
+        **{mod_name: {METHODS[m]: {} for m in METHODS} for mod_name in sources},
+    }
+    # Record dropped trajectory percentages (all trajectories invalid): modality -> task -> pct
+    dropped_stats = {mod_name: {} for mod_name in sources}
+
     for mod_name, mod_dir in sources.items():
         log.info(f"--- Evaluating {mod_name} ({metric_display}) ---")
         task_stats = {}
@@ -301,9 +350,10 @@ def main():
 
             drop_valid_mask = compute_valid_trajectory_mask(merged)
             n_dropped = int(np.sum(~drop_valid_mask))
+            dropped_stats[mod_name][task] = (n_dropped / merged.height * 100) if merged.height > 0 else 0.0
 
             log.info(f"Processing task '{mod_name} {task}' ({merged.height} rows)")
-            deltas = run_paired_bootstrap(
+            deltas, actuals = run_paired_bootstrap(
                 merged,
                 metric_name=args.metric,
                 drop_valid_mask=drop_valid_mask,
@@ -312,6 +362,9 @@ def main():
             )
 
             task_stats[task] = {method: calc_ci(deltas[method]) for method in METHODS}
+            task_actual_stats["Tabular"]["XGBoost"][task] = calc_ci(actuals["XGBoost"])
+            for method in METHODS:
+                task_actual_stats[mod_name][METHODS[method]][task] = calc_ci(actuals[method])
 
             for method in METHODS:
                 n_samples = merged.height - n_dropped if method == "probability_drop_trajectory" else merged.height
@@ -329,16 +382,44 @@ def main():
 
         all_modality_stats[mod_name] = task_stats
 
+    # Construct actual (non-relative) metrics table
+    actual_rows = []
+    for mod_name, models in task_actual_stats.items():
+        for model_name, task_dict in models.items():
+            row = {
+                "Modality": mod_name,
+                "Model": model_name,
+            }
+            for task in args.tasks:
+                col_title = format_task_title(task)
+                row[col_title] = format_cell_ci(task_dict[task], args.metric)
+            actual_rows.append(row)
+
+    # Construct dropped trajectory percentages table
+    dropped_rows = []
+    for mod_name, task_dict in dropped_stats.items():
+        row = {"Modality": mod_name}
+        for task in args.tasks:
+            col_title = format_task_title(task)
+            row[col_title] = f"{task_dict[task]:.2f}%"
+        dropped_rows.append(row)
+
     # Render unified combined plot comparing modalities across all tasks
     plot_combined_bars(all_modality_stats, metric_display, args.tasks, args.output_dir)
 
-    df = pl.DataFrame(summary_rows)
     metric_slug = args.metric.lower()
-    csv_path = args.output_dir / f"rollout_deltas_{metric_slug}.csv"
-    md_path = args.output_dir / f"rollout_deltas_{metric_slug}.md"
-    df.write_csv(csv_path)
-    md_path.write_text(df.to_pandas().to_markdown(index=False))
-    log.info(f"Saved summary tables to {csv_path}")
+
+    # Save relative delta metrics table
+    df_deltas = pl.DataFrame(summary_rows)
+    save_tables(df_deltas, args.output_dir / f"relative_metrics_{metric_slug}")
+
+    # Save actual metrics table
+    df_actual = pl.DataFrame(actual_rows)
+    save_tables(df_actual, args.output_dir / f"actual_metrics_{metric_slug}")
+
+    # Save dropped trajectory percentages table
+    df_dropped = pl.DataFrame(dropped_rows)
+    save_tables(df_dropped, args.output_dir / "rollout_dropped_percentages")
 
 
 if __name__ == "__main__":
