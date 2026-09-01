@@ -58,6 +58,24 @@ def save_latex_table(df: pl.DataFrame, out_path: Path) -> None:
     log.info(f"Saved LaTeX table to {out_path}")
 
 
+def save_error_samples(all_modality_errors: dict[str, pl.DataFrame], out_path: Path, n: int = 10) -> None:
+    """Outputs randomly selected error lines for each error type across modalities to file."""
+    lines = ["# Rollout Error Samples\n"]
+
+    for mod_name, df_errors in all_modality_errors.items():
+        lines.append(f"## {mod_name}\n")
+        for reason in ERROR_RATES_PALETTE:
+            sub = df_errors.filter(pl.col("finish_reason") == reason)
+            if sub.is_empty():
+                continue
+            lines.append(f"### {reason}")
+            samples = sub.sample(n=min(n, sub.height), seed=42)["error_line"].to_list()
+            lines.extend([f"{i}. `{err}`" for i, err in enumerate(samples, 1)] + [""])
+
+    out_path.write_text("\n".join(lines).strip() + "\n")
+    log.info(f"Saved error samples to {out_path}")
+
+
 def plot_error_rates(
     all_modality_stats: dict[str, dict[str, dict[str, float]]],
     tasks: list[str],
@@ -176,20 +194,25 @@ def main():
 
     summary_rows = []
     all_modality_stats = {}
+    all_modality_errors = {}
 
     for mod_name, mod_dir in sources.items():
         log.info(f"--- Evaluating {mod_name} ---")
         task_stats = {}
+        mod_errors = []
 
         for task in args.tasks:
             roll_df = load_predictions(mod_dir, task, args.split)
-            exploded = roll_df.select(["format_adherence", "finish_reason"]).explode(
-                ["format_adherence", "finish_reason"]
+            exploded = roll_df.select(["format_adherence", "finish_reason", "error_line"]).explode(
+                ["format_adherence", "finish_reason", "error_line"]
             )
 
             n_total = exploded.height
             errors_df = exploded.filter(~pl.col("format_adherence"))
             n_errors = errors_df.height
+
+            if n_errors > 0:
+                mod_errors.append(errors_df.select(["finish_reason", "error_line"]))
 
             reason_props = (
                 {r: c / n_total for r, c in errors_df["finish_reason"].value_counts().iter_rows()}
@@ -213,6 +236,8 @@ def main():
             log.info(f"Task '{task}': {n_errors}/{n_total} errors ({(n_errors/n_total*100):.2f}%)")
 
         all_modality_stats[mod_name] = task_stats
+        if mod_errors:
+            all_modality_errors[mod_name] = pl.concat(mod_errors)
 
     plot_error_rates(all_modality_stats, args.tasks, args.output_dir)
 
@@ -224,6 +249,8 @@ def main():
     save_latex_table(df, tex_path)
     md_path.write_text(df.to_pandas().to_markdown(index=False, floatfmt=".2f"))
     log.info(f"Saved summary tables to {csv_path}")
+
+    save_error_samples(all_modality_errors, args.output_dir / "rollout_error_samples.md")
 
 
 if __name__ == "__main__":
