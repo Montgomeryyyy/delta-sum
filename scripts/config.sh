@@ -13,11 +13,18 @@ fi
 
 
 # ---- Internal Script Variables (No export needed) ----
-export DATA_DIR="${SCRATCH_DIR}/data"
+# Demo flag can be passed via environment or SLURM export (e.g. DEMO=true, demo=true)
+export DEMO="${DEMO:-${demo:-false}}"
+if [ "${DEMO,,}" = "true" ] || [ "$DEMO" = "1" ]; then
+    export DATA_DIR="${SCRATCH_DIR}/data_demo"
+else
+    export DATA_DIR="${SCRATCH_DIR}/data"
+fi
+
 export TRAINING_DIR="${SCRATCH_DIR}/training"
 export INFERENCE_DIR="${SCRATCH_DIR}/inference"
-export DEBUG_DIR="${SCRATCH_DIR}/debug"
 export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots"
+export DEBUG_DIR="${DATA_DIR}/debug"
 
 export HF_MODEL_NAME="google/gemma-3-270m"
 
@@ -57,8 +64,7 @@ export STRUCTURED_INFERENCE_DIR="${INFERENCE_DIR}/structured"
 export STRUCTURED_LR_MODEL_DIR="${STRUCTURED_MODEL_DIR}/embedding_lr/models"
 export STRUCTURED_LR_INFERENCE_DIR="${STRUCTURED_INFERENCE_DIR}/embedding_lr"
 
-
-export MEDS_TAB_MEDS_DIR="${MIMICIV_MEDS_COHORT_DIR}/merge_to_MEDS_cohort"
+export MEDS_TAB_MEDS_DIR="${MIMICIV_MEDS_COHORT_DIR}/regex_replacement"
 export MEDS_TAB_OUTPUT_DATA_DIR="${DATA_DIR}/MEDS_tab"
 export MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 

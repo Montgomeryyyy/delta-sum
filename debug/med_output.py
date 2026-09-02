@@ -15,7 +15,7 @@ def main():
     meds_train_dir = args.meds_train_dir
 
     df = pl.read_parquet(meds_train_dir)
-    subjects = df["subject_id"].unique().head(10)
+    subjects = df["subject_id"].unique().sort().head(10)
 
     for subject_id in subjects.to_list():
         subject_df = df.filter(pl.col("subject_id") == subject_id)

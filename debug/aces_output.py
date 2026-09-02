@@ -17,10 +17,10 @@ def main():
     aces_df = pl.read_parquet(args.aces_train_dir)
     meds_df = pl.read_parquet(args.meds_train_dir)
 
-    subjects = aces_df["subject_id"].unique().head(10)
+    subjects = aces_df["subject_id"].unique().sort().head(10)
 
     for subject_id in subjects.to_list():
-        subject_aces = aces_df.filter(pl.col("subject_id") == subject_id)
+        subject_aces = aces_df.filter(pl.col("subject_id") == subject_id).sort("prediction_time")
         if len(subject_aces) == 0:
             continue
 
@@ -35,10 +35,18 @@ def main():
         input_csv = input_meds.to_pandas().to_csv(index=False)
         output_csv = output_meds.to_pandas().to_csv(index=False)
 
-        out_str = f"boolean_value: {boolean_value}\n=== INPUT ===\n{input_csv}\n=== OUTPUT ===\n{output_csv}"
+        out_str = (
+            f"prediction_time: {prediction_time} \n"
+            f"boolean_value: {boolean_value}\n"
+            f"=== INPUT ===\n{input_csv}\n"
+            f"=== OUTPUT ===\n{output_csv}"
+        )
 
         output_file = output_dir / f"{subject_id}.csv"
         output_file.write_text(out_str)
+
+        tex_path = output_dir / f"input_{subject_id}.tex"
+        tex_path.write_text(input_meds.to_pandas().to_latex(index=False, escape=True, float_format="%.2f"))
 
 
 if __name__ == "__main__":

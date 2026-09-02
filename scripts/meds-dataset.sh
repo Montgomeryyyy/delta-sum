@@ -9,7 +9,7 @@ source "./scripts/config.sh"
 # --- Pipeline Execution ---
 
 # Print commands
-set -x
+# set -x
 
 echo "Creating pre-MEDS dataset from MIMIC-IV..."
 rm -rf "$MIMICIV_PRE_MEDS_DIR"
@@ -54,7 +54,7 @@ for task in ${ACES_TASKS}; do
     uv run python debug/aces_output.py \
         --output_dir "${DEBUG_DIR}/aces/${task}" \
         --aces_train_dir "${ACES_OUTPUT_DIR}/${task}/train/" \
-        --meds_train_dir "${MIMICIV_MEDS_COHORT_DIR}/data/train/"
+        --meds_train_dir "${MEDS_TAB_MEDS_DIR}/train/"
 done
 
 echo "MEDS dataset pipeline completed successfully!"

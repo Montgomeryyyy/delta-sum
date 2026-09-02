@@ -41,25 +41,20 @@ def main():
         task_debug_dir = debug_dir / task_name
         task_debug_dir.mkdir(parents=True, exist_ok=True)
 
-        subjects_processed = set()
+        subject_ids = sorted(set(dataset["subject_id"]))[:10]
 
-        for idx, row in enumerate(dataset):
-            subject_id = row["subject_id"]
-            if subject_id in subjects_processed:
-                continue
-
-            subjects_processed.add(subject_id)
+        for subject_id in subject_ids:
+            subject_dataset = dataset.filter(lambda example: example["subject_id"] == subject_id)
+            subject_dataset = subject_dataset.sort("prediction_time")
+            input_ids = subject_dataset["input_ids"][0]
 
             output_file = task_debug_dir / f"{subject_id}.md"
             if args.structured:
-                tokens = tokenizer.convert_ids_to_tokens(row["input_ids"])
-                decoded_text = "//".join(tokens)
+                tokens = tokenizer.convert_ids_to_tokens(input_ids)
+                decoded_text = "//" + "//".join(tokens)
             else:
-                decoded_text = tokenizer.decode(row["input_ids"])
+                decoded_text = tokenizer.decode(input_ids)
             output_file.write_text(decoded_text, encoding="utf-8")
-
-            if len(subjects_processed) >= 10:
-                break
 
 
 if __name__ == "__main__":
