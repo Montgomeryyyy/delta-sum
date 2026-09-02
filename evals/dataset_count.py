@@ -5,15 +5,26 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import polars as pl
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
+import seaborn as sns
 from datasets import load_from_disk
 
-from evals.plot_style import TASK_MAP, format_task_title, sort_tasks
+from evals.plot_style import (
+    NEURIPS_TEXTWIDTH_INCHES,
+    TAB10,
+    apply_neurips_style,
+    format_task_title,
+    save_figure,
+    sort_tasks,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger(__name__)
+
+apply_neurips_style()
 
 SPLITS = ["train", "tuning", "held_out"]
 
@@ -59,48 +70,36 @@ def format_task_cell(count: int, pos: int) -> str:
     return f"{count:,} ({prev:.1f}%)"
 
 
-def save_latex_table(df: pl.DataFrame, out_path: Path) -> None:
-    """Generates a camera-ready booktabs LaTeX table."""
-    lines = [
-        r"\begin{table}[t]",
-        r"\centering",
-        r"\small",
-        r"\begin{tabular}{lrrrr}",
-        r"\toprule",
-        r"\textbf{Metric} & \textbf{Train} & \textbf{Tuning} & \textbf{Held-Out} & \textbf{Total} \\",
-        r"\midrule",
-    ]
+def plot_category_counts(train_dir: Path, output_dir: Path) -> None:
+    """Plots category count distribution from training data on a log scale."""
+    files = sorted(train_dir.glob("*.parquet"))
+    if not files:
+        log.warning(f"No parquet files found in {train_dir} to plot category counts.")
+        return
 
-    task_titles = {format_task_title(t) for t in TASK_MAP}
-    task_section_started = False
-    for row in df.iter_rows(named=True):
-        title = row["Metric"]
-        if title in task_titles and not task_section_started:
-            lines.append(r"\midrule")
-            task_section_started = True
-
-        cells = [
-            title,
-            row["Train"].replace("%", r"\%"),
-            row["Tuning"].replace("%", r"\%"),
-            row["Held-Out"].replace("%", r"\%"),
-            row["Total"].replace("%", r"\%"),
-        ]
-        lines.append(" & ".join(cells) + r" \\")
-
-    lines.extend(
-        [
-            r"\bottomrule",
-            r"\end{tabular}",
-            r"\caption{Overview of dataset sizes, split counts, and task prevalences.}",
-            r"\label{tab:dataset_sizes}",
-            r"\end{table}",
-            "",
-        ]
+    cat_counts = (
+        pl.scan_parquet(files)
+        .select(category=pl.col("code").str.split("//").list.first().str.split(":").list.first())
+        .group_by("category")
+        .len(name="count")
+        .sort("count", descending=False)
+        .collect()
     )
 
-    out_path.write_text("\n".join(lines))
-    log.info(f"Saved LaTeX table to {out_path}")
+    fig, ax = plt.subplots(figsize=(NEURIPS_TEXTWIDTH_INCHES, 3.5))
+    ax.barh(cat_counts["category"], cat_counts["count"], color=TAB10(0), edgecolor="#222222", linewidth=0.5)
+    ax.set_xscale("log")
+    ax.set_xlim(left=1e4)
+    ax.grid(True, axis="x", linestyle=":", alpha=0.4, linewidth=0.5, color="#888888")
+    ax.grid(False, axis="y")
+    ax.set_xlabel("Event Count")
+    ax.set_ylabel("Category")
+    sns.despine(ax=ax, trim=False)
+    plt.tight_layout()
+
+    save_figure(output_dir, "category_counts")
+    plt.close(fig)
+    log.info(f"Saved category counts plot to {output_dir / 'category_counts.png'}")
 
 
 def main():
@@ -241,7 +240,10 @@ def main():
     df.write_csv(csv_path)
     log.info(f"Saved CSV table to {csv_path}")
 
-    save_latex_table(df, tex_path)
+    df.to_pandas().to_latex(tex_path, index=False)
+    log.info(f"Saved LaTeX table to {tex_path}")
+
+    plot_category_counts(args.meds_tab_meds_dir / "train", args.output_dir)
 
     with pl.Config(
         tbl_formatting="ASCII_MARKDOWN",
