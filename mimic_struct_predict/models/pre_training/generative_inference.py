@@ -87,9 +87,14 @@ def get_last_time_offset_and_category(
     category_prefix: str,
     time_prefix: str,
     time_pattern: re.Pattern,
+    delimiter: str,
 ) -> dict[str, float | str]:
+    """Extract the last time offset and category from prompt text in reverse."""
     last_time_offset = None
     last_category = None
+
+    if in_text.startswith(delimiter):
+        in_text = in_text[len(delimiter) :]
 
     lines = in_text.split(code_splitter)
     for line in reversed(lines):
@@ -157,7 +162,9 @@ def get_preprocess_batch_function(
         initial_times: list[float] = []
         initial_categories: list[str] = []
         for text in decoded_inputs:
-            res = get_last_time_offset_and_category(text, code_splitter, category_prefix, time_prefix, time_pattern)
+            res = get_last_time_offset_and_category(
+                text, code_splitter, category_prefix, time_prefix, time_pattern, delimiter
+            )
             initial_times.append(float(res["initial_time"]))
             initial_categories.append(str(res["initial_category"]))
 
