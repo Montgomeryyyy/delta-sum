@@ -69,6 +69,7 @@ WORKERS_PER_GPU=$(( NUM_WORKERS / N ))
 if [ "$WORKERS_PER_GPU" -lt 1 ]; then WORKERS_PER_GPU=1; fi
 
 echo "--- Running vLLM Inference ---"
+
 echo "Found tasks: ${ACES_TASKS}"
 
 for task in ${ACES_TASKS}; do

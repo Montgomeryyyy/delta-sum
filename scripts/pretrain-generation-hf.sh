@@ -75,16 +75,30 @@ for task in ${ACES_TASKS}; do
     echo "Starting task ${task}..."
     task_dir="${TASK_DATASET_DIR}/${task}"
 
-    RUN_DIR="${OUTPUT_DIR}/${SPLIT}/${task}/${RUN_TIMESTAMP}"
-    mkdir -p "$RUN_DIR"
+    for i in "${!GPU_IDS[@]}"; do
+        gpu_id=${GPU_IDS[$i]}
+        export RANK=$i
+        export WORLD_SIZE=$N
+        export CUDA_VISIBLE_DEVICES=$gpu_id
 
-    uv run pre_training_generative_inference_hf \
-        --config-name="${CONFIG_NAME}" \
-        model.pretrained_model_name_or_path="${MODEL_DIR}" \
-        dataset_dir="${task_dir}/${SPLIT}" \
-        output_dir="${OUTPUT_DIR}/${task}" \
-        task_prevalence_path="${TASK_PREVALENCES_PATH}" \
-        num_workers="${WORKERS_PER_GPU}" \
-        hydra.run.dir="$RUN_DIR" \
-        task="${task}"
+        RUN_DIR="${OUTPUT_DIR}/${SPLIT}/${task}/${RUN_TIMESTAMP}"
+        mkdir -p "$RUN_DIR"
+
+        echo "Spawning Worker Rank $RANK/$WORLD_SIZE on GPU $gpu_id (Logging to $RUN_DIR/worker_${RANK}.log)"
+
+        uv run pre_training_generative_inference_hf \
+            --config-name="${CONFIG_NAME}" \
+            model.pretrained_model_name_or_path="${MODEL_DIR}" \
+            dataset_dir="${task_dir}/${SPLIT}" \
+            output_dir="${OUTPUT_DIR}/${task}" \
+            task_prevalence_path="${TASK_PREVALENCES_PATH}" \
+            num_workers="${WORKERS_PER_GPU}" \
+            hydra.run.dir="$RUN_DIR" \
+            task="${task}" > "$RUN_DIR/worker_${RANK}.log" 2>&1 &
+    done
+
+    echo "Waiting for all $N workers to finish..."
+    wait
+    echo "All workers completed!"
+
 done

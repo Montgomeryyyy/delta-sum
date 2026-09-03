@@ -100,6 +100,8 @@ def get_last_time_offset_and_category(
 
     for line in reversed(in_text.split(code_splitter)):
         line = line.strip()
+        if delimiter and line.startswith(delimiter):
+            line = line[len(delimiter) :].strip()
         if last_category is None and line.startswith(category_prefix):
             last_category = line
 
@@ -164,7 +166,7 @@ def get_preprocess_batch_function(
 
         return {
             "input_ids": truncated_ids,
-            # "len_input_ids": [len(ids) for ids in truncated_ids],
+            "len_input_ids": [len(ids) for ids in truncated_ids],
             "decoded_input": decoded_inputs,
             "initial_time": initial_times,
             "initial_category": initial_categories,
@@ -243,7 +245,7 @@ def detect_outcome(
 
             if finish_reason is None and next_time != current_time:
                 if next_time < current_time:
-                    finish_reason = "Time Error"
+                    finish_reason = "Time Backward Error"
                 elif end_time_days is not None and (next_time - initial_time_offset) > end_time_days:
                     outcome_predicted = False
                     finish_reason = "End Time Reached"
@@ -266,6 +268,7 @@ def detect_outcome(
 
     format_adherence = finish_reason in SUCCESS_FINISH_REASONS
     time_covered = current_time - initial_time_offset
+    error_line = lines[line_idx] if (not format_adherence and lines and 0 <= line_idx < len(lines)) else ""
 
     return {
         "outcome_predicted": outcome_predicted,
@@ -274,7 +277,7 @@ def detect_outcome(
         "num_events": num_events,
         "num_lines": line_idx + 1 if lines else 0,
         "time_covered": time_covered,
-        "error_line": lines[line_idx] if not format_adherence else "",
+        "error_line": error_line,
     }
 
 
@@ -328,8 +331,10 @@ def main(cfg: DictConfig) -> None:
 
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     rank = int(os.environ.get("RANK", 0))
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+
     if world_size > 1:
-        log.info(f"Running distributed: Rank {rank}/{world_size}. Sharding dataset...")
+        log.info(f"Running distributed: Rank {rank}/{world_size} (Local Rank {local_rank}). Sharding dataset...")
         dataset = dataset.shard(num_shards=world_size, index=rank)
     log.info(f"Loaded {len(dataset)} examples after sharding.")
 
@@ -388,12 +393,17 @@ def main(cfg: DictConfig) -> None:
         num_proc=cfg.num_workers,
         desc="Preprocessing and decoding batch inputs",
     )
-    # log.info("Sorting dataset by input_ids length...")
-    # dataset = dataset.sort("len_input_ids", reverse=True).remove_columns("len_input_ids")
+    log.info("Sorting dataset by input_ids length...")
+    dataset = dataset.sort("len_input_ids", reverse=True).remove_columns("len_input_ids")
+
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+        device = f"cuda:{local_rank}"
+    else:
+        device = "cpu"
 
     # Load model with native HF arguments
-    log.info(f"Loading model ({model_name_or_path})...")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    log.info(f"Loading model ({model_name_or_path}) onto {device}...")
     model = AutoModelForCausalLM.from_pretrained(**OmegaConf.to_container(cfg.model, resolve=True)).to(device)
     model.eval()
 
@@ -403,13 +413,6 @@ def main(cfg: DictConfig) -> None:
     # Configure generation
     gen_dict = OmegaConf.to_container(cfg.generation_config, resolve=True)
     gen_config = GenerationConfig(pad_token_id=tokenizer.pad_token_id, **gen_dict)
-
-    if cfg.compile_model:
-        log.info("Enabling static cache and compiling model forward for generation...")
-        gen_config.cache_implementation = "static"
-        if cfg.tokenizer.max_input_length is not None and gen_config.max_new_tokens is not None:
-            gen_config.max_length = cfg.tokenizer.max_input_length + gen_config.max_new_tokens
-        model.forward = torch.compile(model.forward, mode="reduce-overhead")
 
     if cfg.get("suppress_extra_vocab", False):
         vocab_size = len(tokenizer)
@@ -485,12 +488,13 @@ def main(cfg: DictConfig) -> None:
                 for k, v in result.items():
                     sample_rollout_results[k].append(v)
 
-            # Compute outcome probabilities
+            # Rollout-level results (list per sample)
+            for k, v in sample_rollout_results.items():
+                chunk_results[k].append(v)
+
+            # Sample-level outcome probabilities (scalar float per sample)
             probs = compute_rollout_probabilities(sample_rollout_results["outcome_predicted"], task_prevalence)
             for k, v in probs.items():
-                sample_rollout_results[k].append(v)
-
-            for k, v in sample_rollout_results.items():
                 chunk_results[k].append(v)
 
         chunk.update(chunk_results)
