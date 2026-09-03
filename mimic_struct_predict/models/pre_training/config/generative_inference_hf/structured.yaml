@@ -1,0 +1,17 @@
+defaults:
+  - natural_language
+  - _self_
+
+suppress_extra_vocab: true
+
+generation_config:
+  # Structured models pad vocab and token id 1 is set to EOS by HF; set to null to ignore EOS
+  eos_token_id: []
+
+tokenizer:
+  join_with_delimiter: true
+  keep_first_token: false
+  delimiter: "//"
+
+event_extraction:
+  code_splitter: "//\n\n//"

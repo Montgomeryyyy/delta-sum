@@ -34,6 +34,7 @@ def load_predictions(base_dir: Path, task: str, split: str) -> pl.DataFrame:
     """Loads prediction parquets for Rollout models."""
     task_dir = base_dir / split / task
     latest = max(d for d in task_dir.iterdir() if d.is_dir())
+    log.info(f"Loading predictions from {latest}")
     return pl.read_parquet(list(latest.glob("*.parquet")))
 
 

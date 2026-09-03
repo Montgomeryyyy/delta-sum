@@ -5,6 +5,7 @@ task: ???
 chunk_size: 1000
 seed: 42
 num_workers: 1
+max_eval_samples: 1000
 
 model:
   # https://docs.vllm.ai/en/v0.7.3/api/offline_inference/llm.html
@@ -34,7 +35,7 @@ tokenizer:
   join_with_delimiter: false
   keep_first_token: true
   # Truncated in pre-processing
-  max_input_length: null
+  max_input_length: 3072
   delimiter: " "
 
 event_extraction:
