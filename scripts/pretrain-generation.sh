@@ -86,7 +86,7 @@ for task in ${ACES_TASKS}; do
 
         echo "Spawning Worker Rank $RANK/$WORLD_SIZE on GPU $gpu_id (Logging to $RUN_DIR/worker_${RANK}.log)"
 
-        uv run pre_training_generative_inference_hf \
+        uv run pre_training_generative_inference \
             --config-name="${CONFIG_NAME}" \
             model.pretrained_model_name_or_path="${MODEL_DIR}" \
             dataset_dir="${task_dir}/${SPLIT}" \

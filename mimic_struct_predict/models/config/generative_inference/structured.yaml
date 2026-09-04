@@ -2,11 +2,11 @@ defaults:
   - natural_language
   - _self_
 
-sampling_params:
-  # HF sets id 1 to be eos automatically, so ignore it
-  ignore_eos: true
-  # We pad model to multiple of 8, so model can produce invalid tokens if not set to true
-  set_max_token_id: true
+suppress_extra_vocab: true
+
+generation_config:
+  # Structured models pad vocab and token id 1 is set to EOS by HF; set to null to ignore EOS
+  eos_token_id: []
 
 tokenizer:
   join_with_delimiter: true

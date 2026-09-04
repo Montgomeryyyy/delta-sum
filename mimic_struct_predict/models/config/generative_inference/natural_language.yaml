@@ -3,28 +3,26 @@ output_dir: ???   # Required: directory to save outputs
 task_prevalence_path: ???  # Required: path to JSON file containing dict {task_name: prevalence}
 task: ???
 chunk_size: 1000
+batch_size: 24
 seed: 42
 num_workers: 1
+suppress_extra_vocab: false
+
+pad_to_multiple_of: 64
 
 model:
-  # https://docs.vllm.ai/en/v0.7.3/api/offline_inference/llm.html
-  model: ???
-  dtype: bfloat16
-  seed: ${seed}
-  tensor_parallel_size: 1
-  max_model_len: 4096
-  gpu_memory_utilization: 0.9
+  pretrained_model_name_or_path: ???
+  torch_dtype: bfloat16
+  attn_implementation: flash_attention_2
 
-sampling_params:
-  # https://docs.vllm.ai/en/v0.6.4/dev/sampling_params.html
-  n: 20
-  temperature: 1
+generation_config:
+  max_new_tokens: 1024
+  num_return_sequences: 20
+  do_sample: true
+  temperature: 1.0
   top_p: 1.0
-  top_k: -1
-  seed: ${seed}
-  max_tokens: 1024
-  detokenize: false
-
+  top_k: null
+  use_cache: true
 
 hydra:
   run:
@@ -33,7 +31,6 @@ hydra:
 tokenizer:
   join_with_delimiter: false
   keep_first_token: true
-  # Truncated in pre-processing
   max_input_length: 3072
   delimiter: " "
 

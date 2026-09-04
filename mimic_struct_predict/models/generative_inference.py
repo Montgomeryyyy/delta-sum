@@ -1,4 +1,4 @@
-"""HuggingFace vLLM inference datasets with dataset sharding for autoregressive rollout."""
+"""HuggingFace Transformers inference with dataset sharding for autoregressive rollout."""
 
 import json
 import logging
@@ -14,12 +14,19 @@ import datasets
 import hydra
 import pyarrow as pa
 import pyarrow.parquet as pq
+import torch
 import yaml
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
-from transformers import AutoTokenizer, PreTrainedTokenizerBase, PreTrainedTokenizerFast
-from vllm import LLM, SamplingParams
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    GenerationConfig,
+    PreTrainedTokenizerBase,
+    PreTrainedTokenizerFast,
+    set_seed,
+)
 
 log = logging.getLogger(__name__)
 
@@ -35,24 +42,17 @@ def get_valid_categories(event_config_path: Path | str) -> set[str]:
         raise FileNotFoundError(f"Event config file not found: {path}")
 
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(config, dict):
-        raise ValueError(f"Expected YAML config to be a dictionary, got {type(config).__name__}")
-
     valid_categories: set[str] = set()
 
-    for table_name, table_config in config.items():
+    for table_config in config.values():
         if not isinstance(table_config, dict):
             continue
-        for event_name, event_config in table_config.items():
+        for event_config in table_config.values():
             if not isinstance(event_config, dict):
                 continue
             code = event_config.get("code")
-            if code is None:
-                continue
-            if isinstance(code, list) and len(code) > 0:
-                category = code[0]
-                if category:
-                    valid_categories.add(str(category))
+            if isinstance(code, list) and code:
+                valid_categories.add(str(code[0]))
             elif isinstance(code, str) and code:
                 valid_categories.add(code)
 
@@ -60,21 +60,23 @@ def get_valid_categories(event_config_path: Path | str) -> set[str]:
 
 
 def batch_ids_to_string(
-    batch_token_ids: list[list[int]],
+    batch_token_ids: list[list[int]] | torch.Tensor,
     tokenizer: PreTrainedTokenizerFast | PreTrainedTokenizerBase,
     join_with_delimiter: bool,
     delimiter: str,
 ) -> list[str]:
+    """Decode batch token IDs to strings, optionally joining via custom delimiter."""
     if join_with_delimiter:
         # HACK: Batch decode always joins using spaces, so do slightly slower way to allow for delimiter
         # join for word-level tokenizers e.g. structured
+        if isinstance(batch_token_ids, torch.Tensor):
+            batch_token_ids = batch_token_ids.tolist()
         return [
             delimiter + delimiter.join(tokenizer.convert_ids_to_tokens(token_ids, skip_special_tokens=True))
             for token_ids in batch_token_ids
         ]
-    else:
-        output: list[str] = tokenizer.batch_decode(batch_token_ids, skip_special_tokens=True)
-        return output
+    decoded = tokenizer.batch_decode(batch_token_ids, skip_special_tokens=True)
+    return [str(s) for s in decoded]
 
 
 def hours_and_mins_to_days(hrs: int, mins: int) -> float:
@@ -96,10 +98,10 @@ def get_last_time_offset_and_category(
     if in_text.startswith(delimiter):
         in_text = in_text[len(delimiter) :]
 
-    lines = in_text.split(code_splitter)
-    for line in reversed(lines):
+    for line in reversed(in_text.split(code_splitter)):
         line = line.strip()
-
+        if delimiter and line.startswith(delimiter):
+            line = line[len(delimiter) :].strip()
         if last_category is None and line.startswith(category_prefix):
             last_category = line
 
@@ -108,7 +110,7 @@ def get_last_time_offset_and_category(
             if line == f"{time_prefix}Unspecified":
                 last_time_offset = hours_and_mins_to_days(TIME_UNSPECIFIED_HRS, TIME_UNSPECIFIED_MINS)
             elif (
-                (time_match := time_pattern.search(line))
+                (time_match := time_pattern.match(line))
                 and 0 <= (hours := int(time_match.group("hours"))) <= 23
                 and 0 <= (minutes := int(time_match.group("minutes"))) <= 59
             ):
@@ -118,13 +120,23 @@ def get_last_time_offset_and_category(
             break
 
     if last_category is None:
-        log.warning(f"No category found in:\n{in_text}")
-        last_category = ""
+        log.warning(f"No category found in prompt text:\n{in_text}")
     if last_time_offset is None:
-        log.warning(f"No time offset found in:\n{in_text}")
-        last_time_offset = 0.0
+        log.warning(f"No time offset found in prompt text:\n{in_text}")
 
-    return {"initial_time": last_time_offset, "initial_category": last_category}
+    return {
+        "initial_time": last_time_offset if last_time_offset is not None else 0.0,
+        "initial_category": last_category or "",
+    }
+
+
+def truncate_ids(ids: list[int], max_len: int | None, keep_first_token: bool) -> list[int]:
+    """Truncate token IDs from the left, optionally preserving the first token."""
+    if max_len is None or len(ids) <= max_len:
+        return ids
+    if keep_first_token and max_len > 1:
+        return [ids[0]] + ids[-(max_len - 1) :]
+    return ids[-max_len:]
 
 
 def get_preprocess_batch_function(
@@ -140,23 +152,7 @@ def get_preprocess_batch_function(
 ) -> Callable[[dict[str, list[Any]]], dict[str, Any]]:
     def preprocess_batch(batch: dict[str, list[Any]]) -> dict[str, Any]:
         """Truncate input IDs, decode batch to text, and extract initial time and category."""
-        batch_input_ids = batch["input_ids"]
-        if max_input_length is not None:
-            truncated_ids: list[list[int]] = []
-            for ids in batch_input_ids:
-                if len(ids) > max_input_length:
-                    if keep_first_token:
-                        if max_input_length <= 1:
-                            truncated_ids.append(ids[:max_input_length])
-                        else:
-                            truncated_ids.append([ids[0]] + ids[-(max_input_length - 1) :])
-                    else:
-                        truncated_ids.append(ids[-max_input_length:])
-                else:
-                    truncated_ids.append(ids)
-        else:
-            truncated_ids = batch_input_ids
-
+        truncated_ids = [truncate_ids(ids, max_input_length, keep_first_token) for ids in batch["input_ids"]]
         decoded_inputs = batch_ids_to_string(truncated_ids, tokenizer, join_with_delimiter, delimiter)
 
         initial_times: list[float] = []
@@ -170,6 +166,7 @@ def get_preprocess_batch_function(
 
         return {
             "input_ids": truncated_ids,
+            "len_input_ids": [len(ids) for ids in truncated_ids],
             "decoded_input": decoded_inputs,
             "initial_time": initial_times,
             "initial_category": initial_categories,
@@ -195,8 +192,7 @@ def detect_outcome(
     valid_categories: set[str],
     max_day_gap: int,
 ) -> dict[str, Any]:
-    """Returns parsed outcomes from the LLM output as a dictionary."""
-
+    """Parse rollout outcome, format adherence, and timeline from LLM generated text."""
     current_time = initial_time_offset
     current_category = initial_category
 
@@ -223,7 +219,7 @@ def detect_outcome(
                         TIME_UNSPECIFIED_HRS, TIME_UNSPECIFIED_MINS
                     )
                 elif (
-                    (time_match := time_pattern.search(line))
+                    (time_match := time_pattern.match(line))
                     and 0 <= (hours := int(time_match.group("hours"))) <= 23
                     and 0 <= (minutes := int(time_match.group("minutes"))) <= 59
                 ):
@@ -231,7 +227,7 @@ def detect_outcome(
                 else:
                     finish_reason = "Time Error"
             elif line.startswith(date_prefix):
-                if (date_match := date_pattern.search(line)) and 1 <= (
+                if (date_match := date_pattern.match(line)) and 1 <= (
                     days := int(date_match.group("days"))
                 ) <= max_day_gap:
                     next_time = math.floor(current_time) + days
@@ -240,16 +236,16 @@ def detect_outcome(
             else:
                 num_events += 1
                 event_str = f"{current_category}{delimiter}{line}"
-                if target_event_regex.search(event_str):
+                if target_event_regex.match(event_str):
                     outcome_predicted = True
                     finish_reason = "Target Event Found"
-                elif end_event_regex is not None and end_event_regex.search(event_str):
+                elif end_event_regex is not None and end_event_regex.match(event_str):
                     outcome_predicted = False
                     finish_reason = "End Event Found"
 
             if finish_reason is None and next_time != current_time:
                 if next_time < current_time:
-                    finish_reason = "Time Error"
+                    finish_reason = "Time Backward Error"
                 elif end_time_days is not None and (next_time - initial_time_offset) > end_time_days:
                     outcome_predicted = False
                     finish_reason = "End Time Reached"
@@ -257,7 +253,7 @@ def detect_outcome(
             current_time = next_time
 
             if finish_reason is not None:
-                # If a formatting error occurred on the final line, it is likely due to truncation
+                # If formatting error occurred on the final line, likely truncation due to max_new_tokens
                 if finish_reason not in SUCCESS_FINISH_REASONS and line_idx == len(lines) - 1:
                     finish_reason = "Max New Tokens Reached"
                 break
@@ -272,6 +268,7 @@ def detect_outcome(
 
     format_adherence = finish_reason in SUCCESS_FINISH_REASONS
     time_covered = current_time - initial_time_offset
+    error_line = lines[line_idx] if (not format_adherence and lines and 0 <= line_idx < len(lines)) else ""
 
     return {
         "outcome_predicted": outcome_predicted,
@@ -280,38 +277,75 @@ def detect_outcome(
         "num_events": num_events,
         "num_lines": line_idx + 1 if lines else 0,
         "time_covered": time_covered,
-        "error_line": lines[line_idx] if not format_adherence else "",
+        "error_line": error_line,
+    }
+
+
+def compute_rollout_probabilities(outcomes: list[bool | None], task_prevalence: float) -> dict[str, float]:
+    """Compute binary outcome probability estimates across sampled rollouts."""
+    num_outcomes = len(outcomes)
+    if num_outcomes == 0:
+        return {
+            "probability_0": 0.0,
+            "probability_0_5": 0.5,
+            "probability_prevalence": task_prevalence,
+            "probability_drop_trajectory": task_prevalence,
+        }
+
+    prob_0 = sum(1.0 for o in outcomes if o is True) / num_outcomes
+    prob_0_5 = sum(1.0 if o is True else (0.0 if o is False else 0.5) for o in outcomes) / num_outcomes
+    prob_prevalence = (
+        sum(1.0 if o is True else (0.0 if o is False else task_prevalence) for o in outcomes) / num_outcomes
+    )
+
+    valid_outcomes = [1.0 if o is True else 0.0 for o in outcomes if o is not None]
+    prob_drop_trajectory = sum(valid_outcomes) / len(valid_outcomes) if valid_outcomes else task_prevalence
+
+    return {
+        "probability_0": prob_0,
+        "probability_0_5": prob_0_5,
+        "probability_prevalence": prob_prevalence,
+        "probability_drop_trajectory": prob_drop_trajectory,
     }
 
 
 @hydra.main(
     version_base=None,
-    config_path="config/generative_inference",
+    config_path="config/generative_inference_hf",
 )
 def main(cfg: DictConfig) -> None:
-    """Run LLM inference and process outputs into Parquet chunks."""
+    """Run HuggingFace LLM inference and process outputs into Parquet chunks."""
+    log.info("Starting HuggingFace LLM Inference (v2)")
 
-    log.info("Starting LLM Inference")
-    hydra_cfg = HydraConfig.get()
-    dataset_dir = Path(cfg.dataset_dir)
-    out_dir = Path(hydra_cfg.run.dir)
-    inference_dir = out_dir
-    inference_dir.mkdir(parents=True, exist_ok=True)
-    log.info(f"Inference directory: {inference_dir}")
+    out_dir = Path(HydraConfig.get().run.dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    log.info(f"Inference directory: {out_dir}")
 
-    dataset = datasets.load_from_disk(str(dataset_dir))
+    if cfg.get("seed") is not None:
+        set_seed(cfg.seed)
+
+    # Load dataset with optional subsampling and multi-GPU sharding
+    dataset = datasets.load_from_disk(str(cfg.dataset_dir))
     if cfg.get("max_eval_samples") is not None:
         dataset = dataset.shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
+
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     rank = int(os.environ.get("RANK", 0))
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+
     if world_size > 1:
-        log.info(f"Running distributed: Rank {rank}/{world_size}. Sharding dataset...")
+        log.info(f"Running distributed: Rank {rank}/{world_size} (Local Rank {local_rank}). Sharding dataset...")
         dataset = dataset.shard(num_shards=world_size, index=rank)
-    log.info(f"Loaded {len(dataset)} examples from data directory (after sharding).")
+    log.info(f"Loaded {len(dataset)} examples after sharding.")
 
-    ### Preprocessing ###
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model.model)
+    # Tokenizer setup
+    model_name_or_path = cfg.model.pretrained_model_name_or_path
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
+    # Task prevalence
     task_prevalence_path = Path(hydra.utils.to_absolute_path(str(cfg.task_prevalence_path)))
     if not task_prevalence_path.exists():
         raise FileNotFoundError(f"Task prevalence file not found: {task_prevalence_path}")
@@ -321,22 +355,20 @@ def main(cfg: DictConfig) -> None:
     task_prevalence = float(task_prevalences[cfg.task])
     log.info(f"Loaded task prevalence for '{cfg.task}': {task_prevalence}")
 
+    # Event extraction regex patterns
     event_config_path = hydra.utils.to_absolute_path(str(cfg.event_extraction.event_config_path))
     valid_categories = get_valid_categories(event_config_path)
     log.info(f"Loaded {len(valid_categories)} valid categories from {event_config_path}")
 
     escaped_delimiter = re.escape(cfg.event_extraction.delimiter)
-    escaped_date_prefix = re.escape(cfg.event_extraction.date_prefix)
-    escaped_time_prefix = re.escape(cfg.event_extraction.time_prefix)
+    date_pattern = re.compile(rf"^{re.escape(cfg.event_extraction.date_prefix)}\+(?P<days>\d+) days$")
+    time_pattern = re.compile(
+        rf"^{re.escape(cfg.event_extraction.time_prefix)}(?P<hours>\d+)h{escaped_delimiter}(?P<minutes>\d+)m$"
+    )
 
-    date_pattern = re.compile(rf"^{escaped_date_prefix}\+(?P<days>\d+) days$")
-    time_pattern = re.compile(rf"^{escaped_time_prefix}(?P<hours>\d+)h{escaped_delimiter}(?P<minutes>\d+)m$")
-
-    # Get task specific regex and time conditions
     task_config = cfg.event_extraction.tasks[cfg.task]
     target_event_regex = re.compile(task_config.target_event_regex)
-    end_event_str = task_config.end_event_regex
-    end_event_regex = re.compile(end_event_str) if end_event_str is not None else None
+    end_event_regex = re.compile(task_config.end_event_regex) if task_config.end_event_regex is not None else None
     end_time_days = task_config.end_time_days
     if end_event_regex is None and end_time_days is None:
         raise ValueError("end_event_regex and end_time_days cannot both be None")
@@ -361,42 +393,73 @@ def main(cfg: DictConfig) -> None:
         num_proc=cfg.num_workers,
         desc="Preprocessing and decoding batch inputs",
     )
+    log.info("Sorting dataset by input_ids length...")
+    dataset = dataset.sort("len_input_ids", reverse=True).remove_columns("len_input_ids")
 
-    ### Load model ###
-    log.info(f"Loading model ({cfg.model.model})...")
-    llm = LLM(**cfg.model)
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+        device = f"cuda:{local_rank}"
+    else:
+        device = "cpu"
 
-    sampling_params_dict = OmegaConf.to_container(cfg.sampling_params, resolve=True)
-    set_max_token_id = sampling_params_dict.pop("set_max_token_id", False)
-    if set_max_token_id:
+    # Load model with native HF arguments
+    log.info(f"Loading model ({model_name_or_path}) onto {device}...")
+    model = AutoModelForCausalLM.from_pretrained(**OmegaConf.to_container(cfg.model, resolve=True)).to(device)
+    model.eval()
+
+    if model.config.pad_token_id is None:
+        model.config.pad_token_id = tokenizer.pad_token_id
+
+    # Configure generation
+    gen_dict = OmegaConf.to_container(cfg.generation_config, resolve=True)
+    gen_config = GenerationConfig(pad_token_id=tokenizer.pad_token_id, **gen_dict)
+
+    if cfg.get("suppress_extra_vocab", False):
         vocab_size = len(tokenizer)
-        log.info(f"Setting max token id to tokenizer vocab size of {vocab_size}")
-        sampling_params_dict["allowed_token_ids"] = list(range(0, vocab_size))
+        model_vocab_size = getattr(model.config, "vocab_size", vocab_size)
+        if model_vocab_size > vocab_size:
+            log.info(f"Suppressing extra vocab token IDs from {vocab_size} to {model_vocab_size}")
+            gen_config.suppress_tokens = list(range(vocab_size, model_vocab_size))
 
-    sampling_params = SamplingParams(**sampling_params_dict)
-    log.info(sampling_params)
+    batch_size = int(cfg.batch_size)
+    num_return_sequences = int(gen_config.num_return_sequences)
+    log.info(f"GenerationConfig: {gen_config}, batch_size: {batch_size}")
 
-    # vLLM batch inference in chunks
     total_chunks = math.ceil(len(dataset) / cfg.chunk_size)
-    for i in tqdm(range(0, len(dataset), cfg.chunk_size)):
+    for i in tqdm(range(0, len(dataset), cfg.chunk_size), total=total_chunks, desc="Processing Chunks"):
         chunk_index = i // cfg.chunk_size
         log.info(f"Processing Chunk {chunk_index + 1} / {total_chunks}")
-        chunk_file_path = inference_dir / f"chunk_rank{rank:02d}_{chunk_index:06d}.parquet"
+        chunk_file_path = out_dir / f"chunk_rank{rank:02d}_{chunk_index:06d}.parquet"
 
         chunk = dict(dataset[i : i + cfg.chunk_size])
+        chunk_input_ids: list[list[int]] = chunk.pop("input_ids")
 
-        prompts = [{"prompt_token_ids": ids} for ids in chunk.pop("input_ids")]
+        flat_decoded: list[str] = []
+        for b_start in tqdm(range(0, len(chunk_input_ids), batch_size), desc="Generating"):
+            batch_ids = chunk_input_ids[b_start : b_start + batch_size]
+            encoded_inputs = tokenizer.pad(
+                {"input_ids": batch_ids},
+                padding=True,
+                pad_to_multiple_of=cfg.pad_to_multiple_of,
+                return_tensors="pt",
+            ).to(model.device)
 
-        outputs = llm.generate(prompts, sampling_params=sampling_params)
-        flat_output_ids = [output.token_ids for request_output in outputs for output in request_output.outputs]
+            input_seq_len = encoded_inputs["input_ids"].shape[1]
 
-        flat_decoded = batch_ids_to_string(
-            flat_output_ids, tokenizer, cfg.tokenizer.join_with_delimiter, cfg.tokenizer.delimiter
-        )
+            with torch.inference_mode():
+                outputs = model.generate(
+                    **encoded_inputs,
+                    generation_config=gen_config,
+                )
+            generated_tokens = outputs[:, input_seq_len:].cpu()
+            batch_decoded = batch_ids_to_string(
+                generated_tokens, tokenizer, cfg.tokenizer.join_with_delimiter, cfg.tokenizer.delimiter
+            )
+            flat_decoded.extend(batch_decoded)
 
-        n = cfg.sampling_params.n
         chunk["decoded_outputs"] = [
-            flat_decoded[start_idx : start_idx + n] for start_idx in range(0, len(flat_decoded), n)
+            flat_decoded[start : start + num_return_sequences]
+            for start in range(0, len(flat_decoded), num_return_sequences)
         ]
 
         chunk_results: defaultdict[str, list[Any]] = defaultdict(list)
@@ -425,36 +488,18 @@ def main(cfg: DictConfig) -> None:
                 for k, v in result.items():
                     sample_rollout_results[k].append(v)
 
-            # Handle error cases
-            outcomes = sample_rollout_results["outcome_predicted"]
-            num_outcomes = len(outcomes)
-
-            prob_0 = sum(1.0 if o is True else 0.0 for o in outcomes) / num_outcomes
-
-            prob_0_5 = sum(1.0 if o is True else (0.0 if o is False else 0.5) for o in outcomes) / num_outcomes
-
-            prob_prevalence = (
-                sum(1.0 if o is True else (0.0 if o is False else task_prevalence) for o in outcomes) / num_outcomes
-                if num_outcomes > 0
-                else task_prevalence
-            )
-
-            # Drop trajectory (if all trajectories dropped default to prevalence)
-            valid_outcomes = [1.0 if o is True else 0.0 for o in outcomes if o is not None]
-            prob_drop_trajectory = sum(valid_outcomes) / len(valid_outcomes) if valid_outcomes else task_prevalence
-
-            sample_rollout_results["probability_0"].append(prob_0)
-            sample_rollout_results["probability_0_5"].append(prob_0_5)
-            sample_rollout_results["probability_prevalence"].append(prob_prevalence)
-            sample_rollout_results["probability_drop_trajectory"].append(prob_drop_trajectory)
-
+            # Rollout-level results (list per sample)
             for k, v in sample_rollout_results.items():
+                chunk_results[k].append(v)
+
+            # Sample-level outcome probabilities (scalar float per sample)
+            probs = compute_rollout_probabilities(sample_rollout_results["outcome_predicted"], task_prevalence)
+            for k, v in probs.items():
                 chunk_results[k].append(v)
 
         chunk.update(chunk_results)
 
-        log.info(f"Saving to {chunk_file_path}")
-        table = pa.Table.from_pydict(chunk)
-        pq.write_table(table, chunk_file_path)
+        log.info(f"Saving chunk to {chunk_file_path}")
+        pq.write_table(pa.Table.from_pydict(chunk), chunk_file_path)
 
-    log.info(f"Inference Complete! Outputs saved to {out_dir}")
+    log.info(f"Inference complete! Outputs saved to {out_dir}")
