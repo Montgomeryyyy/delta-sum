@@ -33,13 +33,13 @@ source "./scripts/config.sh"
 
 DEBUG_ARGS=""
 if [[ "$MODE" == "structured" ]]; then
-    CONFIG_NAME="create_task_datasets_structured.yaml"
+    CONFIG_NAME="structured.yaml"
     MEDS_DIR="${STRUCTURED_MEDS_DIR}"
     OUTPUT_DIR="${STRUCTURED_TASK_DATA_DIR}"
     DEBUG_OUTPUT_DIR="${DEBUG_DIR}/tasks/structured"
     DEBUG_ARGS="--structured"
 else
-    CONFIG_NAME="create_task_datasets_nl.yaml"
+    CONFIG_NAME="natural_language.yaml"
     MEDS_DIR="${NATURAL_LANGUAGE_MEDS_DIR}"
     OUTPUT_DIR="${NATURAL_LANGUAGE_TASK_DATA_DIR}"
     DEBUG_OUTPUT_DIR="${DEBUG_DIR}/tasks/natural_language"
@@ -65,7 +65,7 @@ for TASK_NAME in $ACES_TASKS; do
 done
 
 echo "Outputting subjects to markdown for debugging at ${DEBUG_OUTPUT_DIR}"
-uv run python ./debug/task_output.py \
+uv run python mimic_struct_predict/debug/task_output.py \
     --task_dir "${OUTPUT_DIR}/tokenized" \
     --debug_dir "${DEBUG_OUTPUT_DIR}" \
     --tokenizer_dir "${TOKENIZER_DIR}" \

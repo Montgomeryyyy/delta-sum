@@ -1,5 +1,0 @@
-base_model: ???
-lora_adaptor: ???
-out_dir: ???
-dtype: "bfloat16"
-device_map: "auto"

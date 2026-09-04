@@ -52,7 +52,7 @@ DEBUG_OUTPUT_DIR="${DEBUG_DIR}/pretraining/${MODE}"
 mkdir -p "${DEBUG_OUTPUT_DIR}"
 echo "Outputting debug files to ${DEBUG_OUTPUT_DIR}"
 
-uv run python debug/pretrain_output.py \
+uv run python mimic_struct_predict/debug/pretrain_output.py \
     --output_dir "${DEBUG_OUTPUT_DIR}" \
     --raw_data_dir "${OUTPUT_DIR}/raw_data/train/" \
     --tokenizer_dir "${TOKENIZER_ARG}" \

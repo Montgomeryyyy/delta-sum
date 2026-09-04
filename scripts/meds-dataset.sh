@@ -31,7 +31,7 @@ uv run MEDS_transform-pipeline \
     pipeline_config_fp=./mimic_struct_predict/preprocessing/meds/config/ETL.yaml \
 
 echo "Outputting subjects to markdown for debugging at ${DEBUG_DIR}/meds"
-uv run python debug/med_output.py \
+uv run python mimic_struct_predict/debug/med_output.py \
     --output_dir "${DEBUG_DIR}/meds" \
     --meds_train_dir "${MIMICIV_MEDS_COHORT_DIR}/data/train/"
 
@@ -51,7 +51,7 @@ for task in ${ACES_TASKS}; do
         --multirun
 
     echo "Outputting task ${task} to markdown for debugging at ${DEBUG_DIR}/aces/${task}"
-    uv run python debug/aces_output.py \
+    uv run python mimic_struct_predict/debug/aces_output.py \
         --output_dir "${DEBUG_DIR}/aces/${task}" \
         --aces_train_dir "${ACES_OUTPUT_DIR}/${task}/train/" \
         --meds_train_dir "${MEDS_TAB_MEDS_DIR}/train/"

@@ -59,7 +59,7 @@ fi
 export NCCL_P2P_DISABLE=1
 
 uv run accelerate launch \
-    --config_file mimic_struct_predict/models/pre_training/config/train/accelerate.yaml \
+    --config_file mimic_struct_predict/models/config/train/accelerate.yaml \
     --num_processes "${NUM_GPUS}" \
     --no_python pre_training_train \
     --config-name "${CONFIG_NAME}" \

@@ -1,461 +1,455 @@
-# mimic-struct-predict
+# Quantifying the Silent Failure Modes of Generative Electronic Health Record Models
 
-## CREATE Setup commands
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Package Manager: uv](https://img.shields.io/badge/package%20manager-uv-green.svg)](https://github.com/astral-sh/uv)
+[![Data Standard: MEDS](https://img.shields.io/badge/data%20standard-MEDS-orange.svg)](https://github.com/Medical-Event-Data-Standard/meds)
+[![Cohort Extraction: ACES](https://img.shields.io/badge/cohort%20extraction-ACES-purple.svg)](https://github.com/som-shahlab/es-aces)
+[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 
-Get an interative session
-`srun --cpus-per-task=2 --mem=4G -p slam_cpu --time 1-00:00:00 --pty /bin/bash -l`
+Official repository to reproduce the data pre-processing, model pre-training, autoregressive rollout inference, tabular baseline comparisons, and statistical evaluation presented in the paper:
+
+> **Quantifying the Silent Failure Modes of Generative Electronic Health Record Models**
+> *Anonymous Authors*
+> [Paper Link (PDF)](TODO) | [arXiv Placeholder](TODO)
+
+---
+
+## Overview
+
+Generative foundation models for Electronic Health Records (EHRs) have shown significant promise for zero-shot clinical outcome prediction by autoregressively sampling future patient trajectories. However, evaluating their true predictive validity is complicated by unmeasured error rates in generated timelines and the methodological choices used to handle those failures.
+
+This repository provides the official, end-to-end reproducible pipeline to quantitatively evaluate patient trajectory error rates, their underlying failure modes, and their downstream impact on clinical performance metrics. It provides direct empirical comparisons between:
+
+1. **Natural Language Autoregressive Models**: Continual pre-training and generative rollout forecasting over chronological clinical narratives, fine-tuned from a general-domain Google Gemma 3 (270M) checkpoint.
+2. **Structured Medical Code Models**: Autoregressive transformers trained from scratch (Gemma 3 270M architecture) with a custom vocabulary over structured [Medical Event Data Standard (MEDS)](https://github.com/Medical-Event-Data-Standard/meds) tokens.
+3. **Tabular Discriminative Baselines**: Supervised XGBoost models trained on multi-window tabularised features via [MEDS-TAB](https://github.com/Medical-Event-Data-Standard/meds-tab).
+
+### Key Research Findings
+
+- **Substantial Trajectory Error Rates**: Across five common clinical prediction tasks on MIMIC-IV and MIMIC-IV-ED, autoregressive timeline rollouts exhibit high, task-dependent error rates ranging from **TODO% to TODO%**.
+- **Modality-Specific Failure Modes**:
+  - *Structured models* fail predominantly due to syntactically invalid generation (e.g. malformed event timestamps, corrupted delimiters, or illegal code transitions).
+  - *Natural language models* demonstrate greater syntactic adherence but are heavily bottlenecked by output context-length limits during long trajectory rollouts.
+- **Metric Sensitivity & Silent Cohort Exclusion**: The methodological strategy chosen to handle invalid rollouts (such as silently discarding non-adherent trajectories versus imputing baseline priors) substantially shifts standard discrimination metrics such as AUROC by up to **TODO**, while risking the silent exclusion of sicker, high-risk patient cohorts from evaluation.
+
+### Clinical Evaluation Tasks
+
+All cohort definitions, observation windows, and prediction targets are extracted from **MIMIC-IV** and **MIMIC-IV-ED** using [ACES](https://github.com/som-shahlab/es-aces):
+- **In-Hospital Mortality** (`in_hospital_mortality`)
+- **Hospital Length of Stay $\leq 7$ Days** (`hospital_length_of_stay_leq_7_days`)
+- **30-Day Post-Discharge Mortality** (`hospital_post_discharge_30_day_mortality`)
+- **ED-to-Hospital Admission** (`ed_to_hospital_admission`)
+- **ED 72-Hour Reattendance** (`ed_72hr_reattendance`)
+
+---
+
+## Repository Structure
+
+The repository is modularised into four primary directories:
 
 ```
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv sync
+├── mimic_struct_predict/       # Core Python library
+│   ├── preprocessing/          # Data conversion, transforms, ACES tasks, & prevalence estimation
+│   │   ├── aces_task_definitions/ # YAML cohort extraction rules for 5 clinical tasks
+│   │   ├── meds/               # PhysioNet downloader, pre-MEDS, and MEDS transform stages
+│   │   └── calculate_task_prevalences.py # Empirical task label prevalence computation
+│   ├── models/                 # Generative autoregressive modelling pipeline
+│   │   ├── config/             # Hydra configs (tokenize, train, create_task_datasets, generative_inference_hf)
+│   │   ├── tokenize.py         # Tokenisation & vocabulary creation
+│   │   ├── train.py            # Language model pre-training with Accelerate
+│   │   ├── create_task_datasets.py # Task prompt & observation dataset construction
+│   │   ├── generative_inference_hf.py # Parallel multi-GPU autoregressive trajectory rollouts
+│   │   └── utils/              # Data collators, text serializers, and pre-processing helpers
+│   ├── evals/                  # Integrated statistical evaluation & publication plotting
+│   │   ├── rollout_delta.py    # Relative AUROC / Brier score deltas vs XGBoost (10k bootstraps)
+│   │   ├── error_rates.py      # Format adherence & failure-mode distribution analysis
+│   │   ├── gt_trajectory_lengths.py # Ground-truth future trajectory length distributions
+│   │   ├── dataset_count.py    # Cohort, event, and token count statistics
+│   │   ├── training_details.py # Runtime and training dynamics from TensorBoard logs
+│   │   ├── event_config_to_latex.py # Converts MEDS event configs to camera-ready LaTeX
+│   │   └── plot_style.py       # Publication typography, Tab10 palettes, and layout standards
+│   └── debug/                  # Cohort and tokenised dataset inspection tools
+│       ├── med_output.py       # Renders sample MEDS patient records as Markdown
+│       ├── aces_output.py      # Renders sample ACES task cohorts as Markdown
+│       ├── pretrain_output.py  # Decodes tokenised pre-training datasets for visual verification
+│       └── task_output.py      # Decodes task prompt datasets for verification
+├── scripts/                    # End-to-end SLURM orchestration scripts
+│   ├── setup_uv.sh             # Compiles CUDA kernels & synchronises virtual environment
+│   ├── download_mimic.sh       # Downloads MIMIC-IV / demo from PhysioNet
+│   ├── meds-dataset.sh         # Converts raw data to MEDS & extracts ACES cohorts
+│   ├── calculate-task-prevalences.sh # Computes calibration task prevalences
+│   ├── meds-tab.sh             # Tabularises MEDS records & trains XGBoost baselines
+│   ├── pretrain-tokenize.sh    # Pre-training tokenisation
+│   ├── pretrain-train.sh       # Launches multi-GPU language model pre-training
+│   ├── create-task-datasets.sh # Generates task prompt datasets for rollout evaluation
+│   ├── pretrain-generation-hf.sh # Parallel multi-GPU autoregressive trajectory rollouts
+│   ├── eval.sh                 # Executes statistical evaluation & figure generation
+│   ├── config.sh               # Central path & environment configuration
+│   └── tensorboard.sh          # Launches TensorBoard server for experiment tracking
+├── pyproject.toml              # Dependencies and build configuration (via uv)
+└── uv.lock                     # Deterministic lockfile
 ```
 
+---
 
-Setup up .env
-```
-export MIMIC_USER=
-export MIMIC_PASSWORD=
-export HF_TOKEN=
-export SCRATCH_DIR=
+## Environment Setup & Requirements
 
+### Prerequisites
+- **Operating System**: Linux (x86_64)
+- **HPC Workload Manager**: SLURM
+- **Python**: `>=3.11, <3.13` managed via [`uv`](https://docs.astral.sh/uv/)
+- **CUDA**: CUDA 12.2+ toolkit and drivers
+- **Hardware**:
+  - **GPU**: NVIDIA H100 (for pre-training) or A100 (for multi-GPU rollout inference)
+  - **Memory**: 64 GB – 512 GB RAM depending on the pipeline stage
+
+### 1. Environment Variables Configuration
+
+Create a `.env` file in the repository root containing your credentials and paths:
+
+```bash
+export MIMIC_USER="<your_physionet_username>"
+export MIMIC_PASSWORD="<your_physionet_password>"
+export HF_TOKEN="<your_huggingface_user_access_token>"
+export SCRATCH_DIR="</path/to/high_speed_scratch_directory>"
 ```
+
+Then load the environment and shared project configurations:
+
+```bash
+# Choose dataset scale: 'false' for full MIMIC-IV v2.2, 'true' for MIMIC-IV Demo
+export DEMO=false
+
 source .env
 source scripts/config.sh
 ```
 
-SETUP
-```
+> [!TIP]
+> **Reproducing with the Demo Dataset**:
+> Setting `export DEMO=true` configures the pipeline to use the lightweight MIMIC-IV demo dataset (`mimic-iv-demo` and `mimic-iv-ed-demo`). This allows rapid verification of the complete pipeline with minimal compute and storage.
+
+### 2. Python Virtual Environment Setup
+
+Because custom CUDA kernels (such as `flash-attn` and `causal-conv1d`) are compiled against the host CUDA environment, build the virtual environment on an HPC GPU node:
+
+```bash
 sbatch \
-    --partition slam_gpu \
+    --partition gpu_partition \
     --gres=gpu:1 \
     --constraint=h100 \
     --nodes=1 \
     --ntasks=12 \
     --mem=512G \
-    --time 60 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
+    --time=60 \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
     --output=$SCRATCH_DIR/../logs/setup_uv/%j.out \
     scripts/setup_uv.sh
+```
 
+Alternatively, on an interactive GPU shell:
+```bash
+bash scripts/setup_uv.sh
+```
 
-sbatch\
-    --partition slam_cpu \
-    --time 600 \
-    --mem 2G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN,MIMIC_USER,MIMIC_PASSWORD, \
+---
+
+## Step-by-Step Reproduction Pipeline
+
+All pipeline steps can be executed sequentially via SLURM. Resource allocations (partitions, memory, walltime) reflect safe upper bounds on an HPC cluster and may be tuned to your institutional cluster.
+
+```mermaid
+flowchart TD
+    A["Download MIMIC-IV (scripts/download_mimic.sh)"] --> B["MEDS & ACES Pre-processing (scripts/meds-dataset.sh)"]
+    B --> C["Task Prevalences (scripts/calculate-task-prevalences.sh)"]
+    B --> D["Tabular Baseline (scripts/meds-tab.sh)"]
+    B --> E["Tokenisation (scripts/pretrain-tokenize.sh)"]
+    E --> F["Pre-training (scripts/pretrain-train.sh)"]
+    C & F --> G["Prompt Generation (scripts/create-task-datasets.sh)"]
+    G --> H["Rollout Inference (scripts/pretrain-generation-hf.sh)"]
+    D & H --> I["Evaluation & Plots (scripts/eval.sh)"]
+```
+
+---
+
+### Step 1: Data Download
+
+Downloads the MIMIC-IV clinical database (or demo dataset if `DEMO=true`) directly from PhysioNet:
+
+```bash
+sbatch \
+    --partition cpu_partition \
+    --time=10:00:00 \
+    --mem=2G \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,MIMIC_USER,MIMIC_PASSWORD,DEMO \
     --output=$SCRATCH_DIR/../logs/download_mimic/%j.out \
     scripts/download_mimic.sh
+```
 
-sbatch\
-    --partition slam_cpu \
+---
+
+### Step 2: Data Pre-processing (MEDS & ACES)
+
+Executes `pre_MEDS`, runs the MEDS transformation pipeline (`ETL.yaml`), and applies ACES cohort extraction rules across all clinical tasks:
+
+```bash
+sbatch \
+    --partition cpu_partition \
     --time=1:00:00 \
     --ntasks=1 \
     --cpus-per-task=32 \
     --mem=256G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
     --output=$SCRATCH_DIR/../logs/meds-dataset/%j.out \
     scripts/meds-dataset.sh
+```
 
-## Pre-training
+---
 
-export MODE=natural_language
-OR
-export MODE=natural_language_lora
-OR
-export MODE=structured
+### Step 3: Compute Task Prevalences
 
-sbatch\
+Calculates empirical task label prevalences across the training cohort shards and outputs `$TASK_PREVALENCES_PATH` (`task_prevalences.json`). This calibration metadata is required during generative rollout inference and evaluation:
+
+```bash
+sbatch \
+    --partition cpu_partition \
+    --time=0:30:00 \
+    --ntasks=1 \
+    --cpus-per-task=16 \
+    --mem=64G \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/task-prevalences/%j.out \
+    scripts/calculate-task-prevalences.sh
+```
+
+*(Note: Can also be executed interactively in under a minute via `bash scripts/calculate-task-prevalences.sh`.)*
+
+---
+
+### Step 4: Tabular Baseline Training (MEDS-TAB)
+
+Extracts aggregated multi-window time-series features and trains supervised XGBoost models via Hydra sweeps:
+
+```bash
+sbatch \
+    --partition cpu_partition \
+    --time=1-00:00:00 \
+    --nodes=1 \
+    --cpus-per-task=124 \
+    --mem=950G \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/meds-tab/%j.out \
+    scripts/meds-tab.sh
+```
+
+Trained models and validation predictions will be stored under `$MEDS_TAB_OUTPUT_MODEL_DIR`.
+
+---
+
+### Step 5: Generative Model Pre-training
+
+Models are trained under two distinct modalities:
+- **`natural_language`**: Continual pre-training of Gemma 3 270M on flattened, time-stamped textual narratives.
+- **`structured`**: Training an autoregressive transformer from scratch over structured MEDS code sequences.
+
+#### 5.1 Tokenisation
+Tokenises the MEDS datasets and constructs the vocabulary:
+
+```bash
+# Set mode to 'natural_language' or 'structured'
+export MODE="natural_language"
+
+sbatch \
     --partition slam_cpu \
     --time=0:20:00 \
     --ntasks=1 \
     --cpus-per-task=32 \
     --mem=256G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
     --output=$SCRATCH_DIR/../logs/pretrain-tokenize/%j.out \
     scripts/pretrain-tokenize.sh $MODE
+```
 
-sbatch\
-    --partition slam_gpu \
-    --time=7-00:00:00 \
+Repeat for `export MODE="structured"`.
+
+#### 5.2 Model Training
+Launches distributed pre-training with Hugging Face `accelerate` and Liger kernels:
+
+```bash
+sbatch \
+    --partition gpu_partition \
+    --time=2-12:00:00 \
     --gres=gpu:1 \
     --constraint=h100 \
     --ntasks=1 \
     --cpus-per-task=18 \
     --mem=64G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
     --output=$SCRATCH_DIR/../logs/pretrain-train/%j.out \
-    scripts/pretrain-train.sh $MODE $MODEL_NAME --resume-from-checkpoint /scratch/prj/bhi_ehrfoundationmodels/k2692250/mimic-struct-predict/training/natural_language/pretraining/20260817_225728/checkpoint-8840
+    scripts/pretrain-train.sh $MODE
+```
 
-## Linear Probe
+#### 5.3 Monitoring Training
+Training logs and metrics can be monitored via TensorBoard:
 
-export MODE=natural_language
-OR
-export MODE=structured
-OR
-export MODE=natural_language_lora
+```bash
+bash scripts/tensorboard.sh
+```
 
-export MODEL_NAME=$HF_MODEL_NAME
+Forward the server port locally to inspect learning curves:
+```bash
+ssh -NL 8000:localhost:8000 <remote_hostname>
+```
 
-export OUTPUT_DIRECTORY=cpt/pt/zero_shot/cpt_lora
+---
 
-sbatch\
+### Step 6: Autoregressive Rollout Inference
+
+Upon completion of pre-training, locate the saved model checkpoints inside your scratch directory (located at `$SCRATCH_DIR/training/<mode>/pretraining/<timestamp>/final_model`).
+
+Export the paths to your trained checkpoints:
+
+```bash
+export NL_MODEL_DIR="$SCRATCH_DIR/training/natural_language/pretraining/<timestamp>/final_model"
+export STRUCT_MODEL_DIR="$SCRATCH_DIR/training/structured/pretraining/<timestamp>/final_model"
+```
+
+#### 6.1 Create Task-Specific Prompt Datasets
+Extract patient trajectories up to the index prediction time for each ACES task:
+
+```bash
+# For Natural Language:
+sbatch \
     --partition slam_cpu \
     --time=4:00:00 \
     --ntasks=1 \
     --cpus-per-task=64 \
     --mem=512G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/create-task-datasets/%j.out \
-    scripts/create-task-datasets.sh $MODE $MODEL_NAME
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/create-task-datasets/nl_%j.out \
+    scripts/create-task-datasets.sh natural_language "$NL_MODEL_DIR"
 
-sbatch\
-    --partition slam_gpu \
-    --time=3-00:00:00 \
-    --gres=gpu:1 \
-    --constraint=h100 \
+# For Structured:
+sbatch \
+    --partition slam_cpu \
+    --time=4:00:00 \
     --ntasks=1 \
-    --cpus-per-task=8 \
-    --mem=128G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/linear-probe-embedding/%j.out \
-    scripts/linear-probe-embedding.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY
+    --cpus-per-task=64 \
+    --mem=512G \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/create-task-datasets/struct_%j.out \
+    scripts/create-task-datasets.sh structured "$STRUCT_MODEL_DIR"
+```
 
-sbatch\
-    --partition slam_cpu \
-    --time=1:00:00 \
-    --ntasks=1 \
-    --cpus-per-task=16 \
-    --mem=128G \
-    --chdir $(pwd) \
-    --output=$SCRATCH_DIR/../logs/linear-probe-train/%j.out \
-    scripts/linear-probe-train.sh $MODE $OUTPUT_DIRECTORY
+#### 6.2 Execute Multi-GPU Rollouts
+Performs parallel autoregressive generative forecasting across GPUs:
 
-sbatch\
-    --partition slam_cpu \
-    --time=0:30:00 \
-    --ntasks=1 \
-    --cpus-per-task=16 \
-    --mem=128G \
-    --chdir $(pwd) \
-    --output=$SCRATCH_DIR/../logs/linear-probe-inference/%j.out \
-    scripts/linear-probe-inference.sh $MODE $OUTPUT_DIRECTORY --split tuning
-
-## MEDS-TAB
-
-sbatch\
-    --partition slam_cpu \
-    --time=7-00:00:00 \
-    --nodes=1 \
-    --cpus-per-task=124 \
-    --mem=950G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/meds-tab/%j.out \
-    scripts/meds-tab.sh
-
-### SFT
-
+```bash
+# For Natural Language (held_out split):
 sbatch \
-    --partition slam_gpu \
-    --gres=gpu:2 \
-    --constraint=h100 \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=8 \
-    --mem=64G \
-    --time 2000 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/natural_language_train_sft/%j.out \
-    scripts/natural_language_train_sft_multi_gpu.sh \
-    --config-name sft.yaml \
-    --dataset-name direct_yes_no
-
-sbatch\
-    --partition slam_cpu \
-    --cpus-per-task=8 \
-    --mem=256G \
-    --time=60 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/natural-language-dataset-prompts/%j.out \
-    scripts/natural-language-dataset-prompts.sh
-
-sbatch \
-    --partition biomed_a100_gpu \
-    --gres=gpu:1 \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=1 \
-    --mem=16G \
-    --time 40 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=$SCRATCH_DIR/../logs/natural_language_inference/%j.out \
-    scripts/natural_language_inference.sh \
-    --config-name inference_thinking_yes_no.yaml \
-    --dataset-name thinking_yes_no \
-    --split tuning
-
-bash scripts/natural_language_inference.sh \
-    --config-name inference_direct.yaml \
-    --dataset-name direct_yes_no \
-    --split tuning
-
-
-### GRPO
-
-sbatch \
-    --partition biomed_a100_gpu \
-    --gres=gpu:8 \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=8 \
-    --mem=64G \
-    --time 2880 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=$SCRATCH_DIR/../logs/natural_language_train_grpo/%j.out \
-    scripts/natural-language-train-grpo-multi-gpu.sh \
-    --config-name grpo_probability.yaml \
-    --dataset-name thinking_probability
-
-sbatch \
-    --partition slam_gpu \
-    --gres=gpu:2 \
-    --constraint=h100 \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=8 \
-    --mem=128G \
-    --time 2880 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR \
-    --output=$SCRATCH_DIR/../logs/natural_language_train_grpo/%j.out \
-    scripts/natural-language-train-grpo-multi-gpu.sh \
-    --config-name grpo_probability.yaml \
-    --dataset-name thinking_probability
-
-
-    --config-name grpo_probability.yaml \
-    --dataset-name thinking_probability
-
-
-### Inference
-
-export MODE=natural_language
-OR
-export MODE=structured
-OR
-export MODE=natural_language_lora
-
-export MODEL_NAME=$HF_MODEL_NAME
-
-export OUTPUT_DIRECTORY=cpt/pt/zero_shot/cpt_lora
-
-sbatch\
-    --partition slam_gpu \
-    --time=7-00:00:00 \
+    --partition gpu_server \
+    --time=1-12:00:00 \
     --gres=gpu:4 \
-    --constraint=l40s \
+    --constraint=a100s \
     --ntasks=1 \
     --cpus-per-task=28 \
     --mem=128G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
-    scripts/pretrain-generation.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split held_out
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/pretrain-generation/nl_%j.out \
+    scripts/pretrain-generation-hf.sh natural_language "$NL_MODEL_DIR" cpt --split held_out
 
-
-sbatch\
-    --partition slam_gpu \
-    --time=1-00:00:00 \
-    --gres=gpu:2 \
-    --constraint=l40s \
-    --ntasks=1 \
-    --cpus-per-task=14 \
-    --mem=64G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/pretrain-inference-prompt/%j.out \
-    scripts/pretrain-inference-prompt.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY
-
-
+# For Structured (held_out split):
 sbatch \
-    --partition biomed_a100_gpu \
-    --gres=gpu:1 \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=1 \
-    --mem=16G \
-    --time 10 \
-    --chdir $(pwd) \
-    --get-user-env \
-    --output=$SCRATCH_DIR/../logs/natural_language_inference/%j.out \
-    scripts/natural_language_inference.sh \
-    --config-name inference_thinking_probability.yaml \
-    --dataset-name thinking_probability \
-    --split tuning
-
-sbatch \
-    --partition slam_gpu \
+    --partition gpu_server \
+    --time=1-12:00:00 \
     --gres=gpu:4 \
-    --constraint=l40s \
-    --nodes=1 \
-    --ntasks-per-node=1 \
-    --cpus-per-task=16 \
-    --mem=128G \
-    --time 30 \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/natural_language_inference/%j.out \
-    scripts/natural_language_inference.sh \
-    --config-name inference_direct.yaml \
-    --dataset-name direct_yes_no \
-    --split tuning \
-    --model-path google/gemma-3-270m-it \
-    --lora-adaptor /scratch/users/k2692250/mimic-struct-predict/training/natural_language/sft/direct_yes_no/20260716_221911/final_model
-
-
-    --model-path google/gemma-3-12b-it
-
-
-    --lora-adaptor /scratch/users/k2692250/mimic-struct-predict/training/natural_language/sft/direct_yes_no/20260714_153800/checkpoint-100
-
-
-
-    --model-path Qwen/Qwen3-8B
-
-## Eval
-
-sbatch\
-    --partition slam_cpu \
-    --time=1:00:00 \
+    --constraint=a100s \
     --ntasks=1 \
-    --cpus-per-task=64 \
-    --mem=256G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/evals/%j.out \
-    scripts/eval.sh
+    --cpus-per-task=28 \
+    --mem=128G \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/pretrain-generation/struct_%j.out \
+    scripts/pretrain-generation-hf.sh structured "$STRUCT_MODEL_DIR" pt --split held_out
+```
 
-sbatch\
-    --partition slam_cpu \
+---
+
+### Step 7: Statistical Evaluation & Figure Generation
+
+Once rollouts and tabular baseline predictions are complete, execute the evaluation pipeline:
+
+```bash
+sbatch \
+    --partition cpu_partition \
     --time=1:00:00 \
     --ntasks=1 \
     --cpus-per-task=32 \
     --mem=32G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/eval_metrics/%j.out \
-    scripts/eval_metrics.sh
-
-## Implemented
-
-### Data prep
-
-Download mimic
-- `make download-mimic`
-- Can comment out for demo or full dataset
-- Requires physionet credentials
-- Output is in `data/raw_input`
-
-Convert to MEDS
-- `make meds-dataset`
-- Multiple stage output. Notably:
-    - tabular data
-        - `data/MEDS_cohort/merge_to_MEDS_cohort`
-    - coded data
-        - `data/MEDS_cohort/bin_numeric_values`
-        - Has age as string rather than numeric and quantiled numeric values
-    - natural language data
-        - `data/MEDS_cohort/data`
-        - Has numeric values as strings appended to codes
-
-Create ACES labels
-- `make aces-labels`
-- Output is in `data/aces_labels`
-
-
-
-Using `uv` to run Python commands
-
-Run tests, linters, and Python CLI tools from the project root using `uv` so the project's locked environment is used. Example:
-
-```sh
-uv run pytest -q
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/eval/%j.out \
+    scripts/eval.sh "$NL_MODEL_DIR" "$STRUCT_MODEL_DIR"
 ```
 
-Prefer `uv run <command>` for all Python commands (tests, CLI tools, downloads, etc.).
+*(Note: May also be run locally on a CPU node: `bash scripts/eval.sh "$NL_MODEL_DIR" "$STRUCT_MODEL_DIR"`.)*
 
-uv run meds-tab-describe "MEDS_cohort_dir=data/MEDS_cohort" "input_dir=data/MEDS_cohort/merge_to_MEDS_cohort/train"
+#### Generated Artefacts & Paper Tables
+All figures (formatted with publication typography, Tab10 colour palettes, and column-width constraints) and LaTeX tables are written to `$EVAL_PLOTS_DIR` (`$SCRATCH_DIR/eval_plots`):
 
+| File | Description | Paper Reference |
+| :--- | :--- | :--- |
+| `rollout_delta/delta_auroc_rollout.png` | Relative $\Delta$ AUROC vs XGBoost (10,000 bootstrap iterations) | Main Results Figure |
+| `rollout_delta/delta_brier_score_rollout.png` | Relative $\Delta$ Brier Score vs XGBoost | Main Results Figure |
+| `rollout_delta/relative_metrics_*.tex` | Camera-ready LaTeX table of performance deltas | Main Results Table |
+| `rollout_delta/rollout_dropped_percentages.tex`| Trajectory drop percentages across tasks | Failure Analysis Table |
+| `error_rates/rollout_error_rates.png` | Format error rates broken down by failure reason | Failure Mode Analysis |
+| `error_rates/rollout_error_samples.md` | Concrete examples of generated syntax and schema errors | Qualitative Analysis |
+| `gt_trajectory_lengths/gt_trajectory_lengths.png` | Token length distribution of future trajectories | Empirical Context |
+| `dataset_counts/dataset_counts.md` | Cohort sizes, event counts, and token counts | Cohort Summary Table |
+| `training_details/training_runtimes.md` | Training runtimes and final evaluation perplexities | Implementation Details |
 
-uv run meds-tab-cache-task \
-    "MEDS_cohort_dir=data/MEDS_cohort" \
-    "input_dir=data/MEDS_cohort/merge_to_MEDS_cohort" \
-    "output_dir=data/MEDS_cohort/30_day_readmission/task_cache" \
-    "input_label_dir=data/aces_labels/30_day_readmission" \
-    "task_name=30_day_readmission" \
-    "tabularization.min_code_inclusion_frequency=10" \
-    "tabularization.window_sizes=[1d,30d,365d,full]" \
-    "tabularization.aggs=[static/present,static/first,code/count,value/count,value/sum,value/sum_sqd,value/min,value/max]"
+---
 
+## Resource & Compute Requirements
 
+| Stage | Script | Hardware | Estimated Time (Full MIMIC-IV) |
+| :--- | :--- | :--- | :--- |
+| Virtual Env Sync | `scripts/setup_uv.sh` | 1× GPU (H100/A100), 512 GB RAM | ~15–30 min |
+| Raw Data Download | `scripts/download_mimic.sh` | 1× CPU, 2 GB RAM | ~2–4 hours |
+| MEDS & ACES ETL | `scripts/meds-dataset.sh` | 32× CPU, 256 GB RAM | ~45–60 min |
+| Task Prevalences | `scripts/calculate-task-prevalences.sh` | 16× CPU, 64 GB RAM | ~2–5 min |
+| MEDS-TAB (XGBoost) | `scripts/meds-tab.sh` | 124× CPU, 950 GB RAM | ~12–18 hours |
+| Tokenisation | `scripts/pretrain-tokenize.sh` | 32× CPU, 256 GB RAM | ~15–20 min |
+| Model Pre-training | `scripts/pretrain-train.sh` | 1× H100 (80GB), 64 GB RAM | ~2.5 days per model |
+| Task Prompts | `scripts/create-task-datasets.sh` | 64× CPU, 512 GB RAM | ~2–4 hours |
+| Rollout Inference | `scripts/pretrain-generation-hf.sh` | 4× A100 (80GB), 128 GB RAM | ~24–36 hours per model |
+| Statistical Eval | `scripts/eval.sh` | 32× CPU, 32 GB RAM | ~30–45 min |
 
+---
 
-## Plan
+## Citation & Contact
 
-### Data prep
+If you find this codebase or our paper useful in your research, please cite:
 
-- ~~Download meds~~
-- ~~premeds~~
-- ~~meds pipeline~~
-- ~~aces~~
-    - Add more tasks
+```bibtex
+@article{mimic_struct_predict2026,
+  title={Quantifying the Silent Failure Modes of Generative Electronic Health Record Models},
+  author={Anonymous Authors},
+  journal={Conference Submission},
+  year={2026}
+}
+```
 
-### Models
+## Licence
 
-#### Tabular (XBoost/Meds-tab)
-
-- Train
-- Inference
-
-#### Coded (Huggingface)
-
-- Train
-    - Supervised ft
-    - Embeddings
-- Inference
-    - Generative rollout
-    - Embeddings
-
-#### Natural Language
-
-- Train
-    - Instruction tune
-- Inference
-    - Zero shot
-        - Local
-        - Frontier
-    - Instruction tuned
-
-## Evaluation
-
-- AUROC
-- AUPRC
-- Brier Score
-- Throughput
-
-
-## Nice to haves
-
-- Better handling of demo vs full dataset in Makefile
-- GRPO training
+This project is licenced under the terms of the [MIT Licence](LICENSE).

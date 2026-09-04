@@ -13,7 +13,7 @@ nvcc --version
 set -x
 
 # Set env vars
-source "./scripts/config_full.sh"
+source "./scripts/config.sh"
 export MAX_JOBS=$SLURM_NTASKS
 export NVCC_THREADS=1
 

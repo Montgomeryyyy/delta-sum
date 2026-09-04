@@ -1,7 +1,7 @@
 [project]
 name = "mimic-struct-predict"
 version = "0.1.0"
-description = "Add your description here"
+description = "Quantifying the Silent Failure Modes of Generative Electronic Health Record Models"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
@@ -60,37 +60,10 @@ merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age
 physionet_download = "mimic_struct_predict.preprocessing.meds.physionet_download:main"
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 calculate_task_prevalences = "mimic_struct_predict.preprocessing.calculate_task_prevalences:main"
-
-meds_tab_inference = "mimic_struct_predict.models.tabular.inference:main"
-
-pre_training_tokenize = "mimic_struct_predict.models.pre_training.tokenize:main"
-pre_training_train = "mimic_struct_predict.models.pre_training.train:main"
-pre_training_generative_inference = "mimic_struct_predict.models.pre_training.generative_inference:main"
-pre_training_generative_inference_hf = "mimic_struct_predict.models.pre_training.generative_inference_hf:main"
-pre_training_inference_prompt = "mimic_struct_predict.models.pre_training.prompt_inference:main"
-
-create_task_datasets = "mimic_struct_predict.models.embedding_and_lr.create_task_datasets:main"
-
-structured_pretraining_tokenize = "mimic_struct_predict.models.structured.pretraining_tokenize:main"
-structured_pretraining = "mimic_struct_predict.models.structured.pretrain:main"
-structured_create_task_prompts = "mimic_struct_predict.models.structured.create_task_prompts:main"
-structured_inference_generative_rollout = "mimic_struct_predict.models.structured.inference_generative_rollout:main"
-structured_inference_embedding = "mimic_struct_predict.models.structured.inference_embedding:main"
-structured_train_embedding_logistic_regression = "mimic_struct_predict.models.structured.train_embedding_lr:main"
-structured_inference_embedding_and_lr = "mimic_struct_predict.models.structured.inference_embedding_and_lr:main"
-
-embedding_and_lr_inference_embedding = "mimic_struct_predict.models.embedding_and_lr.inference_embedding:main"
-embedding_and_lr_train = "mimic_struct_predict.models.embedding_and_lr.train:main"
-embedding_and_lr_inference_lr = "mimic_struct_predict.models.embedding_and_lr.inference_lr:main"
-
-
-natural_language_create_task_ehr_texts = "mimic_struct_predict.models.natural_language.create_task_ehr_texts:main"
-natural_language_create_model_prompts = "mimic_struct_predict.models.natural_language.create_model_prompts:main"
-natural_language_sft = "mimic_struct_predict.models.natural_language.sft:main"
-natural_language_inference = "mimic_struct_predict.models.natural_language.inference:main"
-natural_language_inference_gemini = "mimic_struct_predict.models.natural_language.inference_gemini:main"
-natural_language_grpo = "mimic_struct_predict.models.natural_language.grpo:main"
-natural_language_merge_peft_adaptor = "mimic_struct_predict.models.natural_language.merge_peft_adaptor:main"
+pre_training_tokenize = "mimic_struct_predict.models.tokenize:main"
+pre_training_train = "mimic_struct_predict.models.train:main"
+create_task_datasets = "mimic_struct_predict.models.create_task_datasets:main"
+pre_training_generative_inference_hf = "mimic_struct_predict.models.generative_inference_hf:main"
 
 [tool.ruff]
 exclude = [
