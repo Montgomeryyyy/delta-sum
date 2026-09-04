@@ -132,7 +132,7 @@ hosp/labevents:
       - col(value)
     time: col(storetime)
     time_format: "%Y-%m-%d %H:%M:%S"
-    numeric_value: valuenum
+    numeric_value: col(valuenum)
 
 hosp/omr:
   # premeds.py filters only to Blood Pressure, BMI (kg/m2), Weight (lbs), Height (Inches) rows, adds a unit column and converts
@@ -226,7 +226,7 @@ hosp/transfers:
 #       - col(value)
 #     time: col(charttime)
 #     time_format: "%Y-%m-%d %H:%M:%S"
-#     numeric_value: valuenum
+#     numeric_value: col(valuenum)
 
 # icu/procedureevents:
 #   start:
@@ -358,7 +358,7 @@ ed/triage:
       - col(unit)
       # HACK: Same as hosp/labevents
       - col(value)
-    numeric_value: value_num
+    numeric_value: col(value_num)
     time: col(intime)
     time_format: "%Y-%m-%d %H:%M:%S"
 
@@ -371,6 +371,6 @@ ed/vitalsign:
       - col(unit)
       # HACK: Same as hosp/labevents
       - col(value)
-    numeric_value: value_num
+    numeric_value: col(value_num)
     time: col(charttime)
     time_format: "%Y-%m-%d %H:%M:%S"

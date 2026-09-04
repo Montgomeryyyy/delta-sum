@@ -3,7 +3,7 @@ output_dir: ???   # Required: directory to save outputs
 task_prevalence_path: ???  # Required: path to JSON file containing dict {task_name: prevalence}
 task: ???
 chunk_size: 1000
-batch_size: 16
+batch_size: 24
 seed: 42
 num_workers: 1
 suppress_extra_vocab: false

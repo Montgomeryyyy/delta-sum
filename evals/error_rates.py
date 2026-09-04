@@ -204,8 +204,10 @@ def main():
 
         for task in args.tasks:
             roll_df = load_predictions(mod_dir, task, args.split)
-            exploded = roll_df.select(["format_adherence", "finish_reason", "error_line"]).explode(
-                ["format_adherence", "finish_reason", "error_line"]
+            exploded = (
+                roll_df.select(["format_adherence", "finish_reason", "error_line"])
+                .explode(["format_adherence", "finish_reason", "error_line"])
+                .with_columns(pl.col("finish_reason").replace({"Time Backward Error": "Time Error"}))
             )
 
             n_total = exploded.height
