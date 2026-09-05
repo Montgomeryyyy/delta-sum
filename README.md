@@ -1,15 +1,12 @@
 # mimic-struct-predict
 
-## CREATE Setup commands
+## CREATE Helper commands
 
 Get an interative session
-`srun --cpus-per-task=2 --mem=4G -p slam_cpu --time 1-00:00:00 --pty /bin/bash -l`
+`srun --cpus-per-task=2 --mem=8G -p slam_cpu --time 1-00:00:00 --pty /bin/bash -l`
 
-```
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv sync
-```
 
+## Setup
 
 Setup up .env
 ```
@@ -17,13 +14,15 @@ export MIMIC_USER=
 export MIMIC_PASSWORD=
 export HF_TOKEN=
 export SCRATCH_DIR=
+```
 
+Set enviroment variables
 ```
 source .env
 source scripts/config.sh
 ```
 
-SETUP
+Install uv. This takes a while due to building flash attention from source. Use H100 so CUDA drivers loaded correctly.
 ```
 sbatch \
     --partition slam_gpu \
@@ -37,14 +36,20 @@ sbatch \
     --export=SCRATCH_DIR,HF_TOKEN \
     --output=$SCRATCH_DIR/../logs/setup_uv/%j.out \
     scripts/setup_uv.sh
+```
 
+### Data Prep
+
+export DEMO=true
+or
+export DEMO=false
 
 sbatch\
     --partition slam_cpu \
-    --time 600 \
+    --time=0:10:00 \
     --mem 2G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN,MIMIC_USER,MIMIC_PASSWORD, \
+    --export=SCRATCH_DIR,HF_TOKEN,MIMIC_USER,MIMIC_PASSWORD,DEMO \
     --output=$SCRATCH_DIR/../logs/download_mimic/%j.out \
     scripts/download_mimic.sh
 
@@ -55,18 +60,23 @@ sbatch\
     --cpus-per-task=32 \
     --mem=256G \
     --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
+    --export=SCRATCH_DIR,HF_TOKEN,DEMO \
     --output=$SCRATCH_DIR/../logs/meds-dataset/%j.out \
     scripts/meds-dataset.sh
 
 ## Pre-training
 
-export MODE=natural_language
 OR
 export MODE=natural_language_lora
 OR
-export MODE=structured
 
+export MODE=natural_language
+export MODEL_NAME=$NL_MODEL_DIR
+
+export MODE=structured
+export MODEL_NAME=$STRUCT_MODEL_DIR
+
+```
 sbatch\
     --partition slam_cpu \
     --time=0:20:00 \
@@ -89,7 +99,163 @@ sbatch\
     --chdir $(pwd) \
     --export=SCRATCH_DIR,HF_TOKEN \
     --output=$SCRATCH_DIR/../logs/pretrain-train/%j.out \
-    scripts/pretrain-train.sh $MODE $MODEL_NAME --resume-from-checkpoint /scratch/prj/bhi_ehrfoundationmodels/k2692250/mimic-struct-predict/training/natural_language/pretraining/20260817_225728/checkpoint-8840
+    scripts/pretrain-train.sh $MODE $MODEL_NAME
+```
+
+### Inference
+
+```
+bash scripts/calculate-task-prevalences.sh
+```
+
+export MODE=natural_language
+export MODEL_NAME=$NL_MODEL_DIR
+export OUTPUT_DIRECTORY=cpt
+
+export MODE=structured
+export MODEL_NAME=$STRUCT_MODEL_DIR
+export OUTPUT_DIRECTORY=pt
+
+sbatch\
+    --partition slam_cpu \
+    --time=4:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=64 \
+    --mem=512G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/create-task-datasets/%j.out \
+    scripts/create-task-datasets.sh $MODE $MODEL_NAME
+
+sbatch\
+    --partition slam_cpu \
+    --time=0:10:00 \
+    --ntasks=1 \
+    --cpus-per-task=4 \
+    --mem=16G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/create-task-datasets/%j.out \
+    scripts/create-task-datasets.sh $MODE $MODEL_NAME
+
+sbatch\
+    --partition slam_gpu \
+    --time=0-12:00:00 \
+    --gres=gpu:4 \
+    --constraint=l40s \
+    --ntasks=1 \
+    --cpus-per-task=16 \
+    --mem=128G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
+    scripts/pretrain-generation-vllm.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split held_out
+
+sbatch\
+    --partition slam_gpu \
+    --time=2-00:00:00 \
+    --gres=gpu:4 \
+    --constraint=l40s \
+    --ntasks=1 \
+    --cpus-per-task=16 \
+    --mem=128G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
+    scripts/pretrain-generation-hf-small.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split held_out
+
+sbatch\
+    --partition biomed_a100_gpu \
+    --time=2-00:00:00 \
+    --gres=gpu:4 \
+    --ntasks=1 \
+    --cpus-per-task=16 \
+    --mem=128G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
+    scripts/pretrain-generation-hf.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split held_out
+
+sbatch\
+    --partition slam_gpu \
+    --time=2-00:00:00 \
+    --gres=gpu:1 \
+    --constraint=h100 \
+    --ntasks=1 \
+    --cpus-per-task=12 \
+    --mem=64G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
+    scripts/pretrain-generation-hf.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split held_out
+
+    scripts/pretrain-generation_vllm.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split tuning
+
+    scripts/pretrain-generation.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split tuning
+
+    scripts/pretrain-generation_vllm.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split tuning
+
+
+## Eval
+
+sbatch\
+    --partition slam_cpu \
+    --time=1:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=64 \
+    --mem=256G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/evals/%j.out \
+    scripts/eval.sh
+
+sbatch\
+    --partition slam_cpu \
+    --time=1:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=32 \
+    --mem=32G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/eval_metrics/%j.out \
+    scripts/eval_metrics.sh
+
+sbatch\
+    --partition slam_cpu \
+    --time=0:10:00 \
+    --ntasks=1 \
+    --cpus-per-task=32 \
+    --mem=32G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/eval_metrics/%j.out \
+    scripts/eval_tokenizer.sh
+
+sbatch\
+    --partition slam_cpu \
+    --time=4:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=8 \
+    --mem=32G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/eval_gt_timelines/%j.out \
+    scripts/eval_gt_timelines.sh \
+    --nl_tokenizer_path /scratch/prj/bhi_ehrfoundationmodels/k2692250/mimic-struct-predict/training/natural_language/pretraining/20260819_155553/final_model \
+    --struct_tokenizer_path /scratch/prj/bhi_ehrfoundationmodels/k2692250/mimic-struct-predict/training/structured/pretraining/20260814_191104/final_model \
+    --split held_out
+
+sbatch\
+    --partition slam_cpu \
+    --time=1:00:00 \
+    --ntasks=1 \
+    --cpus-per-task=32 \
+    --mem=64G \
+    --chdir $(pwd) \
+    --export=SCRATCH_DIR,HF_TOKEN \
+    --output=$SCRATCH_DIR/../logs/eval_plots/%j.out \
+    scripts/eval_plots.sh --nl_tokenizer_path $NL_MODEL_DIR --struct_tokenizer_path $STRUCT_MODEL_DIR
+
 
 ## Linear Probe
 
@@ -145,13 +311,13 @@ sbatch\
     --mem=128G \
     --chdir $(pwd) \
     --output=$SCRATCH_DIR/../logs/linear-probe-inference/%j.out \
-    scripts/linear-probe-inference.sh $MODE $OUTPUT_DIRECTORY --split tuning
+    scripts/linear-probe-inference.sh $MODE $OUTPUT_DIRECTORY --split held_out
 
 ## MEDS-TAB
 
 sbatch\
     --partition slam_cpu \
-    --time=7-00:00:00 \
+    --time=2-00:00:00 \
     --nodes=1 \
     --cpus-per-task=124 \
     --mem=950G \
@@ -247,33 +413,6 @@ sbatch \
     --config-name grpo_probability.yaml \
     --dataset-name thinking_probability
 
-
-### Inference
-
-export MODE=natural_language
-OR
-export MODE=structured
-OR
-export MODE=natural_language_lora
-
-export MODEL_NAME=$HF_MODEL_NAME
-
-export OUTPUT_DIRECTORY=cpt/pt/zero_shot/cpt_lora
-
-sbatch\
-    --partition slam_gpu \
-    --time=7-00:00:00 \
-    --gres=gpu:4 \
-    --constraint=l40s \
-    --ntasks=1 \
-    --cpus-per-task=28 \
-    --mem=128G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
-    scripts/pretrain-generation.sh $MODE $MODEL_NAME $OUTPUT_DIRECTORY --split held_out
-
-
 sbatch\
     --partition slam_gpu \
     --time=1-00:00:00 \
@@ -333,29 +472,7 @@ sbatch \
 
     --model-path Qwen/Qwen3-8B
 
-## Eval
 
-sbatch\
-    --partition slam_cpu \
-    --time=1:00:00 \
-    --ntasks=1 \
-    --cpus-per-task=64 \
-    --mem=256G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/evals/%j.out \
-    scripts/eval.sh
-
-sbatch\
-    --partition slam_cpu \
-    --time=1:00:00 \
-    --ntasks=1 \
-    --cpus-per-task=32 \
-    --mem=32G \
-    --chdir $(pwd) \
-    --export=SCRATCH_DIR,HF_TOKEN \
-    --output=$SCRATCH_DIR/../logs/eval_metrics/%j.out \
-    scripts/eval_metrics.sh
 
 ## Implemented
 
