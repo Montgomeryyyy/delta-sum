@@ -17,13 +17,15 @@ fi
 export DEMO="${DEMO:-${demo:-false}}"
 if [ "${DEMO,,}" = "true" ] || [ "$DEMO" = "1" ]; then
     export DATA_DIR="${SCRATCH_DIR}/data_demo"
+    export TRAINING_DIR="${SCRATCH_DIR}/training_demo"
+    export INFERENCE_DIR="${SCRATCH_DIR}/inference_demo"
+    export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots_demo"
 else
     export DATA_DIR="${SCRATCH_DIR}/data"
+    export TRAINING_DIR="${SCRATCH_DIR}/training"
+    export INFERENCE_DIR="${SCRATCH_DIR}/inference"
+    export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots"
 fi
-
-export TRAINING_DIR="${SCRATCH_DIR}/training"
-export INFERENCE_DIR="${SCRATCH_DIR}/inference"
-export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots"
 export DEBUG_DIR="${DATA_DIR}/debug"
 
 export HF_MODEL_NAME="google/gemma-3-270m"

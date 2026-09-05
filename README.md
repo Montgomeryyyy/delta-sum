@@ -316,6 +316,16 @@ export STRUCT_MODEL_DIR="$SCRATCH_DIR/training/structured/pretraining/<timestamp
 Extract patient trajectories up to the index prediction time for each ACES task:
 
 ```bash
+export MODE="natural_language"
+export MODEL_DIR="$NL_MODEL_DIR"
+```
+or
+```bash
+export MODE="structured"
+export MODEL_DIR="$STRUCT_MODEL_DIR"
+```
+
+```bash
 # For Natural Language:
 sbatch \
     --partition cpu_partition \
@@ -325,53 +335,38 @@ sbatch \
     --mem=512G \
     --chdir=$(pwd) \
     --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
-    --output=$SCRATCH_DIR/../logs/create-task-datasets/nl_%j.out \
-    scripts/create-task-datasets.sh natural_language "$NL_MODEL_DIR"
-
-# For Structured:
-sbatch \
-    --partition cpu_partition \
-    --time=4:00:00 \
-    --ntasks=1 \
-    --cpus-per-task=64 \
-    --mem=512G \
-    --chdir=$(pwd) \
-    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
-    --output=$SCRATCH_DIR/../logs/create-task-datasets/struct_%j.out \
-    scripts/create-task-datasets.sh structured "$STRUCT_MODEL_DIR"
+    --output=$SCRATCH_DIR/../logs/create-task-datasets/%j.out \
+    scripts/create-task-datasets.sh $MODE $MODEL_DIR
 ```
 
 #### 6.2 Execute Multi-GPU Rollouts
 Performs parallel autoregressive generative forecasting across GPUs:
 
 ```bash
-# For Natural Language (held_out split):
-sbatch \
-    --partition gpu_server \
-    --time=1-12:00:00 \
-    --gres=gpu:4 \
-    --constraint=a100s \
-    --ntasks=1 \
-    --cpus-per-task=28 \
-    --mem=128G \
-    --chdir=$(pwd) \
-    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
-    --output=$SCRATCH_DIR/../logs/pretrain-generation/nl_%j.out \
-    scripts/pretrain-generation-hf.sh natural_language "$NL_MODEL_DIR" cpt --split held_out
+export MODE="natural_language"
+export MODEL_DIR="$NL_MODEL_DIR"
+export FILE="cpt"
+```
+or
+```bash
+export MODE="structured"
+export MODEL_DIR="$STRUCT_MODEL_DIR"
+export FILE="pt"
+```
 
-# For Structured (held_out split):
+```bash
 sbatch \
     --partition gpu_server \
     --time=1-12:00:00 \
     --gres=gpu:4 \
-    --constraint=a100s \
+    --constraint=a100 \
     --ntasks=1 \
     --cpus-per-task=28 \
     --mem=128G \
     --chdir=$(pwd) \
     --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
-    --output=$SCRATCH_DIR/../logs/pretrain-generation/struct_%j.out \
-    scripts/pretrain-generation-hf.sh structured "$STRUCT_MODEL_DIR" pt --split held_out
+    --output=$SCRATCH_DIR/../logs/pretrain-generation/%j.out \
+    scripts/pretrain-generation.sh $MODE $MODEL_DIR $FILE --split held_out
 ```
 
 ---

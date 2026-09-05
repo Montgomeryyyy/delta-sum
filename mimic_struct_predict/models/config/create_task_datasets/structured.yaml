@@ -1,5 +1,5 @@
 defaults:
-  - create_task_datasets_nl
+  - natural_language
   - _self_
 
 pre_processing:
