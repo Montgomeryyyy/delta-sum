@@ -11,12 +11,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import seaborn as sns
-from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
-from omegaconf import DictConfig, OmegaConf
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
-
-from mimic_struct_predict.evals.plot_style import (
+from evals.plot_style import (
     DEFAULT_FIG_HEIGHT_INCHES,
     NEURIPS_TEXTWIDTH_INCHES,
     SEPARATOR_LINE_KW,
@@ -27,7 +22,16 @@ from mimic_struct_predict.evals.plot_style import (
     save_figure,
     sort_tasks,
 )
-from mimic_struct_predict.models.generative_inference import detect_outcome, get_valid_categories
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+from omegaconf import DictConfig, OmegaConf
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
+
+from mimic_struct_predict.models.pre_training.generative_inference_hf import (
+    detect_outcome,
+    get_last_time_offset_and_category,
+    get_valid_categories,
+)
 from mimic_struct_predict.models.utils.preprocessing import (
     append_numeric_values_to_codes_expr,
     get_agg_expr,
@@ -51,8 +55,8 @@ def get_regex_patterns(cfg: DictConfig) -> tuple[re.Pattern, re.Pattern]:
     return date_pattern, time_pattern
 
 
-def get_future_text_df(aces_df: pl.DataFrame, meds_shard: Path, prep_cfg: DictConfig) -> pl.DataFrame:
-    """Joins ACES with MEDS and filters for events after prediction_time."""
+def get_timeline_df(aces_df: pl.DataFrame, meds_shard: Path, prep_cfg: DictConfig, is_future: bool) -> pl.DataFrame:
+    """Joins ACES with MEDS and aggregates events before (is_future=False) or after (is_future=True) prediction_time."""
     meds_lazy = pl.scan_parquet(meds_shard).with_row_index("meds_row_idx")
 
     if prep_cfg.pre_processing.append_numeric_values:
@@ -70,47 +74,42 @@ def get_future_text_df(aces_df: pl.DataFrame, meds_shard: Path, prep_cfg: DictCo
         sort_by="meds_row_idx",
     )
 
-    lf = (
-        aces_df.lazy()
-        .join(meds_lazy, on="subject_id", how="inner")
-        .filter(pl.col("time") > pl.col("prediction_time"))
-        .group_by(["subject_id", "prediction_time", "boolean_value"])
-        .agg(ehr_text=agg_expr)
+    time_filter = (
+        (pl.col("time") > pl.col("prediction_time")) if is_future else (pl.col("time") <= pl.col("prediction_time"))
     )
-    return lf.collect()
 
-
-def get_initial_categories(
-    aces_df: pl.DataFrame, meds_shard: Path, prep_cfg: DictConfig, category_prefix: str
-) -> dict[tuple[int, Any], str]:
-    """Finds the last category prior to prediction_time for each subject_id directly from the dataframe."""
-    meds_lazy = pl.scan_parquet(meds_shard).with_row_index("meds_row_idx")
-
-    code_expr = pl.col("code")
-    if prep_cfg.pre_processing.delimiter_replacement:
-        code_expr = code_expr.str.replace_all(
-            prep_cfg.pre_processing.delimiter, prep_cfg.pre_processing.delimiter_replacement, literal=True
-        )
-
-    lf = (
+    return (
         aces_df.lazy()
         .join(meds_lazy, on="subject_id", how="inner")
-        .filter(pl.col("time") <= pl.col("prediction_time"))
-        .with_columns(code=code_expr)
-        .filter(pl.col("code").str.starts_with(category_prefix))
+        .filter(time_filter)
         .group_by(["subject_id", "prediction_time"], maintain_order=True)
-        .agg(pl.col("code").sort_by("meds_row_idx").last().alias("initial_category"))
+        .agg(ehr_text=agg_expr)
+        .collect()
     )
 
-    df = lf.collect()
-    if df.height == 0:
-        return {}
-    return dict(zip(zip(df["subject_id"].to_list(), df["prediction_time"].to_list()), df["initial_category"].to_list()))
+
+def get_initial_states(
+    prompt_df: pl.DataFrame,
+    cfg: DictConfig,
+    time_pattern: re.Pattern,
+) -> dict[tuple[int, Any], dict[str, float | str]]:
+    """Extracts the initial time offset and category prior to prediction_time exactly like inference."""
+    states = {}
+    for row in prompt_df.iter_rows(named=True):
+        states[(row["subject_id"], row["prediction_time"])] = get_last_time_offset_and_category(
+            in_text=row["ehr_text"] or "",
+            code_splitter=cfg.event_extraction.code_splitter,
+            category_prefix=cfg.event_extraction.category_prefix,
+            time_prefix=cfg.event_extraction.time_prefix,
+            time_pattern=time_pattern,
+            delimiter=cfg.tokenizer.delimiter,
+        )
+    return states
 
 
 def get_token_count_for_modality(
     future_df: pl.DataFrame,
-    initial_categories: dict[tuple[int, Any], str],
+    initial_states: dict[tuple[int, Any], dict[str, float | str]],
     cfg: DictConfig,
     task_name: str,
     tokenizer: PreTrainedTokenizerBase,
@@ -126,7 +125,6 @@ def get_token_count_for_modality(
 
     code_splitter = cfg.event_extraction.code_splitter
     patient_tokens = {}
-    logged_example = False
 
     for row in future_df.iter_rows(named=True):
         subj = row["subject_id"]
@@ -135,8 +133,9 @@ def get_token_count_for_modality(
         if not text:
             continue
 
-        initial_category = initial_categories.get((subj, pred_time), "")
-        initial_time = pred_time.hour / 24.0 + pred_time.minute / 1440.0
+        state = initial_states.get((subj, pred_time), {"initial_time": 0.0, "initial_category": ""})
+        initial_category = str(state["initial_category"])
+        initial_time = float(state["initial_time"])
 
         result = detect_outcome(
             text=text,
@@ -156,25 +155,51 @@ def get_token_count_for_modality(
             max_day_gap=cfg.event_extraction.max_day_gap,
         )
 
+        if not result["format_adherence"]:
+            log.warning(
+                f"Format error in GT timeline for task [{task_name}], subj [{subj}], pred_time [{pred_time}]: "
+                f"finish_reason='{result['finish_reason']}', error_line='{result.get('error_line', '')}'"
+            )
+
         # Use the new num_lines field to precisely slice the string up to the exit event!
         num_lines = result["num_lines"]
         lines = [line.strip() for line in text.split(code_splitter) if line.strip()]
         sliced_text = code_splitter.join(lines[:num_lines])
 
-        patient_tokens[(subj, pred_time)] = len(tokenizer.encode(sliced_text, add_special_tokens=False))
-
-        if not logged_example:
-            log.info(f"--- Example for {task_name} ---")
-            log.info(f"Initial Category: {initial_category}")
-            log.info(f"Initial Time: {initial_time}")
-            log.info(f"Original Text (first 1000 chars): {text[:1000]}...")
-            log.info(f"Detect Outcome Result: {result}")
-            log.info(f"Sliced Text: {sliced_text}...")
-            log.info(f"Token Count: {patient_tokens[(subj, pred_time)]}")
-            log.info("-" * 40)
-            logged_example = True
+        if sliced_text:
+            # Prepend code_splitter to include the transition token from prompt to rollout
+            patient_tokens[(subj, pred_time)] = len(
+                tokenizer.encode(code_splitter + sliced_text, add_special_tokens=False)
+            )
+        else:
+            patient_tokens[(subj, pred_time)] = 0
 
     return patient_tokens
+
+
+def process_modality_for_shard(
+    aces_df: pl.DataFrame,
+    meds_shard: Path,
+    prep_cfg: DictConfig,
+    cfg: DictConfig,
+    task_name: str,
+    tokenizer: PreTrainedTokenizerBase,
+    valid_cats: set[str],
+    date_pattern: re.Pattern,
+    time_pattern: re.Pattern,
+) -> dict[tuple[int, Any], int]:
+    """Processes a single modality for an ACES shard and returns (subject_id, pred_time) -> token_count."""
+    if not meds_shard.exists():
+        log.warning(f"MEDS shard not found: {meds_shard}")
+        return {}
+
+    prompt_df = get_timeline_df(aces_df, meds_shard, prep_cfg, is_future=False)
+    initial_states = get_initial_states(prompt_df, cfg, time_pattern)
+
+    future_df = get_timeline_df(aces_df, meds_shard, prep_cfg, is_future=True)
+    return get_token_count_for_modality(
+        future_df, initial_states, cfg, task_name, tokenizer, valid_cats, date_pattern, time_pattern
+    )
 
 
 def process_shard(
@@ -190,6 +215,10 @@ def process_shard(
     task_name: str,
     nl_valid_cats: set[str],
     struct_valid_cats: set[str],
+    nl_date: re.Pattern,
+    nl_time: re.Pattern,
+    struct_date: re.Pattern,
+    struct_time: re.Pattern,
 ) -> pl.DataFrame | None:
     """Processes a single ACES shard for both modalities."""
     if not aces_shard.exists():
@@ -201,60 +230,33 @@ def process_shard(
         log.warning(f"ACES shard is empty: {aces_shard}")
         return None
 
-    records = []
-    nl_date, nl_time = get_regex_patterns(nl_cfg)
-    struct_date, struct_time = get_regex_patterns(struct_cfg)
+    nl_tokens = process_modality_for_shard(
+        aces_df, nl_meds_shard, nl_prep_cfg, nl_cfg, task_name, nl_tokenizer, nl_valid_cats, nl_date, nl_time
+    )
+    struct_tokens = process_modality_for_shard(
+        aces_df,
+        struct_meds_shard,
+        struct_prep_cfg,
+        struct_cfg,
+        task_name,
+        struct_tokenizer,
+        struct_valid_cats,
+        struct_date,
+        struct_time,
+    )
 
-    nl_tokens = {}
-    nl_initial_cats = {}
-    if not nl_meds_shard.exists():
-        log.warning(f"NL MEDS shard not found: {nl_meds_shard}")
-    else:
-        nl_initial_cats = get_initial_categories(
-            aces_df, nl_meds_shard, nl_prep_cfg, nl_cfg.event_extraction.category_prefix
-        )
-        nl_future_df = get_future_text_df(aces_df, nl_meds_shard, nl_prep_cfg)
-        nl_tokens = get_token_count_for_modality(
-            nl_future_df, nl_initial_cats, nl_cfg, task_name, nl_tokenizer, nl_valid_cats, nl_date, nl_time
-        )
-
-    struct_tokens = {}
-    struct_initial_cats = {}
-    if not struct_meds_shard.exists():
-        log.warning(f"Structured MEDS shard not found: {struct_meds_shard}")
-    else:
-        struct_initial_cats = get_initial_categories(
-            aces_df, struct_meds_shard, struct_prep_cfg, struct_cfg.event_extraction.category_prefix
-        )
-        struct_future_df = get_future_text_df(aces_df, struct_meds_shard, struct_prep_cfg)
-        struct_tokens = get_token_count_for_modality(
-            struct_future_df,
-            struct_initial_cats,
-            struct_cfg,
-            task_name,
-            struct_tokenizer,
-            struct_valid_cats,
-            struct_date,
-            struct_time,
-        )
-
-    for row in aces_df.iter_rows(named=True):
-        subj = row["subject_id"]
-        pred_time = row["prediction_time"]
-        records.append(
-            {
-                "task": task_name,
-                "subject_id": subj,
-                "prediction_time": pred_time,
-                "boolean_value": row["boolean_value"],
-                "nl_tokens": nl_tokens.get((subj, pred_time), 0),
-                "struct_tokens": struct_tokens.get((subj, pred_time), 0),
-            }
-        )
-
-    if not records:
-        return None
-    return pl.DataFrame(records)
+    records = [
+        {
+            "task": task_name,
+            "subject_id": row["subject_id"],
+            "prediction_time": row["prediction_time"],
+            "boolean_value": row["boolean_value"],
+            "nl_tokens": nl_tokens.get((row["subject_id"], row["prediction_time"]), 0),
+            "struct_tokens": struct_tokens.get((row["subject_id"], row["prediction_time"]), 0),
+        }
+        for row in aces_df.iter_rows(named=True)
+    ]
+    return pl.DataFrame(records) if records else None
 
 
 def plot_trajectory_lengths(
@@ -265,6 +267,17 @@ def plot_trajectory_lengths(
 ) -> None:
     """Plots ground truth trajectory length distributions for Structured and Natural Language."""
     tasks = sort_tasks(tasks)
+    for task in tasks:
+        task_df = df.filter(pl.col("task") == task)
+        n_struct_zeros = task_df.filter(pl.col("struct_tokens") == 0).height
+        n_nl_zeros = task_df.filter(pl.col("nl_tokens") == 0).height
+        if n_struct_zeros > 0 or n_nl_zeros > 0:
+            log.info(
+                f"Task [{task}]: 0-token GT trajectories (excluded from log-scale boxplot): "
+                f"Structured={n_struct_zeros}/{task_df.height} ({n_struct_zeros/task_df.height*100:.1f}%), "
+                f"NL={n_nl_zeros}/{task_df.height} ({n_nl_zeros/task_df.height*100:.1f}%)"
+            )
+
     plot_df = (
         df.filter(pl.col("task").is_in(tasks))
         .select(["task", "struct_tokens", "nl_tokens"])
@@ -405,8 +418,8 @@ def save_exceed_max_tokens_tables(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract token counts up to exit event for generative sequences.")
-    parser.add_argument("--tasks", nargs="+", default=os.environ.get("ACES_TASKS", "").split())
-    parser.add_argument("--split", type=str, default="tuning", choices=["train", "tuning", "held_out"])
+    parser.add_argument("--tasks", nargs="+", default=(os.environ.get("ACES_TASKS") or "").split())
+    parser.add_argument("--split", type=str, default="held_out", choices=["train", "tuning", "held_out"])
 
     parser.add_argument(
         "--aces_dir", type=str, default=os.environ.get("ACES_OUTPUT_DIR"), help="ACES labels output directory"
@@ -427,27 +440,27 @@ def main() -> None:
     parser.add_argument(
         "--nl_config",
         type=str,
-        default="mimic_struct_predict/models/config/generative_inference/natural_language.yaml",
+        default="mimic_struct_predict/models/pre_training/config/generative_inference/natural_language.yaml",
         help="Path to natural_language.yaml",
     )
     parser.add_argument(
         "--struct_config",
         type=str,
-        default="mimic_struct_predict/models/config/generative_inference/structured.yaml",
+        default="mimic_struct_predict/models/pre_training/config/generative_inference/structured.yaml",
         help="Path to structured.yaml",
     )
 
     parser.add_argument(
         "--nl_prep_config",
         type=str,
-        default="mimic_struct_predict/models/config/create_task_datasets/natural_language.yaml",
-        help="Path to create_task_datasets natural_language.yaml",
+        default="mimic_struct_predict/models/embedding_and_lr/config/create_task_datasets_nl.yaml",
+        help="Path to create_task_datasets_nl.yaml",
     )
     parser.add_argument(
         "--struct_prep_config",
         type=str,
-        default="mimic_struct_predict/models/config/create_task_datasets/structured.yaml",
-        help="Path to create_task_datasets structured.yaml",
+        default="mimic_struct_predict/models/embedding_and_lr/config/create_task_datasets_structured.yaml",
+        help="Path to create_task_datasets_structured.yaml",
     )
 
     parser.add_argument("--nl_tokenizer_path", type=str, required=True)
@@ -455,87 +468,100 @@ def main() -> None:
 
     parser.add_argument("--output_dir", type=str, default=f"{os.environ.get('EVAL_PLOTS_DIR')}/gt_trajectory_lengths")
     parser.add_argument("--max_tokens", type=int, default=1024, help="Token limit for the plot")
+    parser.add_argument(
+        "--from_saved",
+        action="store_true",
+        help=(
+            "Load existing gt_trajectory_lengths.parquet from output_dir and "
+            "re-plot/re-table without re-generating from shards."
+        ),
+    )
     args = parser.parse_args()
     args.tasks = sort_tasks(args.tasks)
     log.info(args)
 
-    aces_base = Path(args.aces_dir)
-    nl_meds_base = Path(args.nl_meds_dir)
-    struct_meds_base = Path(args.struct_meds_dir)
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    log.info("Loading configs and tokenizers...")
-    nl_cfg = OmegaConf.load(args.nl_config)
-    log.info(nl_cfg)
-    struct_cfg = OmegaConf.merge(nl_cfg, OmegaConf.load(args.struct_config))
-    log.info(struct_cfg)
-
-    nl_prep_cfg = OmegaConf.load(args.nl_prep_config)
-    struct_prep_cfg = OmegaConf.merge(nl_prep_cfg, OmegaConf.load(args.struct_prep_config))
-
-    nl_tokenizer = AutoTokenizer.from_pretrained(args.nl_tokenizer_path)
-    struct_tokenizer = AutoTokenizer.from_pretrained(args.struct_tokenizer_path)
-
-    # Note: If running from repo root, this relative path from the config works.
-    nl_valid_cats = get_valid_categories(nl_cfg.event_extraction.event_config_path)
-    struct_valid_cats = get_valid_categories(struct_cfg.event_extraction.event_config_path)
-
-    # all_dfs = []
-    # for task_name in args.tasks:
-    #     if task_name not in nl_cfg.event_extraction.tasks:
-    #         log.warning(f"Task {task_name} not found in NL config. Skipping.")
-    #         continue
-
-    #     aces_split_dir = aces_base / task_name / args.split
-
-    #     if not aces_split_dir.exists():
-    #         log.warning(f"Split {args.split} not found for task {task_name}. Skipping.")
-    #         continue
-
-    #     aces_shards = sorted(aces_split_dir.glob("*.parquet"))
-    #     log.info(f"Processing Task: [{task_name}] | Split: [{args.split}] | Shards: {len(aces_shards)}")
-
-    #     for aces_shard in aces_shards:
-    #         log.info(f"Processing shard: {aces_shard}")
-    #         nl_meds_shard = nl_meds_base / args.split / aces_shard.name
-    #         struct_meds_shard = struct_meds_base / args.split / aces_shard.name
-
-    #         df_shard = process_shard(
-    #             aces_shard,
-    #             nl_meds_shard,
-    #             struct_meds_shard,
-    #             nl_cfg,
-    #             struct_cfg,
-    #             nl_prep_cfg,
-    #             struct_prep_cfg,
-    #             nl_tokenizer,
-    #             struct_tokenizer,
-    #             task_name,
-    #             nl_valid_cats,
-    #             struct_valid_cats,
-    #         )
-    #         if df_shard is not None:
-    #             all_dfs.append(df_shard)
-
-    # if not all_dfs:
-    #     log.warning("No records found to process.")
-    #     return
-
-    # df = pl.concat(all_dfs)
-
-    # parquet_out = out_dir / "gt_trajectory_lengths.parquet"
-    # df.write_parquet(parquet_out)
-    # log.info(f"Saved raw metrics to {parquet_out}")
-
-    # Load previously saved metrics if data generation is commented out
     parquet_out = out_dir / "gt_trajectory_lengths.parquet"
-    if "df" not in locals():
+
+    if args.from_saved:
         if parquet_out.exists():
+            log.info(f"Loading existing metrics from {parquet_out}")
             df = pl.read_parquet(parquet_out)
         else:
-            log.error(f"Dataframe 'df' not defined and {parquet_out} not found. Please uncomment data generation.")
+            log.error(f"--from_saved specified but {parquet_out} does not exist.")
             return
+    else:
+        aces_base = Path(args.aces_dir)
+        nl_meds_base = Path(args.nl_meds_dir)
+        struct_meds_base = Path(args.struct_meds_dir)
+
+        log.info("Loading configs and tokenizers...")
+        nl_cfg = OmegaConf.load(args.nl_config)
+        log.info(nl_cfg)
+        struct_cfg = OmegaConf.merge(nl_cfg, OmegaConf.load(args.struct_config))
+        log.info(struct_cfg)
+
+        nl_prep_cfg = OmegaConf.load(args.nl_prep_config)
+        struct_prep_cfg = OmegaConf.merge(nl_prep_cfg, OmegaConf.load(args.struct_prep_config))
+
+        nl_tokenizer = AutoTokenizer.from_pretrained(args.nl_tokenizer_path)
+        struct_tokenizer = AutoTokenizer.from_pretrained(args.struct_tokenizer_path)
+
+        # Note: If running from repo root, this relative path from the config works.
+        nl_valid_cats = get_valid_categories(nl_cfg.event_extraction.event_config_path)
+        struct_valid_cats = get_valid_categories(struct_cfg.event_extraction.event_config_path)
+        nl_date, nl_time = get_regex_patterns(nl_cfg)
+        struct_date, struct_time = get_regex_patterns(struct_cfg)
+
+        all_dfs = []
+        for task_name in args.tasks:
+            if task_name not in nl_cfg.event_extraction.tasks:
+                log.warning(f"Task {task_name} not found in NL config. Skipping.")
+                continue
+
+            aces_split_dir = aces_base / task_name / args.split
+
+            if not aces_split_dir.exists():
+                log.warning(f"Split {args.split} not found for task {task_name}. Skipping.")
+                continue
+
+            aces_shards = sorted(aces_split_dir.glob("*.parquet"))
+            log.info(f"Processing Task: [{task_name}] | Split: [{args.split}] | Shards: {len(aces_shards)}")
+
+            for aces_shard in aces_shards:
+                log.info(f"Processing shard: {aces_shard}")
+                nl_meds_shard = nl_meds_base / args.split / aces_shard.name
+                struct_meds_shard = struct_meds_base / args.split / aces_shard.name
+
+                df_shard = process_shard(
+                    aces_shard,
+                    nl_meds_shard,
+                    struct_meds_shard,
+                    nl_cfg,
+                    struct_cfg,
+                    nl_prep_cfg,
+                    struct_prep_cfg,
+                    nl_tokenizer,
+                    struct_tokenizer,
+                    task_name,
+                    nl_valid_cats,
+                    struct_valid_cats,
+                    nl_date,
+                    nl_time,
+                    struct_date,
+                    struct_time,
+                )
+                if df_shard is not None:
+                    all_dfs.append(df_shard)
+
+        if not all_dfs:
+            log.warning("No records found to process.")
+            return
+
+        df = pl.concat(all_dfs)
+        df.write_parquet(parquet_out)
+        log.info(f"Saved raw metrics to {parquet_out}")
 
     plot_trajectory_lengths(df, args.tasks, args.max_tokens, out_dir)
     save_exceed_max_tokens_tables(df, args.tasks, args.max_tokens, out_dir)
