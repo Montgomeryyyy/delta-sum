@@ -1,0 +1,36 @@
+metadata:
+  description: >-
+    True if patient dies in 30 days after hospital discharge, false otherwise.
+    Prediction is made at hospital discharge, and only includes patients who survive until discharge.
+
+predicates:
+  hospital_discharge:
+    code: "####//Hospital Discharge"
+  death:
+    code: "####//Death"
+
+trigger: hospital_discharge
+
+windows:
+  input:
+    # All of patients history up until hospital discharge
+    start: NULL
+    end: trigger
+    start_inclusive: True
+    end_inclusive: True
+    index_timestamp: end
+  gap:
+    # Drop events where patient dies before hospital discharge
+    start: NULL
+    end: input.end
+    start_inclusive: False
+    end_inclusive: True
+    has:
+      death: (None, 0)
+  target:
+    # True if patient dies in 30 days after hospital discharge, false otherwise
+    start: input.end
+    end: start + 30 days
+    start_inclusive: False
+    end_inclusive: True
+    label: death

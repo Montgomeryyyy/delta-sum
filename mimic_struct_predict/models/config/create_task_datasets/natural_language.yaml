@@ -1,0 +1,26 @@
+
+meds_dir: ???  # Required: directory of pre-built meds datasets
+aces_dir: ???  # Required: directory of pre-built aces datasets
+output_dir: ???          # Required: directory to save outputs
+tasks: ???
+
+overwrite: true
+
+splits_to_process: ["held_out"]
+
+pre_processing:
+  delimiter: "//"
+  delimiter_replacement: " "
+  append_numeric_values: true
+  numeric_values_sig_figs: 2
+  code_join_token: "\n\n"
+
+num_workers: 1
+
+tokenizer:
+  pretrained_model_name_or_path: ???
+  model_max_length: 3072
+
+hydra:
+  run:
+    dir: ${output_dir}/.logs/${now:%Y%m%d_%H%M%S}

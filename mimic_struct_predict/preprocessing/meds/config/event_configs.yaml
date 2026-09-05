@@ -1,0 +1,376 @@
+# Schema based on MIMIC_IV_MEDS, see ./event_configs_MIMIC_IV_MEDS (diffing these 2 files is instructive)
+# The offical MIMIC docs gives good descriptions of tables and columns https://mimic.mit.edu/docs/iv/
+
+# Alterations have been made to maximise natural language representation (e.g. using icd descriptions instead of codes)
+# These differences are commented inline
+# Notably we add descriptive headers with explanation of event ordering (e.g "Diagnosis Related Group: Type, Description, Severity of Illness, Likelihood Of Mortality")
+# We do not use any ids or meta data other than subject_id so these are not included
+# Future work could use seq_num for more informative ordering
+
+subject_id_col: subject_id
+
+### Hospital Tables ###
+
+hosp/admissions:
+  # ed_registration, ed_out not used (as using MIMIC-ED extension)
+  # Seperate out admission type, location etc in to seperate events (will be grouped later)
+  admission_type:
+    code:
+      - Hospital Admission
+      - Type
+      - col(admission_type)
+    time: col(admittime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  admission_location:
+    code:
+      - Hospital Admission
+      - Location
+      - col(admission_location)
+    time: col(admittime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  admission_insurance:
+    code:
+      - Hospital Admission
+      - Insurance
+      - col(insurance)
+    time: col(admittime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  admission_language:
+    code:
+      - Hospital Admission
+      - Language
+      - col(language)
+    time: col(admittime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  admission_marital_status:
+    code:
+      - Hospital Admission
+      - Marital Status
+      - col(marital_status)
+    time: col(admittime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  admission_race:
+    code:
+      - Hospital Admission
+      - Race
+      - col(race)
+    time: col(admittime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  # Add gender and age as admission events
+  admission_gender:
+    code:
+      - Hospital Admission
+      - Gender
+      - col(gender) # Joined from hosp/patients
+    time: col(admittime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  admission_age:
+     code:
+       - Hospital Admission
+       - Age
+     numeric_value: col(age) # Calculated from hosp/patients anchor_age and anchor_year
+     time: col(admittime)
+     time_format: "%Y-%m-%d %H:%M:%S"
+  discharge:
+    code:
+      - Hospital Discharge
+      - Location
+      - col(discharge_location)
+    time: col(dischtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  # We omit the death event here as it is joined to the data in the subjects table in the pre-MEDS step.
+
+hosp/diagnoses_icd:
+  diagnosis:
+    code:
+      - Hospital Diagnosis
+      - col(long_title) # Use long title instead of icd_version and icd_code
+    time: col(dischtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+hosp/drgcodes:
+  drg:
+    code:
+      - "Diagnosis Related Group: Type, Description, Severity Of Illness, Likelihood Of Mortality"
+      - col(drg_type)
+      - col(description) # Use instead of drg_code
+      - col(drg_severity) # Add to code
+      - col(drg_mortality) # Add to code
+    time: col(dischtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+hosp/emar:
+  medication:
+    code:
+      - "Hospital Medication: Name, Details"
+      - col(medication)
+      - col(event_txt)
+    time: col(charttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+hosp/hcpcsevents:
+  hcpcs:
+    code:
+      - HCPCS Billing Item
+      - col(long_description) # Uses long_description if available, otherwise short_description (done in preMEDS.py)
+    time: col(chartdate) # Only chartdate column available so set EOD.
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+hosp/labevents:
+  # Choose just to record event at time of result and not at collection as well (as doubles number of events)
+  lab_result:
+    code:
+      - "Lab Result: Fluid, Test, Priority, Units, Value"
+      - col(fluid) # Fluid and label instead of itemid
+      - col(label)
+      - col(priority)
+      - col(valueuom)
+      # HACK: To allow for numeric and string values:
+      # - String value: Value is not null + valuenum is null -> value used
+      # - Numeric value: valuenum is not null + value is "Placeholder" -> ETL pipeline deletes Placeholder and numeric value appended or quantiled
+      # - Null: value and valuenum are null -> ETL maps to Unknown
+      - col(value)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    numeric_value: col(valuenum)
+
+hosp/omr:
+  # premeds.py filters only to Blood Pressure, BMI (kg/m2), Weight (lbs), Height (Inches) rows, adds a unit column and converts
+  # result_value to numeric. Blood pressure is also split into diastolic/systolic
+  omr:
+    code:
+      - "Clinical Observation: Name, Unit, Value"
+      - col(result_name)
+      - col(result_unit)
+    numeric_value: col(result_num)
+    time: col(chartdate) # Only chartdate column available so set EOD.
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+hosp/patients:
+  # Gender and age added to hosp/admission so gender and dob dropped here
+  death:
+    code:
+      # Not using the MEDS official code for death (MEDS_DEATH) due to semantics.
+      - Death
+      - Died
+    time: col(dod)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+# Comment out as ~repeated information from hosp/emar
+# hosp/pharmacy:
+#   medication_start:
+#     code:
+#       - "Hospital Medication Prescribed: Name, Route, Frequency, Doses Per 24 Hrs"
+#       - col(medication)
+#       - col(route)
+#       - col(frequency)
+#       - col(doses_per_24_hrs)
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S" #  All rows seem to have time of day
+#   medication_stop:
+#     code:
+#       - "Hospital Medication Stopped"
+#       - col(medication)
+#     time: col(stoptime)
+#     time_format: "%Y-%m-%d %H:%M:%S" # All rows seem to have time of day
+
+hosp/procedures_icd:
+  procedure:
+    code:
+      - Hospital Procedure
+      - col(long_title) # Instead of ICD code + version
+    time: col(dischtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+hosp/transfers:
+  # Split into 2 events (grouped later)
+  transfer_to:
+    code:
+      - Hospital Transfer
+      - To
+      - col(careunit)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  transfer_type:
+    code:
+      - Hospital Transfer
+      - Type
+      - col(eventtype)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+### ICU Tables ###
+
+# icu/icustays:
+#   icu_admission:
+#     code:
+#       - Icu Admission
+#       - To
+#       - col(first_careunit)
+#     time: col(intime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#   icu_discharge:
+#     code:
+#       - Icu Discharge
+#       - From
+#       - col(last_careunit)
+#     time: col(outtime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+
+# icu/chartevents:
+#   event:
+#     code:
+#       - "Icu Chart Event: Label, Unit, Value"
+#       - col(label)
+#       - col(valueuom)
+#       - col(value)
+#     time: col(charttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: col(valuenum)
+
+# icu/procedureevents:
+#   start:
+#     code:
+#       - Icu Procedure Start
+#       - col(label)
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#   end:
+#     code:
+#       - Icu Procedure End
+#       - col(label)
+#     time: col(endtime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+
+# icu/inputevents:
+#   input_start:
+#     code:
+#       - "Icu Infusion Start: Name, Administration, Unit, Rate"
+#       - col(label)
+#       - col(ordercategorydescription)
+#       - col(rateuom)
+#     numeric_value: rate # TODO: Handle null rate values
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#   subject_weight:
+#     code:
+#       - "Icu Infusion Start: Name, Administration, Unit, Rate" # Not perfect but odd to make own event type
+#       - Weight
+#       - ""
+#       - kg
+#     time: col(starttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: patientweight
+#   input_end:
+#     code:
+#       - "Icu Infusion End: Name, Administration, Status, Unit, Amount Administered"
+#       - col(label)
+#       - col(ordercategorydescription)
+#       - col(statusdescription)
+#       - col(amountuom)
+#     numeric_value: amount
+#     time: col(endtime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+
+# icu/outputevents:
+#   output:
+#     code:
+#       - "Icu Fluid Output: Name, Unit, Amount"
+#       - col(label)
+#       - col(valueuom)
+#     time: col(charttime)
+#     time_format: "%Y-%m-%d %H:%M:%S"
+#     numeric_value: value
+
+### ED Tables (not in MEDS-MIMIC config) ###
+
+ed/diagnosis:
+  # Same format as hosp/diagnoses_icd
+  diagnosis:
+    code:
+      - ED Diagnosis
+      - col(long_title) # Joined from hosp/d_icd_diagnoses (icd_code + icd_version -> long_title)
+    time: col(outtime) # Joined from ed/edstays
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/edstays:
+  ed_registration_arrival:
+    code:
+      - ED Admission
+      - Arrival Method
+      - col(arrival_transport)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  # Same format as hosp/admissions/admission_race etc
+  ed_registration_race:
+    code:
+      - ED Admission
+      - Race
+      - col(race)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  ed_registration_gender:
+    code:
+      - ED Admission
+      - Gender
+      - col(gender)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  ed_registration_age:
+     code:
+       - ED Admission
+       - Age
+     numeric_value: col(age) # Calculated from hosp/patients anchor_age and anchor_year
+     time: col(intime)
+     time_format: "%Y-%m-%d %H:%M:%S"
+  ed_out:
+    # Same format as Hospital Discharge
+    code:
+      - ED Discharge
+      - Location
+      - col(disposition)
+    time: col(outtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/medrecon:
+  medication:
+    code:
+      - Home Medication
+      - col(name)
+    time: col(intime) # Use intime instead of chartime so better grouping
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/pyxis:
+  medication:
+    # Same format as hosp/emar but no event_txt in this table
+    code:
+      - "ED Medication: Name, Details"
+      - col(name)
+      - Administered
+    time: col(charttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/triage:
+  triage:
+    code:
+      - "ED Triage: Name, Unit, Value"
+      - col(name)
+      - col(unit)
+      # HACK: Same as hosp/labevents
+      - col(value)
+    numeric_value: col(value_num)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+
+ed/vitalsign:
+  # Cols not used: rhythm (implict as dropped in premeds, for reasoning see process_ed_vitals_df)
+  vital_sign:
+    code:
+      - "ED Vital Sign: Name, Unit, Value"
+      - col(name)
+      - col(unit)
+      # HACK: Same as hosp/labevents
+      - col(value)
+    numeric_value: col(value_num)
+    time: col(charttime)
+    time_format: "%Y-%m-%d %H:%M:%S"

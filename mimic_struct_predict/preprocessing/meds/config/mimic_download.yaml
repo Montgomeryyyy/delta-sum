@@ -1,0 +1,21 @@
+raw_mimic_dir: ???
+
+download_workers: 6
+
+do_demo: false
+
+physio_net_url: "https://physionet.org/files"
+mimic_version: "2.2"
+
+dataset_info:
+  urls:
+    dataset:
+      - url: ${physio_net_url}/mimiciv/${mimic_version}/
+        username: ${oc.env:MIMIC_USER}
+        password: ${oc.env:MIMIC_PASSWORD}
+      - url: ${physio_net_url}/mimic-iv-ed/${mimic_version}/
+        username: ${oc.env:MIMIC_USER}
+        password: ${oc.env:MIMIC_PASSWORD}
+    demo:
+      - url: ${physio_net_url}/mimic-iv-demo/${mimic_version}/
+      - url: ${physio_net_url}/mimic-iv-ed-demo/${mimic_version}/

@@ -1,0 +1,8 @@
+input_dir: ???
+output_dir: ???
+do_overwrite: true
+do_copy: true
+
+hydra:
+  run:
+    dir: ${output_dir}/.logs/${now:%Y-%m-%d}/${now:%H-%M-%S}

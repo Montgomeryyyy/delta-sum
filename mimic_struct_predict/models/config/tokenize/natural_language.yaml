@@ -1,0 +1,31 @@
+dataset_dir: ???  # Required: directory of meds datasets with quantiles
+output_dir: ???          # Required: directory to save outputs
+
+overwrite: true
+
+dataset:
+  split_names:
+    train: train
+    val: tuning
+
+pre_processing:
+  delimiter: "//"
+  delimiter_replacement: " "
+  append_numeric_values: true
+  numeric_values_sig_figs: 2
+  code_join_token: "\n\n"
+
+tokenizer:
+  pre_trained_tokenizer: ???
+  padding_side: right
+
+tokenization:
+  stride: 128
+  max_length: 4096
+
+num_workers: 1
+batch_size: 50
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

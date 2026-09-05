@@ -1,0 +1,108 @@
+[project]
+name = "mimic-struct-predict"
+version = "0.1.0"
+description = "Quantifying the Silent Failure Modes of Generative Electronic Health Record Models"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "accelerate>=1.13.0",
+    "bitsandbytes>=0.49.2",
+    "datasets>=5.0.0",
+    "es-aces>=0.7.0",
+    "hydra-optuna-sweeper>=1.2.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.9",
+    "meds>=0.4.1",
+    "meds-extract~=0.3.0",
+    "meds-tab>=0.2.0",
+    "meds-transforms[local-parallelism]>=0.5.1",
+    "peft>=0.18.1",
+    "polars>=1.27.1",
+    "tabulate>=0.10.0",
+    "torch>=2.5.1",
+    "seaborn>=0.13.2",
+    "packaging>=26.2",
+    "tensorboard>=2.20.0",
+    "flash-attn>=2.8.3.post1",
+    "flash-linear-attention>=0.4.2",
+    "gputil>=1.4.0",
+    "torchaudio>=2.11.0",
+    "torchvision>=0.26.0",
+    "transformers>=5.0.0",
+    "liger-kernel>=0.8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.entry-points."MEDS_transforms.stages"]
+regex_replacement = "mimic_struct_predict.preprocessing.meds.transforms.regex_replacement.regex_replacement:regex_replacement"
+title_case_codes = "mimic_struct_predict.preprocessing.meds.transforms.to_title_case.title_case_codes:title_case_codes"
+order_by_code_prefix = "mimic_struct_predict.preprocessing.meds.transforms.order_by_code_prefix.order_by_code_prefix:order_by_code_prefix"
+add_prefix_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_prefix_rows.add_prefix_rows:create_prefix_column"
+add_time_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_time_rows.add_time_rows:add_time_rows"
+add_delta_rows = "mimic_struct_predict.preprocessing.meds.transforms.add_delta_rows.add_delta_rows:add_delta_rows"
+merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age_column.merge_age_column:merge_age_column"
+
+[project.scripts]
+physionet_download = "mimic_struct_predict.preprocessing.meds.physionet_download:main"
+pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
+calculate_task_prevalences = "mimic_struct_predict.preprocessing.calculate_task_prevalences:main"
+pre_training_tokenize = "mimic_struct_predict.models.tokenize:main"
+pre_training_train = "mimic_struct_predict.models.train:main"
+create_task_datasets = "mimic_struct_predict.models.create_task_datasets:main"
+pre_training_generative_inference = "mimic_struct_predict.models.generative_inference:main"
+
+[tool.ruff]
+exclude = [
+    "data",
+    "output",
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+extend-per-file-ignores = { "*.ipynb" = ["E402"] }
+
+[tool.mypy]
+python_version = "3.12"
+# Enforce type annotations on all function definitions
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+# Error on functions that return Any implicitly
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+files = ["mimic_struct_predict"]
+exclude = [
+    "mimic_struct_predict/preprocessing/meds/physionet_download.py"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]  # Or whatever your test folder name is (e.g., "test")
+norecursedirs = [".venv", "scratch", "*.egg-info", ".git", ".pytest_cache"]
+
+[tool.uv]
+no-build-isolation-package = ["flash-attn", "causal-conv1d"]
+environments = ["sys_platform == 'linux'"]
+preview = true
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
+vllm = { url = "https://github.com/vllm-project/vllm/releases/download/v0.23.0/vllm-0.23.0+cu129-cp38-abi3-manylinux_2_28_x86_64.whl" }
+
+[tool.uv.extra-build-dependencies]
+flash-attn = [{ requirement = "torch", match-runtime = true }]

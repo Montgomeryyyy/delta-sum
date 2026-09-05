@@ -1,0 +1,7 @@
+defaults:
+  - natural_language
+  - _self_
+
+model:
+  random_init: true
+  vocab_padding_multiple: 8

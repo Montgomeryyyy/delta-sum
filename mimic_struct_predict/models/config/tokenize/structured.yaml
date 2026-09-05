@@ -1,0 +1,19 @@
+defaults:
+  - natural_language
+  - _self_
+
+pre_processing:
+  delimiter_replacement: null # Tokenizer uses delimeter to define codes
+  code_join_token: ${pre_processing.delimiter}${tokenizer.special_tokens.eoc_token}${pre_processing.delimiter}
+  append_numeric_values: false
+
+tokenizer:
+  pre_trained_tokenizer: null
+  min_frequency: 10
+  delimiter: ${pre_processing.delimiter}
+  special_tokens:
+    unk_token: "Unknown"
+    pad_token: "<PAD>"
+    eoc_token: "\n\n" # End of Code token
+  model_max_length: ${tokenization.max_length}
+  truncation_side: left

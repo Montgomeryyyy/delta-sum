@@ -1,0 +1,109 @@
+# Adapted from MEDS_extract example config
+# https://github.com/mmcdermott/MEDS_extract/blob/51eef880722722ec9289b15358f5f33f70ea53e8/src/MEDS_extract/configs/_extract.yaml
+
+description: |-
+  This pipeline extracts raw MEDS events in longitudinal, sparse form from an input dataset meeting select
+  criteria and converts them to the flattened, MEDS format. It can be run in its entirety, with controllable
+  levels of parallelism, or in stages. Arguments:
+    - `event_conversion_config_fp`: The path to the event conversion configuration file. This file defines
+      the events to extract from the various rows of the various input files encountered in the global input
+      directory.
+    - `input_dir`: The path to the directory containing the raw input files.
+    - `output_dir`: The path to the directory where the output cohort will be written. It will be written in
+      various subfolders of this dir depending on the stage, as intermediate stages cache their output during
+      computation for efficiency of re-running and distributing.
+
+output_dir: ${oc.env:OUTPUT_DIR}
+input_dir: ${oc.env:INPUT_DIR}
+
+# The event conversion configuration file is used throughout the pipeline to define the events to extract.
+event_conversion_config_fp: mimic_struct_predict/preprocessing/meds/config/event_configs.yaml
+# The shards mapping is stored in the root of the final output directory.
+shards_map_fp: "${output_dir}/metadata/.shards.json"
+
+etl_metadata:
+  dataset_name: ${oc.env:DATASET_NAME}
+  dataset_version: ${oc.env:DATASET_VERSION}
+  pipeline_name: "etl"
+
+delimiter: "//"
+
+stages:
+  - shard_events:
+      data_input_dir: ${input_dir}
+  - split_and_shard_subjects
+  - convert_to_subject_sharded
+  - convert_to_MEDS_events
+  - merge_to_MEDS_cohort # <- output used for tabular data (below is the exact same data but transformed for language modelling)
+  ### Custom MEDS transforms
+  - regex_replacement:
+      column: "code"
+      # Fix up repeated/trailing slashes and UNK tokens
+      patterns:
+        # Remove placeholder (value, valuenum hack)
+        - pattern: "//Placeholder$"
+          replacement: ""
+        # Replace UNK (MEDS filler for null values) and ? with Unknown (makes more semantic sense)
+        - pattern: '//(UNK|\?)(//|$)'
+          replacement: "//Unknown$2"
+        # Replace extra spaces with single spaces
+        - pattern: " {2,}"
+          replacement: " "
+        # Remove trailing dots or spaces
+        - pattern: '(\.| )(//|$)'
+          replacement: "$2"
+        # Remove preceeding spaces
+        - pattern: '// '
+          replacement: "//"
+        # Remove triple /// (caused by trailing / in code)
+        - pattern: '///'
+          replacement: "//"
+  - order_by_code_prefix:
+      # Priority from first to last, used when timestamps are equal
+      prefix_priority:
+        # ED Events
+        - "ED Admission"
+        - "ED Triage: Name, Unit, Value"
+        - "Home Medication"
+        - "ED Vital Sign: Name, Unit, Value"
+        - "ED Medication Administered"
+        - "ED Discharge"
+        - "ED Diagnosis"
+        # Admissions
+        - "Hospital Transfer" # Includes ED->Hospital transfers
+        - "Hospital Admission"
+        # Hospital Lab results and observations
+        - "Lab Result: Fluid, Test, Priority, Units, Value"
+        - "Clinical Observation: Name, Unit, Value"
+        # Hospital Interventions and treatments
+        - "Hospital Medication Prescribed: Name, Route, Frequency, Doses Per 24 Hrs"
+        - "Hospital Medication Administered: Name, Details"
+        - "Hospital Medication Stopped"
+        # Discharge
+        - "Death" # (discharge and billing happens after in-hospital death)
+        - "Hospital Discharge"
+        # Hospital Billing codes
+        - "Diagnosis Related Group: Type, Description, Severity Of Illness, Likelihood Of Mortality"
+        - "Hospital Diagnosis"
+        - "Hospital Procedure"
+        - "HCPCS Billing Item"
+  - add_prefix_rows:
+      header: "####"
+      delimiter: ${delimiter}
+  - add_time_rows:
+      header: "### Time"
+      delimiter: ${delimiter}
+      eod_string: "Unspecified"
+  - add_delta_rows:
+      header: "## Date"
+      delimiter: ${delimiter}
+  - aggregate_code_metadata:
+      aggregations:
+        - name: "values/quantiles"
+          quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  - bin_numeric_values: # <- output used for structured data (has quantile bins instead of numeric values)
+      code_with_bin_name: "{code}//Quantile {bin}"
+
+parallelize:
+  n_workers: ${oc.env:N_WORKERS,1}
+  launcher: "joblib"

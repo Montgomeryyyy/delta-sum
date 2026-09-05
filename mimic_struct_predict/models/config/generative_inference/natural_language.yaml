@@ -1,0 +1,65 @@
+dataset_dir: ???  # Required: directory of pre-built prompt datasets
+output_dir: ???   # Required: directory to save outputs
+task_prevalence_path: ???  # Required: path to JSON file containing dict {task_name: prevalence}
+task: ???
+chunk_size: 1000
+batch_size: 24
+seed: 42
+num_workers: 1
+suppress_extra_vocab: false
+
+pad_to_multiple_of: 64
+
+model:
+  pretrained_model_name_or_path: ???
+  torch_dtype: bfloat16
+  attn_implementation: flash_attention_2
+
+generation_config:
+  max_new_tokens: 1024
+  num_return_sequences: 20
+  do_sample: true
+  temperature: 1.0
+  top_p: 1.0
+  top_k: null
+  use_cache: true
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+
+tokenizer:
+  join_with_delimiter: false
+  keep_first_token: true
+  max_input_length: 3072
+  delimiter: " "
+
+event_extraction:
+  event_config_path: mimic_struct_predict/preprocessing/meds/config/event_configs.yaml
+  delimiter: ${tokenizer.delimiter}
+  code_splitter: "\n\n"
+  max_day_gap: 365
+  category_prefix: "####${event_extraction.delimiter}"
+  time_prefix: "### Time${event_extraction.delimiter}"
+  date_prefix: "## Date${event_extraction.delimiter}"
+  tasks:
+    ed_72hr_reattendance:
+      target_event_regex: '^${event_extraction.category_prefix}ED Admission'
+      end_time_days: 3.0
+      end_event_regex: null
+    ed_to_hospital_admission:
+      target_event_regex: '^${event_extraction.category_prefix}ED Discharge${event_extraction.delimiter}Location${event_extraction.delimiter}Admitted$'
+      end_time_days: null
+      end_event_regex: '^${event_extraction.category_prefix}ED Discharge${event_extraction.delimiter}(?!Location${event_extraction.delimiter}Admitted).*$'
+    hospital_length_of_stay_leq_7_days:
+      target_event_regex: '^${event_extraction.category_prefix}Hospital Discharge'
+      end_time_days: 7.0
+      end_event_regex: null
+    hospital_post_discharge_30_day_mortality:
+      target_event_regex: '^${event_extraction.category_prefix}Death'
+      end_time_days: 30.0
+      end_event_regex: null
+    in_hospital_mortality:
+      target_event_regex: '^${event_extraction.category_prefix}Death'
+      end_time_days: null
+      end_event_regex: '^${event_extraction.category_prefix}Hospital Discharge'

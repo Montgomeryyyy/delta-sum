@@ -1,0 +1,28 @@
+metadata:
+  description: >-
+    True if patient is discharged from the hospital within 7 days of hospital admission, false otherwise.
+    Prediction is made at hospital admission.
+
+predicates:
+  hospital_admission:
+    code: "####//Hospital Admission"
+  hospital_discharge:
+    code: "####//Hospital Discharge"
+
+trigger: hospital_admission
+
+windows:
+  input:
+    # All of patients history up until hospital admission
+    start: NULL
+    end: trigger
+    start_inclusive: True
+    end_inclusive: True
+    index_timestamp: end
+  target:
+    # True if patient is discharged from the hospital within 7 days of hospital admission, false otherwise
+    start: input.end
+    end: start + 7 days
+    start_inclusive: False
+    end_inclusive: True
+    label: hospital_discharge
