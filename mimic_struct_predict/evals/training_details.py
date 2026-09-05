@@ -130,7 +130,7 @@ def main() -> None:
             Path(os.environ["NL_MODEL_DIR"]).parent,
             # HACK: To append split model training run together
             Path(
-                str(Path(os.environ["NATURAL_LANGUAGE_PRE_TRAINING_DIR"]) / "20260817_225728"),
+                str(Path(os.environ["NATURAL_LANGUAGE_MODEL_DIR"]) / "pretraining" / "20260817_225728"),
             ),
         ],
     )
