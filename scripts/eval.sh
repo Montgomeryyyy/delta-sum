@@ -46,14 +46,23 @@ fi
 # --- Get config ---
 source "./scripts/config.sh"
 
+echo "---- Dataset Count ----"
 uv run python mimic_struct_predict/evals/dataset_count.py
 
-uv run python mimic_struct_predict/evals/training_details.py
-
+echo "---- Error Rates ----"
 uv run python mimic_struct_predict/evals/error_rates.py
 
+echo "---- Event Config to LaTeX ----"
+uv run python mimic_struct_predict/evals/event_config_to_latex.py
+
+echo "---- Rollout Delta AUROC ----"
 uv run python mimic_struct_predict/evals/rollout_delta.py --metric auroc
 
+echo "---- Rollout Delta Brier Score ----"
 uv run python mimic_struct_predict/evals/rollout_delta.py --metric brier_score
 
+echo "---- Training Details ----"
+uv run python mimic_struct_predict/evals/training_details.py
+
+echo "---- GT Trajectory Lengths ----"
 uv run python mimic_struct_predict/evals/gt_trajectory_lengths.py --nl_tokenizer_path "$NL_TOKENIZER_PATH" --struct_tokenizer_path "$STRUCT_TOKENIZER_PATH"

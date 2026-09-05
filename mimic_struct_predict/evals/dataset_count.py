@@ -240,7 +240,7 @@ def main() -> None:
     df.write_csv(csv_path)
     log.info(f"Saved CSV table to {csv_path}")
 
-    df.to_pandas().to_latex(tex_path, index=False)
+    df.to_pandas().to_latex(tex_path, escape=True, index=False)
     log.info(f"Saved LaTeX table to {tex_path}")
 
     plot_category_counts(args.meds_tab_meds_dir / "train", args.output_dir)

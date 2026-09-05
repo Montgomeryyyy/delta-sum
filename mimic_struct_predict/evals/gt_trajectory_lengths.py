@@ -11,7 +11,12 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import seaborn as sns
-from evals.plot_style import (
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+from omegaconf import DictConfig, OmegaConf
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
+
+from mimic_struct_predict.evals.plot_style import (
     DEFAULT_FIG_HEIGHT_INCHES,
     NEURIPS_TEXTWIDTH_INCHES,
     SEPARATOR_LINE_KW,
@@ -22,12 +27,7 @@ from evals.plot_style import (
     save_figure,
     sort_tasks,
 )
-from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
-from omegaconf import DictConfig, OmegaConf
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
-
-from mimic_struct_predict.models.pre_training.generative_inference_hf import (
+from mimic_struct_predict.models.generative_inference import (
     detect_outcome,
     get_last_time_offset_and_category,
     get_valid_categories,
@@ -440,27 +440,27 @@ def main() -> None:
     parser.add_argument(
         "--nl_config",
         type=str,
-        default="mimic_struct_predict/models/pre_training/config/generative_inference/natural_language.yaml",
+        default="mimic_struct_predict/models/config/generative_inference/natural_language.yaml",
         help="Path to natural_language.yaml",
     )
     parser.add_argument(
         "--struct_config",
         type=str,
-        default="mimic_struct_predict/models/pre_training/config/generative_inference/structured.yaml",
+        default="mimic_struct_predict/models/config/generative_inference/structured.yaml",
         help="Path to structured.yaml",
     )
 
     parser.add_argument(
         "--nl_prep_config",
         type=str,
-        default="mimic_struct_predict/models/embedding_and_lr/config/create_task_datasets_nl.yaml",
-        help="Path to create_task_datasets_nl.yaml",
+        default="mimic_struct_predict/models/config/create_task_datasets/natural_language.yaml",
+        help="Path to create_task_datasets/natural_language.yaml",
     )
     parser.add_argument(
         "--struct_prep_config",
         type=str,
-        default="mimic_struct_predict/models/embedding_and_lr/config/create_task_datasets_structured.yaml",
-        help="Path to create_task_datasets_structured.yaml",
+        default="mimic_struct_predict/models/config/create_task_datasets/structured.yaml",
+        help="Path to create_task_datasets/structured.yaml",
     )
 
     parser.add_argument("--nl_tokenizer_path", type=str, required=True)
