@@ -10,7 +10,7 @@ echo "Running on ${HOSTNAME}"
 nvidia-smi
 nvcc --version
 
-set -x
+# set -x
 
 # Set env vars
 source "./scripts/config.sh"
@@ -19,4 +19,4 @@ export NVCC_THREADS=1
 
 # Setup uv
 # rm -rf $UV_PROJECT_ENVIRONMENT
-uv sync --verbose
+uv sync
