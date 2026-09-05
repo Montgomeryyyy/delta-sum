@@ -24,14 +24,6 @@ This repository provides the official, end-to-end reproducible pipeline to quant
 2. **Structured Medical Code Models**: Autoregressive transformers trained from scratch (Gemma 3 270M architecture) with a custom vocabulary over structured [Medical Event Data Standard (MEDS)](https://github.com/Medical-Event-Data-Standard/meds) tokens.
 3. **Tabular Discriminative Baselines**: Supervised XGBoost models trained on multi-window tabularised features via [MEDS-TAB](https://github.com/Medical-Event-Data-Standard/meds-tab).
 
-### Key Research Findings
-
-- **Substantial Trajectory Error Rates**: Across five common clinical prediction tasks on MIMIC-IV and MIMIC-IV-ED, autoregressive timeline rollouts exhibit high, task-dependent error rates ranging from **TODO% to TODO%**.
-- **Modality-Specific Failure Modes**:
-  - *Structured models* fail predominantly due to syntactically invalid generation (e.g. malformed event timestamps, corrupted delimiters, or illegal code transitions).
-  - *Natural language models* demonstrate greater syntactic adherence but are heavily bottlenecked by output context-length limits during long trajectory rollouts.
-- **Metric Sensitivity & Silent Cohort Exclusion**: The methodological strategy chosen to handle invalid rollouts (such as silently discarding non-adherent trajectories versus imputing baseline priors) substantially shifts standard discrimination metrics such as AUROC by up to **TODO**, while risking the silent exclusion of sicker, high-risk patient cohorts from evaluation.
-
 ### Clinical Evaluation Tasks
 
 All cohort definitions, observation windows, and prediction targets are extracted from **MIMIC-IV** and **MIMIC-IV-ED** using [ACES](https://github.com/som-shahlab/es-aces):
@@ -165,8 +157,8 @@ flowchart TD
     B --> D["Tabular Baseline (scripts/meds-tab.sh)"]
     B --> E["Tokenisation (scripts/pretrain-tokenize.sh)"]
     E --> F["Pre-training (scripts/pretrain-train.sh)"]
-    C & F --> G["Prompt Generation (scripts/create-task-datasets.sh)"]
-    G --> H["Rollout Inference (scripts/pretrain-generation-hf.sh)"]
+    F --> G["Prompt Generation (scripts/create-task-datasets.sh)"]
+    C & G --> H["Rollout Inference (scripts/pretrain-generation-hf.sh)"]
     D & H --> I["Evaluation & Plots (scripts/eval.sh)"]
 ```
 
@@ -264,7 +256,7 @@ Tokenises the MEDS datasets and constructs the vocabulary:
 export MODE="natural_language"
 
 sbatch \
-    --partition slam_cpu \
+    --partition cpu_partition \
     --time=0:20:00 \
     --ntasks=1 \
     --cpus-per-task=32 \
@@ -326,7 +318,7 @@ Extract patient trajectories up to the index prediction time for each ACES task:
 ```bash
 # For Natural Language:
 sbatch \
-    --partition slam_cpu \
+    --partition cpu_partition \
     --time=4:00:00 \
     --ntasks=1 \
     --cpus-per-task=64 \
@@ -338,7 +330,7 @@ sbatch \
 
 # For Structured:
 sbatch \
-    --partition slam_cpu \
+    --partition cpu_partition \
     --time=4:00:00 \
     --ntasks=1 \
     --cpus-per-task=64 \
