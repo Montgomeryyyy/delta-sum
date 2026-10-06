@@ -374,3 +374,21 @@ ed/vitalsign:
     numeric_value: col(value_num)
     time: col(charttime)
     time_format: "%Y-%m-%d %H:%M:%S"
+
+physionet.org/files/mimic-iv-note/2.2/note/discharge:
+  discharge_notes:
+    code:
+      - "Note Discharge: Note Type"
+      - col(note_type)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    text_value: col(text)
+
+physionet.org/files/mimic-iv-note/2.2/note/radiology:
+  radiology_notes:
+    code:
+      - "Note Radiology: Note Type"
+      - col(note_type)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    text_value: col(text)

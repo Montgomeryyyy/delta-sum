@@ -527,7 +527,7 @@ def process_hosp_transfers_df(hosp_transfers_df: pl.LazyFrame) -> pl.LazyFrame:
     - Map eventtype to titlecase.
     """
     return hosp_transfers_df.with_columns(pl.col("eventtype").str.to_titlecase())
-
+    
 
 # Processing functions registry for MIMIC-IV data files.
 # Format: {
@@ -605,6 +605,11 @@ FUNCTIONS: Mapping[str, tuple[Callable[..., pl.LazyFrame], list[tuple[str, list[
         ],
     ),
     "hosp/transfers": (process_hosp_transfers_df, None),
+
+    # # Notes 
+    # "psycionet.org/files/mimic_iv_note/2.2/note/discharge": (process_note_discharge_df, None),
+
+
     # ### ICU Tables ###
     # "icu/chartevents": (
     #     process_icu_chartevents_df,

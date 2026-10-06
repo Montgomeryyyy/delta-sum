@@ -1,0 +1,7 @@
+export MIMIC_USER="<your_physionet_username>"
+export MIMIC_PASSWORD="<your_physionet_password>"
+export HF_TOKEN="<your_huggingface_token>"
+export SCRATCH_DIR="<your_scratch_directory>"
+export DEMO=false
+export MODE="natural_language"
+# or "structured"

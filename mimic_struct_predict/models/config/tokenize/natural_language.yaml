@@ -13,6 +13,7 @@ pre_processing:
   delimiter_replacement: " "
   append_numeric_values: true
   numeric_values_sig_figs: 2
+  append_text_values: true
   code_join_token: "\n\n"
 
 tokenizer:

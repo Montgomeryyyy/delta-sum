@@ -25,6 +25,19 @@ def append_numeric_values_to_codes_expr(
         .otherwise(pl.col(code_col))
     )
 
+def append_text_values_to_codes_expr(
+    delimiter: str | None, code_col: str = "code", text_col: str = "text_value"
+) -> pl.Expr:
+    """Appends text values to codes with specified significant figures."""
+    if not delimiter:
+        raise ValueError("Delimiter must be specified to append text values to codes.")
+
+    return (
+        pl.when(pl.col(text_col).is_not_null())
+        .then(pl.concat_str([pl.col(code_col), pl.col(text_col)], separator=delimiter))
+        .otherwise(pl.col(code_col))
+    )
+
 
 def get_agg_expr(
     code_join_token: str,
@@ -58,6 +71,7 @@ def meds_to_string_dataset(
     delimiter: None | str,
     delimiter_replacement: str | None = None,
     append_numeric_values: bool = False,
+    append_text_values: bool = False,
     numeric_values_sig_figs: int = 2,
 ) -> None:
     # Format shards: split/shard.parquet
@@ -81,6 +95,12 @@ def meds_to_string_dataset(
                 df = df.with_columns(
                     code=append_numeric_values_to_codes_expr(
                         delimiter=delimiter, numeric_values_sig_figs=numeric_values_sig_figs
+                    )
+                )
+            if append_text_values: 
+                df = df.with_columns(
+                    code=append_text_values_to_codes_expr(
+                        delimiter=delimiter
                     )
                 )
 
@@ -108,6 +128,7 @@ def meds_and_aces_to_string_dataset(
     delimiter: None | str = None,
     delimiter_replacement: str | None = None,
     append_numeric_values: bool = False,
+    append_text_values: bool = False,
     numeric_values_sig_figs: int = 2,
 ) -> None:
     # Format shards: task/split/shard.parquet
@@ -147,7 +168,12 @@ def meds_and_aces_to_string_dataset(
                         delimiter=delimiter, numeric_values_sig_figs=numeric_values_sig_figs
                     )
                 )
-
+            if append_text_values:
+                meds_lazy = meds_lazy.with_columns(
+                    code=append_text_values_to_codes_expr(
+                        delimiter=delimiter
+                    )
+                )
             lf = (
                 aces_lazy.join(meds_lazy, on="subject_id", how="inner")
                 .filter(pl.col("time") <= pl.col("prediction_time"))

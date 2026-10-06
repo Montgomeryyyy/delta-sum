@@ -14,17 +14,20 @@ fi
 
 # ---- Internal Script Variables (No export needed) ----
 # Demo flag can be passed via environment or SLURM export (e.g. DEMO=true, demo=true)
+DOWNLOADED_DATA_DIR="/scratch/prj/bhi_ehrfoundationmodels/k2692250/mimic-struct-predict"
 export DEMO="${DEMO:-${demo:-false}}"
 if [ "${DEMO,,}" = "true" ] || [ "$DEMO" = "1" ]; then
     export DATA_DIR="${SCRATCH_DIR}/data_demo"
     export TRAINING_DIR="${SCRATCH_DIR}/training_demo"
     export INFERENCE_DIR="${SCRATCH_DIR}/inference_demo"
     export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots_demo"
+    export MIMICIV_RAW_DIR="${DOWNLOADED_DATA_DIR}/data_demo/raw_mimic"  # read-only input
 else
     export DATA_DIR="${SCRATCH_DIR}/data"
     export TRAINING_DIR="${SCRATCH_DIR}/training"
     export INFERENCE_DIR="${SCRATCH_DIR}/inference"
     export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots"
+    export MIMICIV_RAW_DIR="${DOWNLOADED_DATA_DIR}/data/raw_mimic"  # read-only input
 fi
 export DEBUG_DIR="${DATA_DIR}/debug"
 
@@ -32,7 +35,6 @@ export HF_MODEL_NAME="google/gemma-3-270m"
 
 export MIMIC_VERSION="2.2"
 export DATASET_NAME="mimiciv"
-export MIMICIV_RAW_DIR="${DATA_DIR}/raw_mimic"
 export MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
 export MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
