@@ -1,0 +1,50 @@
+input_dir: ???           # Required: Directory of the raw natural language data
+output_dir: ???          # Required: Directory to save the summarized data
+
+overwrite: true
+chunk_size: 4 #1000
+seed: 42
+
+debug: true
+# Limit patients per split for smoke tests (null = full dataset).
+max_patients: 8
+
+dataset:
+  split_names:
+    train: train
+    val: tuning
+
+summarization:
+  # Matches natural-language date markers after delimiter "//" → " " replacement,
+  # e.g. "## Date +5 days". Adjust if your raw text still uses "//".
+  window_regex: "^## Date \\+\\d+ days$"
+  mode: "summarize"
+  prompt: |
+    You are a clinical documentation assistant. Write a concise clinical summary of the EHR excerpt below.
+    Focus on diagnoses, procedures, medications, vitals, and notable findings. Do not copy the text verbatim.
+
+    EHR excerpt:
+    {text}
+
+    Clinical summary:
+
+model:
+  # https://docs.vllm.ai/en/v0.7.3/api/offline_inference/llm.html
+  model: ???
+  dtype: bfloat16
+  seed: ${seed}
+  tensor_parallel_size: 1
+  max_model_len: 8192
+  gpu_memory_utilization: 0.9
+
+sampling_params:
+  max_tokens: 1024
+  temperature: 0.2
+  seed: ${seed}
+
+num_workers: 1
+batch_size: 50
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
