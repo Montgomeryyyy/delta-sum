@@ -16,10 +16,11 @@ dependencies = [
     "meds-extract~=0.3.0",
     "meds-tab>=0.2.0",
     "meds-transforms[local-parallelism]>=0.5.1",
+    "ninja",
     "peft>=0.18.1",
     "polars>=1.27.1",
     "tabulate>=0.10.0",
-    "torch>=2.5.1",
+    "torch>=2.11.0",
     "seaborn>=0.13.2",
     "packaging>=26.2",
     "tensorboard>=2.20.0",
@@ -30,6 +31,7 @@ dependencies = [
     "torchvision>=0.26.0",
     "transformers>=5.0.0",
     "liger-kernel>=0.8.0",
+    "vllm",
 ]
 
 [build-system]
@@ -90,7 +92,8 @@ norecursedirs = [".venv", "scratch", "*.egg-info", ".git", ".pytest_cache"]
 
 [tool.uv]
 no-build-isolation-package = ["flash-attn", "causal-conv1d"]
-environments = ["sys_platform == 'linux'"]
+# Pin x86_64: the vllm wheel in [tool.uv.sources] is manylinux_x86_64 only.
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 preview = true
 
 [[tool.uv.index]]
@@ -105,4 +108,5 @@ torchaudio = { index = "pytorch" }
 vllm = { url = "https://github.com/vllm-project/vllm/releases/download/v0.23.0/vllm-0.23.0+cu129-cp38-abi3-manylinux_2_28_x86_64.whl" }
 
 [tool.uv.extra-build-dependencies]
-flash-attn = [{ requirement = "torch", match-runtime = true }]
+flash-attn = [{ requirement = "torch", match-runtime = true }, "ninja"]
+causal-conv1d = ["ninja"]
