@@ -4,6 +4,7 @@ from pathlib import Path
 
 import datasets
 import hydra
+import polars as pl
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
@@ -35,21 +36,53 @@ def truncate_chunk_text(text: str, tokenizer, max_text_tokens: int) -> tuple[str
     )
 
 
+def format_summarize_prompt(
+    text: str,
+    prompt_template: str,
+    tokenizer,
+    use_chat_template: bool,
+    system_prompt: str | None,
+) -> str:
+    """Build a generation prompt, using the instruct chat template when available."""
+    user_content = prompt_template.format(text=text)
+    if not use_chat_template or not hasattr(tokenizer, "apply_chat_template"):
+        return user_content
+
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_content})
+    try:
+        return tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+    except Exception as e:
+        log.warning(f"apply_chat_template failed ({e}); falling back to raw prompt.")
+        return user_content
+
+
 def summarize_batch(
     batch: dict,
     prompt_template: str,
     llm: LLM,
     sampling_params: SamplingParams,
     max_prompt_tokens: int,
+    use_chat_template: bool = True,
+    system_prompt: str | None = None,
 ) -> tuple[dict, int]:
     """Add a ``summary`` field to each nested chunk for a batch of patients.
 
     Returns the updated batch and the number of prompts that needed truncation.
     """
     tokenizer = llm.get_tokenizer()
-    # Reserve space for the instruction wrapper around {text}.
+    # Reserve space for the instruction wrapper / chat template around {text}.
     wrapper_tokens = len(
-        tokenizer.encode(prompt_template.format(text=""), add_special_tokens=False)
+        tokenizer.encode(
+            format_summarize_prompt("", prompt_template, tokenizer, use_chat_template, system_prompt),
+            add_special_tokens=False,
+        )
     )
     max_text_tokens = max(1, max_prompt_tokens - wrapper_tokens)
 
@@ -69,7 +102,11 @@ def summarize_batch(
                     f"Truncated text for subject_id={batch['subject_id'][p_i]} "
                     f"chunk_id={chunk.get('chunk_id', c_i)}: {n_tokens} -> {max_text_tokens} tokens"
                 )
-            prompts.append(prompt_template.format(text=text))
+            prompts.append(
+                format_summarize_prompt(
+                    text, prompt_template, tokenizer, use_chat_template, system_prompt
+                )
+            )
             locations.append((p_i, c_i))
             truncated_flags.append(was_truncated)
 
@@ -93,6 +130,8 @@ def summarize_split(
     sampling_params: SamplingParams,
     chunk_size: int,
     max_prompt_tokens: int,
+    use_chat_template: bool = True,
+    system_prompt: str | None = None,
 ) -> datasets.Dataset:
     """Summarize one split by patient batches."""
     subject_ids: list = []
@@ -105,7 +144,13 @@ def summarize_split(
         batch = dict(split_dataset[i : i + chunk_size])
         n_prompts_total += sum(len(chunks) for chunks in batch["chunks"])
         result, n_truncated = summarize_batch(
-            batch, prompt_template, llm, sampling_params, max_prompt_tokens
+            batch,
+            prompt_template,
+            llm,
+            sampling_params,
+            max_prompt_tokens,
+            use_chat_template=use_chat_template,
+            system_prompt=system_prompt,
         )
         n_truncated_total += n_truncated
         subject_ids.extend(result["subject_id"])
@@ -169,7 +214,12 @@ def chunk_batch(examples: dict, window_regex: str) -> dict:
     }
 
 
-def load_dataset(input_dir: Path, train_split: str, val_split: str) -> datasets.DatasetDict:
+def load_dataset(
+    input_dir: Path,
+    train_split: str,
+    val_split: str,
+    max_patients: int | None = None,
+) -> datasets.DatasetDict:
     log.info(f"Loading raw dataset from {input_dir}...")
     datafiles: dict[str, list[str]] = {train_split: [], val_split: []}
     for shard_path in sorted(input_dir.glob("*/*.parquet")):
@@ -183,6 +233,17 @@ def load_dataset(input_dir: Path, train_split: str, val_split: str) -> datasets.
             f"No parquet shards found under {input_dir}/<split>/*.parquet "
             f"(expected splits: {train_split!r}, {val_split!r})"
         )
+
+    if max_patients is not None:
+        # Read only the first rows of the first shard so debug runs don't scan the full corpus.
+        limited: dict[str, datasets.Dataset] = {}
+        for split, files in datafiles.items():
+            if not files:
+                continue
+            frame = pl.read_parquet(files[0], n_rows=max_patients)
+            limited[split] = datasets.Dataset.from_dict(frame.to_dict(as_series=False))
+            log.info(f"Loaded {len(limited[split])} {split} patients from {files[0]} (max_patients={max_patients}).")
+        return datasets.DatasetDict(limited)
 
     dataset = datasets.load_dataset("parquet", data_files=datafiles)
     log.info(
@@ -232,6 +293,8 @@ def main(cfg: DictConfig) -> None:
     val_split = cfg.dataset.split_names.val
     window_regex = cfg.summarization.window_regex
     prompt_template = cfg.summarization.prompt
+    system_prompt = cfg.summarization.get("system_prompt", None)
+    use_chat_template = bool(cfg.summarization.get("use_chat_template", True))
     out_path = output_dir / "summarized_dataset"
 
     if not cfg.overwrite and out_path.exists():
@@ -243,21 +306,10 @@ def main(cfg: DictConfig) -> None:
 
     ### Load dataset
     log.info("Loading raw pretraining dataset...")
-    dataset = load_dataset(input_dir, train_split, val_split)
-
     max_patients = cfg.get("max_patients", None)
     if max_patients is not None:
         max_patients = int(max_patients)
-        dataset = datasets.DatasetDict(
-            {
-                split: ds.select(range(min(max_patients, len(ds))))
-                for split, ds in dataset.items()
-            }
-        )
-        log.info(
-            f"Debug subset: using first {max_patients} patients per split "
-            f"({len(dataset[train_split])} train / {len(dataset[val_split])} val)."
-        )
+    dataset = load_dataset(input_dir, train_split, val_split, max_patients=max_patients)
 
     ### Chunk patients
     log.info(f"Chunking patients with window_regex={window_regex!r}...")
@@ -297,6 +349,8 @@ def main(cfg: DictConfig) -> None:
                 sampling_params,
                 cfg.chunk_size,
                 max_prompt_tokens,
+                use_chat_template=use_chat_template,
+                system_prompt=system_prompt,
             )
             for split in chunked_dataset
         }
@@ -306,8 +360,8 @@ def main(cfg: DictConfig) -> None:
         f"{len(summarized_dataset[val_split])} val patients."
     )
 
-    # summarized_dataset.save_to_disk(out_path)
-    # log.info(f"Saved summarized dataset to {out_path}")
+    summarized_dataset.save_to_disk(out_path)
+    log.info(f"Saved summarized dataset to {out_path}")
 
     ### Debug printing
     if cfg.get("debug", False):

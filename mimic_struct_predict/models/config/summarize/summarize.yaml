@@ -16,21 +16,25 @@ dataset:
 
 summarization:
   # Matches natural-language date markers after delimiter "//" → " " replacement,
-  # e.g. "## Date +5 days". Adjust if your raw text still uses "//".
+  # e.g. "## Date +5 days".
   window_regex: "^## Date \\+\\d+ days$"
   mode: "summarize"
+  use_chat_template: true
+  system_prompt: >
+    You are a clinical summarization system. Produce concise, factual summaries
+    of EHR excerpts. Preserve clinically important information. Do not invent
+    facts.
   prompt: |
-    You are a clinical documentation assistant. Write a concise clinical summary of the EHR excerpt below.
-    Focus on diagnoses, procedures, medications, vitals, and notable findings. Do not copy the text verbatim.
-
+    Summarize the EHR excerpt below.
+    Include diagnoses, symptoms, treatments/procedures/medications, abnormal
+    findings, important measurements, and meaningful changes when present.
+    Remove redundancy and administrative detail. Use complete sentences and no
+    introductory phrases.
     EHR excerpt:
     {text}
 
-    Clinical summary:
-
 model:
-  # https://docs.vllm.ai/en/v0.7.3/api/offline_inference/llm.html
-  model: ???
+  model: Qwen/Qwen2.5-7B-Instruct
   dtype: bfloat16
   seed: ${seed}
   tensor_parallel_size: 1
@@ -38,8 +42,9 @@ model:
   gpu_memory_utilization: 0.9
 
 sampling_params:
-  max_tokens: 1024
-  temperature: 0.2
+  max_tokens: 256
+  temperature: 0.0
+  repetition_penalty: 1.0
   seed: ${seed}
 
 num_workers: 1
