@@ -2059,6 +2059,7 @@ dependencies = [
     { name = "meds-extract" },
     { name = "meds-tab" },
     { name = "meds-transforms", extra = ["local-parallelism"] },
+    { name = "ninja" },
     { name = "packaging" },
     { name = "peft" },
     { name = "polars" },

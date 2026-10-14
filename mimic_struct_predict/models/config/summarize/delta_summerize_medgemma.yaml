@@ -1,0 +1,89 @@
+input_dir: ???           # Required: Directory of the raw natural language data
+output_dir: ???          # Required: Directory to save the summarized data
+
+overwrite: true
+chunk_size: 4 #1000
+seed: 42
+
+debug: true
+# Limit patients per split for smoke tests (null = full dataset).
+max_patients: 8
+
+dataset:
+  split_names:
+    train: train
+    val: tuning
+
+
+# First window has no prior updates, so it is a full summary. Later windows use `prompt`.
+summarization:
+  window_regex: "^## Date \\+\\d+ days$"
+  mode: "delta_summarize"
+  use_chat_template: true
+
+  initial_system_prompt: >
+    You are a clinical summarization system. Produce concise, factual summaries
+    of EHR excerpts. Preserve clinically important information. Do not invent facts.
+
+  initial_prompt: |
+    Summarize the EHR excerpt below.
+    Include clinically relevant diagnoses, symptoms, treatments, procedures,
+    medications, measurements, test results, and findings.
+    Remove redundancy and administrative detail.
+
+    EHR excerpt:
+    {text}
+
+  system_prompt: >
+    You are a clinical summarization system for longitudinal EHRs.
+    Produce concise, factual clinical updates. Do not invent facts.
+
+  prompt: |
+    Given the previous clinical updates and the new EHR excerpt, write only the
+    clinically relevant information that is not already captured in the previous updates.
+
+    Include:
+    - new diagnoses, symptoms, treatments, procedures, or medications
+    - new laboratory results, vital signs, measurements, imaging, or study findings
+    - meaningful worsening, improvement, resolution, or treatment response
+    - clinically relevant confirmation that a known condition or finding is stable,
+      unchanged, benign, or absent
+
+    A finding is still an update if it provides a new observation, result, or value,
+    even when it is normal or unchanged.
+
+    Do not repeat information already represented with the same meaning.
+    Do not include administrative details.
+    Do not infer information not stated in the excerpt.
+
+    Output exactly "No clinically meaningful update." only if the excerpt adds no
+    clinically relevant information beyond the previous updates.
+
+    Previous clinical updates:
+    {previous_deltas}
+
+    New EHR excerpt:
+    {text}
+
+    Clinical update:
+
+model:
+  model: google/medgemma-27b-it
+  dtype: bfloat16
+  seed: ${seed}
+  tensor_parallel_size: 1
+  max_model_len: 10000
+  gpu_memory_utilization: 0.9
+
+sampling_params:
+  max_tokens: 512
+  temperature: 0.0
+  repetition_penalty: 1.0
+  seed: ${seed}
+
+num_workers: 1
+batch_size: 50
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

@@ -1,5 +1,6 @@
 import logging
 import re
+from functools import partial
 from pathlib import Path
 
 import datasets
@@ -36,15 +37,15 @@ def truncate_chunk_text(text: str, tokenizer, max_text_tokens: int) -> tuple[str
     )
 
 
-def format_summarize_prompt(
-    text: str,
+def format_prompt(
     prompt_template: str,
     tokenizer,
     use_chat_template: bool,
     system_prompt: str | None,
+    **fields: str,
 ) -> str:
     """Build a generation prompt, using the instruct chat template when available."""
-    user_content = prompt_template.format(text=text)
+    user_content = prompt_template.format(**fields)
     if not use_chat_template or not hasattr(tokenizer, "apply_chat_template"):
         return user_content
 
@@ -61,6 +62,166 @@ def format_summarize_prompt(
     except Exception as e:
         log.warning(f"apply_chat_template failed ({e}); falling back to raw prompt.")
         return user_content
+
+
+def format_summarize_prompt(
+    text: str,
+    prompt_template: str,
+    tokenizer,
+    use_chat_template: bool,
+    system_prompt: str | None,
+) -> str:
+    return format_prompt(
+        prompt_template,
+        tokenizer,
+        use_chat_template,
+        system_prompt,
+        text=text,
+    )
+
+
+NO_PRIOR_DELTAS = "None."
+
+
+def fit_delta_inputs(
+    text: str,
+    previous_deltas: str,
+    tokenizer,
+    max_content_tokens: int,
+) -> tuple[str, str, bool]:
+    """Fit the new excerpt and prior updates into the content token budget.
+
+    When both do not fit, keep the end of each: the latest part of the new
+    excerpt and the most recent prior updates.
+    """
+    prev_ids = tokenizer.encode(previous_deltas, add_special_tokens=False)
+    text_ids = tokenizer.encode(text, add_special_tokens=False)
+    if len(prev_ids) + len(text_ids) <= max_content_tokens:
+        return text, previous_deltas, False
+
+    has_history = previous_deltas.strip() not in {"", NO_PRIOR_DELTAS}
+    if not has_history:
+        prev_budget = min(len(prev_ids), max(0, max_content_tokens - 1))
+        text_budget = max_content_tokens - prev_budget
+    else:
+        # Start from an even split, then give any unused share back to the longer side.
+        text_budget = min(len(text_ids), max(1, max_content_tokens // 2))
+        prev_budget = min(len(prev_ids), max_content_tokens - text_budget)
+        text_budget = min(len(text_ids), max_content_tokens - prev_budget)
+
+    fitted_prev = (
+        tokenizer.decode(prev_ids[-prev_budget:], skip_special_tokens=True)
+        if prev_budget
+        else NO_PRIOR_DELTAS
+    )
+    fitted_text = tokenizer.decode(text_ids[-text_budget:], skip_special_tokens=True)
+    return fitted_text, fitted_prev, True
+
+
+def delta_summarize_batch(
+    batch: dict,
+    prompt_template: str,
+    llm: LLM,
+    sampling_params: SamplingParams,
+    max_prompt_tokens: int,
+    use_chat_template: bool = True,
+    system_prompt: str | None = None,
+    initial_prompt: str | None = None,
+    initial_system_prompt: str | None = None,
+) -> tuple[dict, int]:
+    """Summarize each chunk as the change since earlier clinical updates.
+
+    The first chunk of each patient is a full summary (``initial_prompt``), so
+    later chunks have a clinical picture to compare against. Later prompts see
+    the summaries already produced for that patient, and those prior updates
+    are truncated from the front when they exceed the prompt budget. Patients
+    in the batch are generated together at each chunk index.
+
+    Returns the updated batch and the number of prompts that needed truncation.
+    """
+    if not initial_prompt:
+        raise ValueError("delta_summarize requires summarization.initial_prompt for the first chunk.")
+
+    tokenizer = llm.get_tokenizer()
+
+    def content_budget(template: str, system: str | None, **fields: str) -> int:
+        wrapper_tokens = len(
+            tokenizer.encode(
+                format_prompt(template, tokenizer, use_chat_template, system, **fields),
+                add_special_tokens=False,
+            )
+        )
+        return max(1, max_prompt_tokens - wrapper_tokens)
+
+    initial_text_tokens = content_budget(initial_prompt, initial_system_prompt, text="")
+    max_content_tokens = content_budget(
+        prompt_template, system_prompt, text="", previous_deltas=""
+    )
+
+    out_chunks: list[list[dict]] = [[dict(chunk) for chunk in chunks] for chunks in batch["chunks"]]
+    histories: list[list[str]] = [[] for _ in out_chunks]
+    n_truncated = 0
+    max_chunks = max((len(chunks) for chunks in out_chunks), default=0)
+
+    for c_i in range(max_chunks):
+        prompts: list[str] = []
+        patient_indexes: list[int] = []
+        truncated_flags: list[bool] = []
+
+        for p_i, chunks in enumerate(out_chunks):
+            if c_i >= len(chunks):
+                continue
+            chunk = chunks[c_i]
+            if not histories[p_i]:
+                text, was_truncated, n_tokens = truncate_chunk_text(
+                    chunk["text"], tokenizer, initial_text_tokens
+                )
+                if was_truncated:
+                    log.debug(
+                        f"Truncated initial summary for subject_id={batch['subject_id'][p_i]} "
+                        f"chunk_id={chunk.get('chunk_id', c_i)}: {n_tokens} -> {initial_text_tokens} tokens"
+                    )
+                prompts.append(
+                    format_summarize_prompt(
+                        text, initial_prompt, tokenizer, use_chat_template, initial_system_prompt
+                    )
+                )
+            else:
+                previous_deltas = "\n".join(histories[p_i])
+                text, previous_deltas, was_truncated = fit_delta_inputs(
+                    chunk["text"],
+                    previous_deltas,
+                    tokenizer,
+                    max_content_tokens,
+                )
+                if was_truncated:
+                    log.debug(
+                        f"Truncated delta prompt for subject_id={batch['subject_id'][p_i]} "
+                        f"chunk_id={chunk.get('chunk_id', c_i)} to {max_content_tokens} content tokens"
+                    )
+                prompts.append(
+                    format_prompt(
+                        prompt_template,
+                        tokenizer,
+                        use_chat_template,
+                        system_prompt,
+                        text=text,
+                        previous_deltas=previous_deltas,
+                    )
+                )
+            if was_truncated:
+                n_truncated += 1
+            patient_indexes.append(p_i)
+            truncated_flags.append(was_truncated)
+
+        summaries = generate_summaries(llm, prompts, sampling_params)
+        for p_i, summary, was_truncated in zip(patient_indexes, summaries, truncated_flags, strict=True):
+            summary = summary.strip()
+            out_chunks[p_i][c_i]["summary"] = summary
+            out_chunks[p_i][c_i]["truncated"] = was_truncated
+            histories[p_i].append(summary)
+
+    return {"subject_id": batch["subject_id"], "chunks": out_chunks}, n_truncated
 
 
 def summarize_batch(
@@ -132,6 +293,7 @@ def summarize_split(
     max_prompt_tokens: int,
     use_chat_template: bool = True,
     system_prompt: str | None = None,
+    summarize_fn=summarize_batch,
 ) -> datasets.Dataset:
     """Summarize one split by patient batches."""
     subject_ids: list = []
@@ -143,7 +305,7 @@ def summarize_split(
     for i in tqdm(range(0, len(split_dataset), chunk_size), total=total, desc="Summarizing"):
         batch = dict(split_dataset[i : i + chunk_size])
         n_prompts_total += sum(len(chunks) for chunks in batch["chunks"])
-        result, n_truncated = summarize_batch(
+        result, n_truncated = summarize_fn(
             batch,
             prompt_template,
             llm,
@@ -295,6 +457,25 @@ def main(cfg: DictConfig) -> None:
     prompt_template = cfg.summarization.prompt
     system_prompt = cfg.summarization.get("system_prompt", None)
     use_chat_template = bool(cfg.summarization.get("use_chat_template", True))
+    mode = str(cfg.summarization.get("mode", "summarize"))
+    if mode == "summarize":
+        summarize_fn = summarize_batch
+    elif mode == "delta_summarize":
+        initial_prompt = cfg.summarization.get("initial_prompt", None)
+        if not initial_prompt:
+            raise ValueError(
+                "summarization.initial_prompt is required when summarization.mode is delta_summarize."
+            )
+        initial_system_prompt = cfg.summarization.get("initial_system_prompt", None)
+        summarize_fn = partial(
+            delta_summarize_batch,
+            initial_prompt=str(initial_prompt),
+            initial_system_prompt=None if initial_system_prompt is None else str(initial_system_prompt),
+        )
+    else:
+        raise ValueError(
+            f"Unknown summarization.mode {mode!r}. Expected 'summarize' or 'delta_summarize'."
+        )
     out_path = output_dir / "summarized_dataset"
 
     if not cfg.overwrite and out_path.exists():
@@ -339,7 +520,7 @@ def main(cfg: DictConfig) -> None:
         )
     log.info(f"Truncating prompts to {max_prompt_tokens} tokens when needed (keeping the end).")
 
-    log.info("Generating summaries...")
+    log.info(f"Generating summaries (mode={mode})...")
     summarized_dataset = datasets.DatasetDict(
         {
             split: summarize_split(
@@ -351,6 +532,7 @@ def main(cfg: DictConfig) -> None:
                 max_prompt_tokens,
                 use_chat_template=use_chat_template,
                 system_prompt=system_prompt,
+                summarize_fn=summarize_fn,
             )
             for split in chunked_dataset
         }
