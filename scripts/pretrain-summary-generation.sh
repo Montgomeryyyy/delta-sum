@@ -3,6 +3,12 @@
 # Usage:
 #   # SCRATCH_DIR and HF_TOKEN must already be set, same as the other scripts.
 #   # Pass the mode as the first argument (normal|delta).
+#   # Optional second argument is a Hydra config name under
+#   # mimic_struct_predict/models/config/summarize/ (no .yaml).
+#   # If omitted, normal uses summarize and delta uses delta_summerize.
+#   # A named config keeps its own model.model. Trailing key=value args still
+#   # override either way. input_dir and output_dir still come from config.sh,
+#   # because the yaml files leave those required.
 #
 #   sbatch \
 #     --job-name=summarize-delta \
@@ -17,15 +23,30 @@
 #     --export=ALL \
 #     --output="$SCRATCH_DIR/../logs/summarize/%x-%j.out" \
 #     scripts/pretrain-summary-generation.sh delta
+#
+#   scripts/pretrain-summary-generation.sh delta delta_summerize_medgemma
 
 set -euo pipefail
 
 # --- Get config ---
 source "./scripts/config.sh"
 
-# --- Get summarization mode ---
+# --- Get summarization mode and optional config name ---
 SUM_MODE="${1:-normal}"
 shift || true
+
+CONFIG_NAME=""
+if [[ "${1:-}" == "--config-name" ]]; then
+    CONFIG_NAME="${2:-}"
+    if [[ -z "${CONFIG_NAME}" ]]; then
+        echo "Usage: $0 <normal|delta> [config_name] [extra hydra overrides]" >&2
+        exit 1
+    fi
+    shift 2
+elif [[ -n "${1:-}" && "${1}" != *=* && "${1}" != -* ]]; then
+    CONFIG_NAME="$1"
+    shift
+fi
 
 HYDRA_ARGS=("$@")
 
@@ -35,32 +56,36 @@ export VLLM_USE_FLASHINFER_SAMPLER=0
 
 case "$SUM_MODE" in
     delta)
-        CONFIG_ARGS=(--config-name delta_summerize)
+        DEFAULT_CONFIG="delta_summerize"
         OUTPUT_DIR="${NATURAL_LANGUAGE_DELTA_SUMMARIZED_DATA_DIR}"
         ;;
     normal)
-        CONFIG_ARGS=()
+        DEFAULT_CONFIG="summarize"
         OUTPUT_DIR="${NATURAL_LANGUAGE_SUMMARIZED_DATA_DIR}"
         ;;
     *)
-        echo "Usage: $0 <normal|delta> [extra hydra overrides]"
+        echo "Usage: $0 <normal|delta> [config_name] [extra hydra overrides]" >&2
         exit 1
         ;;
 esac
 
-# Same log location as the sbatch --output path above. Interactive runs were
-# only printing to the terminal; this also keeps a copy on disk.
-LOG_DIR="${SCRATCH_DIR}/../logs/summarize"
-mkdir -p "${LOG_DIR}"
-if [ -n "${SLURM_JOB_ID:-}" ]; then
-    LOG_FILE="${LOG_DIR}/summarize-${SUM_MODE}-${SLURM_JOB_ID}.log"
+if [[ -n "${CONFIG_NAME}" ]]; then
+    CONFIG_FILE="./mimic_struct_predict/models/config/summarize/${CONFIG_NAME}.yaml"
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo "Config not found: ${CONFIG_FILE}" >&2
+        exit 1
+    fi
+    # Leave model.model to the named yaml. A later hydra override can still change it.
+    MODEL_ARGS=()
 else
-    LOG_FILE="${LOG_DIR}/summarize-${SUM_MODE}-$(date +%Y%m%d_%H%M%S).log"
+    CONFIG_NAME="${DEFAULT_CONFIG}"
+    MODEL_ARGS=(model.model="${HF_SUMMARIZATION_MODEL_NAME}")
 fi
-exec > >(tee -a "${LOG_FILE}") 2>&1
 
-echo "Log file: ${LOG_FILE}"
+CONFIG_ARGS=(--config-name "${CONFIG_NAME}")
+
 echo "Summarization mode: $SUM_MODE"
+echo "Config: ${CONFIG_NAME}"
 echo "Output directory: $OUTPUT_DIR"
 
 "$UV_PROJECT_ENVIRONMENT/bin/python" \
@@ -68,6 +93,6 @@ echo "Output directory: $OUTPUT_DIR"
     "${CONFIG_ARGS[@]}" \
     input_dir="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/raw_data" \
     output_dir="${OUTPUT_DIR}" \
-    model.model="${HF_SUMMARIZATION_MODEL_NAME}" \
+    "${MODEL_ARGS[@]}" \
     hydra.job.chdir=false \
     "${HYDRA_ARGS[@]}"

@@ -10,112 +10,17 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
 
+from mimic_struct_predict.models.utils.summarization import (
+    NO_PRIOR_DELTAS,
+    content_budget,
+    fit_delta_inputs,
+    format_prompt,
+    format_summarize_prompt,
+    generate_summaries,
+    truncate_chunk_text,
+)
+
 log = logging.getLogger(__name__)
-
-
-def generate_summaries(llm: LLM, prompts: list[str], sampling_params: SamplingParams) -> list[str]:
-    """Run vLLM generation over prompts and return decoded summary texts."""
-    if not prompts:
-        return []
-    outputs = llm.generate(prompts, sampling_params=sampling_params)
-    return [output.outputs[0].text for output in outputs]
-
-
-def truncate_chunk_text(text: str, tokenizer, max_text_tokens: int) -> tuple[str, bool, int]:
-    """Keep the last ``max_text_tokens`` of the EHR chunk (not the full prompt).
-
-    Truncating the full prompt would drop the leading instruction for long notes.
-    """
-    token_ids = tokenizer.encode(text, add_special_tokens=False)
-    n_tokens = len(token_ids)
-    if n_tokens <= max_text_tokens:
-        return text, False, n_tokens
-    return (
-        tokenizer.decode(token_ids[-max_text_tokens:], skip_special_tokens=True),
-        True,
-        n_tokens,
-    )
-
-
-def format_prompt(
-    prompt_template: str,
-    tokenizer,
-    use_chat_template: bool,
-    system_prompt: str | None,
-    **fields: str,
-) -> str:
-    """Build a generation prompt, using the instruct chat template when available."""
-    user_content = prompt_template.format(**fields)
-    if not use_chat_template or not hasattr(tokenizer, "apply_chat_template"):
-        return user_content
-
-    messages: list[dict[str, str]] = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": user_content})
-    try:
-        return tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-    except Exception as e:
-        log.warning(f"apply_chat_template failed ({e}); falling back to raw prompt.")
-        return user_content
-
-
-def format_summarize_prompt(
-    text: str,
-    prompt_template: str,
-    tokenizer,
-    use_chat_template: bool,
-    system_prompt: str | None,
-) -> str:
-    return format_prompt(
-        prompt_template,
-        tokenizer,
-        use_chat_template,
-        system_prompt,
-        text=text,
-    )
-
-
-NO_PRIOR_DELTAS = "None."
-
-
-def fit_delta_inputs(
-    text: str,
-    previous_deltas: str,
-    tokenizer,
-    max_content_tokens: int,
-) -> tuple[str, str, bool]:
-    """Fit the new excerpt and prior updates into the content token budget.
-
-    When both do not fit, keep the end of each: the latest part of the new
-    excerpt and the most recent prior updates.
-    """
-    prev_ids = tokenizer.encode(previous_deltas, add_special_tokens=False)
-    text_ids = tokenizer.encode(text, add_special_tokens=False)
-    if len(prev_ids) + len(text_ids) <= max_content_tokens:
-        return text, previous_deltas, False
-
-    has_history = previous_deltas.strip() not in {"", NO_PRIOR_DELTAS}
-    if not has_history:
-        prev_budget = min(len(prev_ids), max(0, max_content_tokens - 1))
-        text_budget = max_content_tokens - prev_budget
-    else:
-        # Start from an even split, then give any unused share back to the longer side.
-        text_budget = min(len(text_ids), max(1, max_content_tokens // 2))
-        prev_budget = min(len(prev_ids), max_content_tokens - text_budget)
-        text_budget = min(len(text_ids), max_content_tokens - prev_budget)
-
-    fitted_prev = (
-        tokenizer.decode(prev_ids[-prev_budget:], skip_special_tokens=True)
-        if prev_budget
-        else NO_PRIOR_DELTAS
-    )
-    fitted_text = tokenizer.decode(text_ids[-text_budget:], skip_special_tokens=True)
-    return fitted_text, fitted_prev, True
 
 
 def delta_summarize_batch(
@@ -144,18 +49,17 @@ def delta_summarize_batch(
 
     tokenizer = llm.get_tokenizer()
 
-    def content_budget(template: str, system: str | None, **fields: str) -> int:
-        wrapper_tokens = len(
-            tokenizer.encode(
-                format_prompt(template, tokenizer, use_chat_template, system, **fields),
-                add_special_tokens=False,
-            )
-        )
-        return max(1, max_prompt_tokens - wrapper_tokens)
-
-    initial_text_tokens = content_budget(initial_prompt, initial_system_prompt, text="")
+    initial_text_tokens = content_budget(
+        tokenizer, initial_prompt, initial_system_prompt, max_prompt_tokens, use_chat_template, text=""
+    )
     max_content_tokens = content_budget(
-        prompt_template, system_prompt, text="", previous_deltas=""
+        tokenizer,
+        prompt_template,
+        system_prompt,
+        max_prompt_tokens,
+        use_chat_template,
+        text="",
+        previous_deltas="",
     )
 
     out_chunks: list[list[dict]] = [[dict(chunk) for chunk in chunks] for chunks in batch["chunks"]]
@@ -167,6 +71,8 @@ def delta_summarize_batch(
         prompts: list[str] = []
         patient_indexes: list[int] = []
         truncated_flags: list[bool] = []
+        fitted_texts: list[str] = []
+        fitted_priors: list[str] = []
 
         for p_i, chunks in enumerate(out_chunks):
             if c_i >= len(chunks):
@@ -176,6 +82,7 @@ def delta_summarize_batch(
                 text, was_truncated, n_tokens = truncate_chunk_text(
                     chunk["text"], tokenizer, initial_text_tokens
                 )
+                previous_deltas = NO_PRIOR_DELTAS
                 if was_truncated:
                     log.debug(
                         f"Truncated initial summary for subject_id={batch['subject_id'][p_i]} "
@@ -213,12 +120,18 @@ def delta_summarize_batch(
                 n_truncated += 1
             patient_indexes.append(p_i)
             truncated_flags.append(was_truncated)
+            fitted_texts.append(text)
+            fitted_priors.append(previous_deltas)
 
         summaries = generate_summaries(llm, prompts, sampling_params)
-        for p_i, summary, was_truncated in zip(patient_indexes, summaries, truncated_flags, strict=True):
+        for p_i, summary, was_truncated, text, previous_deltas in zip(
+            patient_indexes, summaries, truncated_flags, fitted_texts, fitted_priors, strict=True
+        ):
             summary = summary.strip()
             out_chunks[p_i][c_i]["summary"] = summary
             out_chunks[p_i][c_i]["truncated"] = was_truncated
+            out_chunks[p_i][c_i]["model_text"] = text
+            out_chunks[p_i][c_i]["model_previous_deltas"] = previous_deltas
             histories[p_i].append(summary)
 
     return {"subject_id": batch["subject_id"], "chunks": out_chunks}, n_truncated
@@ -238,14 +151,9 @@ def summarize_batch(
     Returns the updated batch and the number of prompts that needed truncation.
     """
     tokenizer = llm.get_tokenizer()
-    # Reserve space for the instruction wrapper / chat template around {text}.
-    wrapper_tokens = len(
-        tokenizer.encode(
-            format_summarize_prompt("", prompt_template, tokenizer, use_chat_template, system_prompt),
-            add_special_tokens=False,
-        )
+    max_text_tokens = content_budget(
+        tokenizer, prompt_template, system_prompt, max_prompt_tokens, use_chat_template, text=""
     )
-    max_text_tokens = max(1, max_prompt_tokens - wrapper_tokens)
 
     prompts: list[str] = []
     locations: list[tuple[int, int]] = []

@@ -1,0 +1,57 @@
+input_dir: ???           # Required: Directory of the raw natural language data
+output_dir: ???          # Required: Directory to save the summarized data
+
+overwrite: true
+chunk_size: 1000
+seed: 42
+
+debug: false
+# Limit patients per split for smoke tests (null = full dataset).
+max_patients: 50
+
+dataset:
+  split_names:
+    train: train
+    val: tuning
+
+
+# First window has no prior updates, so it is a full summary. Later windows use `prompt`.
+summarization:
+  # Matches natural-language date markers after delimiter "//" → " " replacement,
+  # e.g. "## Date +5 days".
+  window_regex: "^## Date \\+\\d+ days$"
+  mode: "summarize"
+  use_chat_template: true
+  system_prompt: >
+    You are a clinical summarization system. Produce concise, factual summaries
+    of EHR excerpts. Preserve clinically important information. Do not invent
+    facts.
+  prompt: |
+    Summarize the EHR excerpt below.
+    Include diagnoses, symptoms, treatments/procedures/medications, abnormal
+    findings, important measurements, and meaningful changes when present.
+    Remove redundancy and administrative detail. Use complete sentences and no
+    introductory phrases.
+    EHR excerpt:
+    {text}
+
+model:
+  model: google/medgemma-27b-it
+  dtype: bfloat16
+  seed: ${seed}
+  tensor_parallel_size: 1
+  max_model_len: 20000
+  gpu_memory_utilization: 0.9
+
+sampling_params:
+  max_tokens: 2048
+  temperature: 0.0
+  repetition_penalty: 1.0
+  seed: ${seed}
+
+num_workers: 1
+batch_size: 50
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

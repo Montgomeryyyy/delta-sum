@@ -1,0 +1,81 @@
+input_dir: ???   # summarized_dataset directory from a summarize.py run
+output_dir: ???  # directory for the judged dataset
+
+overwrite: true
+chunk_size: 1000
+seed: 42
+max_patients: 50
+
+judge:
+  use_chat_template: true
+
+  system_prompt: >
+    Evaluate clinical delta summaries using only the provided inputs.
+    Be concise and do not invent information.
+
+  prompt: |
+    A good delta contains clinically relevant information from the current EHR
+    that is not already captured in the previous updates. It should be faithful,
+    non-redundant, and should not miss important new information.
+
+    Evaluate:
+
+    UPDATE_WARRANTED:
+    YES if the current EHR adds clinically relevant information, otherwise NO.
+    New normal, stable, benign, or negative results may still count as updates.
+
+    COVERAGE:
+    0 = major important information missed
+    1 = some relevant information missed
+    2 = adequate coverage
+
+    FAITHFULNESS:
+    0 = major unsupported/incorrect claim
+    1 = minor issue
+    2 = fully supported by the provided inputs
+
+    NOVELTY:
+    0 = substantial repetition
+    1 = some repetition
+    2 = appropriately new/non-redundant
+
+    MAIN_ERROR:
+    NONE, MISSED_UPDATE, FALSE_UPDATE, UNSUPPORTED_CLAIM,
+    REPETITION, TEMPORAL_ERROR, IRRELEVANT_DETAIL
+
+    Previous updates:
+    {previous_deltas}
+
+    Current EHR:
+    {text}
+
+    Generated delta:
+    {summary}
+
+    Return:
+    UPDATE_WARRANTED: YES/NO
+    UPDATE_DECISION_CORRECT: YES/NO
+    COVERAGE: 0/1/2
+    FAITHFULNESS: 0/1/2
+    NOVELTY: 0/1/2
+    MAIN_ERROR: <label>
+    MISSING_INFORMATION: <brief text or NONE>
+    RATIONALE: <max 2 sentences>
+
+model:
+  model: Qwen/Qwen3-32B
+  dtype: bfloat16
+  seed: ${seed}
+  tensor_parallel_size: 1
+  max_model_len: 20000
+  gpu_memory_utilization: 0.9
+
+sampling_params:
+  max_tokens: 2048
+  temperature: 0.0
+  repetition_penalty: 1.0
+  seed: ${seed}
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
