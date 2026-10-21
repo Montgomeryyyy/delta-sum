@@ -11,44 +11,48 @@ from tqdm import tqdm
 from vllm import LLM, SamplingParams
 
 from mimic_struct_predict.models.utils.summarization import (
-    NO_PRIOR_DELTAS,
+    NO_PRIOR_CONTEXT,
+    PromptJob,
     content_budget,
-    fit_delta_inputs,
-    format_prompt,
-    format_summarize_prompt,
+    iter_chunks,
+    prepare_context_prompt,
+    prepare_summary_prompt,
     generate_summaries,
-    truncate_chunk_text,
 )
 
 log = logging.getLogger(__name__)
 
 
-def delta_summarize_batch(
+def attach_generation(
+    chunk: dict,
+    delta: str,
+    was_truncated: bool,
+    text: str,
+    previous_context: str,
+) -> None:
+    chunk["delta"] = delta
+    chunk["truncated"] = was_truncated
+    chunk["model_text"] = text
+    chunk["model_previous_context"] = previous_context
+
+
+def delta_from_generations(
     batch: dict,
     prompt_template: str,
     llm: LLM,
     sampling_params: SamplingParams,
     max_prompt_tokens: int,
-    use_chat_template: bool = True,
-    system_prompt: str | None = None,
-    initial_prompt: str | None = None,
-    initial_system_prompt: str | None = None,
+    use_chat_template: bool,
+    system_prompt: str | None,
+    initial_prompt: str | None,
+    initial_system_prompt: str | None,
 ) -> tuple[dict, int]:
-    """Summarize each chunk as the change since earlier clinical updates.
-
-    The first chunk of each patient is a full summary (``initial_prompt``), so
-    later chunks have a clinical picture to compare against. Later prompts see
-    the summaries already produced for that patient, and those prior updates
-    are truncated from the front when they exceed the prompt budget. Patients
-    in the batch are generated together at each chunk index.
-
-    Returns the updated batch and the number of prompts that needed truncation.
-    """
     if not initial_prompt:
-        raise ValueError("delta_summarize requires summarization.initial_prompt for the first chunk.")
+        raise ValueError(
+            "delta_only_summarize requires summarization.initial_prompt for the first chunk."
+        )
 
     tokenizer = llm.get_tokenizer()
-
     initial_text_tokens = content_budget(
         tokenizer, initial_prompt, initial_system_prompt, max_prompt_tokens, use_chat_template, text=""
     )
@@ -59,82 +63,147 @@ def delta_summarize_batch(
         max_prompt_tokens,
         use_chat_template,
         text="",
-        previous_deltas="",
+        previous_context="",
     )
 
-    out_chunks: list[list[dict]] = [[dict(chunk) for chunk in chunks] for chunks in batch["chunks"]]
-    histories: list[list[str]] = [[] for _ in out_chunks]
+    chunks_col = batch["chunks"]
+    histories: list[list[str]] = [[] for _ in chunks_col]
     n_truncated = 0
-    max_chunks = max((len(chunks) for chunks in out_chunks), default=0)
+    max_chunks = max((len(chunks) for chunks in chunks_col), default=0)
 
     for c_i in range(max_chunks):
-        prompts: list[str] = []
-        patient_indexes: list[int] = []
-        truncated_flags: list[bool] = []
-        fitted_texts: list[str] = []
-        fitted_priors: list[str] = []
-
-        for p_i, chunks in enumerate(out_chunks):
+        jobs: list[PromptJob] = []
+        for p_i, chunks in enumerate(chunks_col):
             if c_i >= len(chunks):
                 continue
             chunk = chunks[c_i]
+            subject_id = batch["subject_id"][p_i]
+            chunk_id = chunk.get("chunk_id", c_i)
             if not histories[p_i]:
-                text, was_truncated, n_tokens = truncate_chunk_text(
-                    chunk["text"], tokenizer, initial_text_tokens
-                )
-                previous_deltas = NO_PRIOR_DELTAS
-                if was_truncated:
-                    log.debug(
-                        f"Truncated initial summary for subject_id={batch['subject_id'][p_i]} "
-                        f"chunk_id={chunk.get('chunk_id', c_i)}: {n_tokens} -> {initial_text_tokens} tokens"
-                    )
-                prompts.append(
-                    format_summarize_prompt(
-                        text, initial_prompt, tokenizer, use_chat_template, initial_system_prompt
-                    )
-                )
-            else:
-                previous_deltas = "\n".join(histories[p_i])
-                text, previous_deltas, was_truncated = fit_delta_inputs(
+                # First chunk, use initial prompt
+                prompt, text, was_truncated = prepare_summary_prompt(
                     chunk["text"],
-                    previous_deltas,
-                    tokenizer,
-                    max_content_tokens,
+                    tokenizer=tokenizer,
+                    max_text_tokens=initial_text_tokens,
+                    prompt_template=initial_prompt,
+                    use_chat_template=use_chat_template,
+                    system_prompt=initial_system_prompt,
+                    subject_id=subject_id,
+                    chunk_id=chunk_id,
                 )
-                if was_truncated:
-                    log.debug(
-                        f"Truncated delta prompt for subject_id={batch['subject_id'][p_i]} "
-                        f"chunk_id={chunk.get('chunk_id', c_i)} to {max_content_tokens} content tokens"
-                    )
-                prompts.append(
-                    format_prompt(
-                        prompt_template,
-                        tokenizer,
-                        use_chat_template,
-                        system_prompt,
-                        text=text,
-                        previous_deltas=previous_deltas,
-                    )
+                previous_context = NO_PRIOR_CONTEXT
+            else:
+                prompt, text, previous_context, was_truncated = prepare_context_prompt(
+                    chunk["text"],
+                    "\n".join(histories[p_i]),
+                    tokenizer=tokenizer,
+                    max_content_tokens=max_content_tokens,
+                    prompt_template=prompt_template,
+                    use_chat_template=use_chat_template,
+                    system_prompt=system_prompt,
+                    subject_id=subject_id,
+                    chunk_id=chunk_id,
                 )
-            if was_truncated:
-                n_truncated += 1
-            patient_indexes.append(p_i)
-            truncated_flags.append(was_truncated)
-            fitted_texts.append(text)
-            fitted_priors.append(previous_deltas)
+            n_truncated += int(was_truncated)
+            jobs.append(
+                PromptJob(
+                    p_i=p_i,
+                    c_i=c_i,
+                    prompt=prompt,
+                    text=text,
+                    previous_context=previous_context,
+                    was_truncated=was_truncated,
+                )
+            )
 
-        summaries = generate_summaries(llm, prompts, sampling_params)
-        for p_i, summary, was_truncated, text, previous_deltas in zip(
-            patient_indexes, summaries, truncated_flags, fitted_texts, fitted_priors, strict=True
-        ):
-            summary = summary.strip()
-            out_chunks[p_i][c_i]["summary"] = summary
-            out_chunks[p_i][c_i]["truncated"] = was_truncated
-            out_chunks[p_i][c_i]["model_text"] = text
-            out_chunks[p_i][c_i]["model_previous_deltas"] = previous_deltas
-            histories[p_i].append(summary)
+        deltas = generate_summaries(llm, [job.prompt for job in jobs], sampling_params)
+        for job, delta in zip(jobs, deltas, strict=True):
+            delta = delta.strip()
+            attach_generation(
+                chunks_col[job.p_i][job.c_i],
+                delta,
+                job.was_truncated,
+                job.text,
+                job.previous_context,
+            )
+            histories[job.p_i].append(delta)
 
-    return {"subject_id": batch["subject_id"], "chunks": out_chunks}, n_truncated
+    return {"subject_id": batch["subject_id"], "chunks": chunks_col}, n_truncated
+
+
+def delta_from_summaries(
+    batch: dict,
+    prompt_template: str,
+    llm: LLM,
+    sampling_params: SamplingParams,
+    max_prompt_tokens: int,
+    use_chat_template: bool,
+    system_prompt: str | None,
+) -> tuple[dict, int]:
+    """Write deltas from precomputed per-chunk summaries; all prompts are independent."""
+    tokenizer = llm.get_tokenizer()
+    max_content_tokens = content_budget(
+        tokenizer,
+        prompt_template,
+        system_prompt,
+        max_prompt_tokens,
+        use_chat_template,
+        text="",
+        previous_context="",
+    )
+
+    chunks_col = batch["chunks"]
+    jobs: list[PromptJob] = []
+
+    for p_i, c_i, chunk in iter_chunks(chunks_col):
+        if c_i == 0:
+            attach_generation(
+                chunk,
+                str(chunk["summary"]).strip(),
+                False,
+                str(chunk["text"]),
+                NO_PRIOR_CONTEXT,
+            )
+            continue
+
+        previous_context = "\n".join(
+            str(prev["summary"]).strip() for prev in chunks_col[p_i][:c_i]
+        )
+        prompt, text, previous_context, was_truncated = prepare_context_prompt(
+            str(chunk["text"]),
+            previous_context,
+            tokenizer=tokenizer,
+            max_content_tokens=max_content_tokens,
+            prompt_template=prompt_template,
+            use_chat_template=use_chat_template,
+            system_prompt=system_prompt,
+            subject_id=batch["subject_id"][p_i],
+            chunk_id=chunk.get("chunk_id", c_i),
+        )
+        jobs.append(
+            PromptJob(
+                p_i=p_i,
+                c_i=c_i,
+                prompt=prompt,
+                text=text,
+                previous_context=previous_context,
+                was_truncated=was_truncated,
+            )
+        )
+
+    deltas = generate_summaries(llm, [job.prompt for job in jobs], sampling_params)
+    for job, delta in zip(jobs, deltas, strict=True):
+        attach_generation(
+            chunks_col[job.p_i][job.c_i],
+            delta.strip(),
+            job.was_truncated,
+            job.text,
+            job.previous_context,
+        )
+
+    return {"subject_id": batch["subject_id"], "chunks": chunks_col}, sum(
+        job.was_truncated for job in jobs
+    )
 
 
 def summarize_batch(
@@ -155,41 +224,37 @@ def summarize_batch(
         tokenizer, prompt_template, system_prompt, max_prompt_tokens, use_chat_template, text=""
     )
 
-    prompts: list[str] = []
-    locations: list[tuple[int, int]] = []
-    truncated_flags: list[bool] = []
-    n_truncated = 0
-
-    for p_i, chunks in enumerate(batch["chunks"]):
-        for c_i, chunk in enumerate(chunks):
-            text, was_truncated, n_tokens = truncate_chunk_text(
-                chunk["text"], tokenizer, max_text_tokens
+    chunks_col = batch["chunks"]
+    jobs: list[PromptJob] = []
+    for p_i, c_i, chunk in iter_chunks(chunks_col):
+        prompt, text, was_truncated = prepare_summary_prompt(
+            chunk["text"],
+            tokenizer=tokenizer,
+            max_text_tokens=max_text_tokens,
+            prompt_template=prompt_template,
+            use_chat_template=use_chat_template,
+            system_prompt=system_prompt,
+            subject_id=batch["subject_id"][p_i],
+            chunk_id=chunk.get("chunk_id", c_i),
+        )
+        jobs.append(
+            PromptJob(
+                p_i=p_i,
+                c_i=c_i,
+                prompt=prompt,
+                text=text,
+                was_truncated=was_truncated,
             )
-            if was_truncated:
-                n_truncated += 1
-                log.debug(
-                    f"Truncated text for subject_id={batch['subject_id'][p_i]} "
-                    f"chunk_id={chunk.get('chunk_id', c_i)}: {n_tokens} -> {max_text_tokens} tokens"
-                )
-            prompts.append(
-                format_summarize_prompt(
-                    text, prompt_template, tokenizer, use_chat_template, system_prompt
-                )
-            )
-            locations.append((p_i, c_i))
-            truncated_flags.append(was_truncated)
+        )
 
-    summaries = generate_summaries(llm, prompts, sampling_params)
+    summaries = generate_summaries(llm, [job.prompt for job in jobs], sampling_params)
+    for job, summary in zip(jobs, summaries, strict=True):
+        chunks_col[job.p_i][job.c_i]["summary"] = summary
+        chunks_col[job.p_i][job.c_i]["truncated"] = job.was_truncated
 
-    out_chunks: list[list[dict]] = []
-    for chunks in batch["chunks"]:
-        out_chunks.append([dict(chunk) for chunk in chunks])
-
-    for (p_i, c_i), summary, was_truncated in zip(locations, summaries, truncated_flags, strict=True):
-        out_chunks[p_i][c_i]["summary"] = summary
-        out_chunks[p_i][c_i]["truncated"] = was_truncated
-
-    return {"subject_id": batch["subject_id"], "chunks": out_chunks}, n_truncated
+    return {"subject_id": batch["subject_id"], "chunks": chunks_col}, sum(
+        job.was_truncated for job in jobs
+    )
 
 
 def summarize_split(
@@ -322,99 +387,82 @@ def load_dataset(
     return dataset
 
 
-def debug_printing(
-    raw_dataset: datasets.DatasetDict,
-    summarized_dataset: datasets.DatasetDict,
-    train_split: str,
-) -> None:
-    def print_text(title: str, text: str, max_chars: int = 2000, **meta: object) -> None:
-        truncated = len(text) > max_chars
-        display_text = text[:max_chars] + ("\n... [truncated]" if truncated else "")
-        print(f"\n{'=' * 80}\n{title}\n{'=' * 80}")
-        for key, value in meta.items():
-            print(f"{key}: {value}")
-        print(f"\ntext ({len(text)} chars):\n{'-' * 80}\n{display_text}\n")
-
-    pt_index = 1
-    raw_example = raw_dataset[train_split][pt_index]
-    subject_id = raw_example["subject_id"]
-    print_text(f"Raw patient (subject_id={subject_id})", raw_example["ehr_text"], subject_id=subject_id)
-
-    patient = summarized_dataset[train_split][pt_index]
-    chunks = patient["chunks"]
-    log.info(f"Patient {subject_id} has {len(chunks)} chunks")
-    for chunk in chunks:
-        print_text(
-            f"Chunk {chunk['chunk_id']} / {len(chunks) - 1} (subject_id={subject_id})",
-            chunk["text"],
-            subject_id=subject_id,
-            chunk_id=chunk["chunk_id"],
-            summary=chunk.get("summary", "<missing>"),
+def load_summarized_dataset(
+    input_dir: Path,
+    max_patients: int | None = None,
+) -> datasets.DatasetDict:
+    """Load a ``summarized_dataset`` saved by a prior ``summarize`` run."""
+    log.info(f"Loading summarized dataset from {input_dir}...")
+    dataset = datasets.load_from_disk(str(input_dir))
+    if isinstance(dataset, datasets.Dataset):
+        dataset = datasets.DatasetDict({"train": dataset})
+    if max_patients is not None:
+        dataset = datasets.DatasetDict(
+            {split: rows.select(range(min(max_patients, len(rows)))) for split, rows in dataset.items()}
         )
+    for split, rows in dataset.items():
+        log.info(f"Loaded {len(rows)} {split} patients from summarized dataset.")
+    return dataset
 
 
-@hydra.main(version_base=None, config_path="config/summarize", config_name="summarize")
-def main(cfg: DictConfig) -> None:
-    """Chunk patient EHR text by date windows and summarize each chunk."""
-    ### Setup
-    input_dir = Path(cfg.input_dir)
-    output_dir = Path(cfg.output_dir)
-    train_split = cfg.dataset.split_names.train
-    val_split = cfg.dataset.split_names.val
-    window_regex = cfg.summarization.window_regex
-    prompt_template = cfg.summarization.prompt
-    system_prompt = cfg.summarization.get("system_prompt", None)
-    use_chat_template = bool(cfg.summarization.get("use_chat_template", True))
-    mode = str(cfg.summarization.get("mode", "summarize"))
+### TODO: Clean up a bit when we know more about what we're doing
+def build_summarize_fn(cfg: DictConfig, mode: str):
+    """Select the batch function for ``mode``."""
     if mode == "summarize":
-        summarize_fn = summarize_batch
-    elif mode == "delta_summarize":
+        return summarize_batch
+    if mode == "delta_only_summarize":
         initial_prompt = cfg.summarization.get("initial_prompt", None)
         if not initial_prompt:
             raise ValueError(
-                "summarization.initial_prompt is required when summarization.mode is delta_summarize."
+                "summarization.initial_prompt is required when summarization.mode is "
+                "delta_only_summarize."
             )
         initial_system_prompt = cfg.summarization.get("initial_system_prompt", None)
-        summarize_fn = partial(
-            delta_summarize_batch,
+        return partial(
+            delta_from_generations,
             initial_prompt=str(initial_prompt),
             initial_system_prompt=None if initial_system_prompt is None else str(initial_system_prompt),
         )
-    else:
-        raise ValueError(
-            f"Unknown summarization.mode {mode!r}. Expected 'summarize' or 'delta_summarize'."
-        )
-    out_path = output_dir / "summarized_dataset"
+    if mode == "delta_summarize":
+        return delta_from_summaries
+    raise ValueError(
+        f"Unknown summarization.mode {mode!r}. "
+        "Expected 'summarize', 'delta_summarize', or 'delta_only_summarize'."
+    )
 
-    if not cfg.overwrite and out_path.exists():
-        log.info(
-            f"Summarized dataset already exists at {out_path} "
-            f"and overwrite is {cfg.overwrite}. Skipping."
-        )
-        return
 
-    ### Load dataset
-    log.info("Loading raw pretraining dataset...")
+def load_chunked_dataset(cfg: DictConfig, mode: str) -> datasets.DatasetDict:
+    """Load either raw EHR text (then chunk) or a prior summarized dataset."""
+    input_dir = Path(cfg.input_dir)
     max_patients = cfg.get("max_patients", None)
     if max_patients is not None:
         max_patients = int(max_patients)
-    dataset = load_dataset(input_dir, train_split, val_split, max_patients=max_patients)
 
-    ### Chunk patients
+    if mode == "delta_summarize":
+        return load_summarized_dataset(input_dir, max_patients=max_patients)
+
+    train_split = cfg.dataset.split_names.train
+    val_split = cfg.dataset.split_names.val
+    window_regex = cfg.summarization.window_regex
+    log.info("Loading raw pretraining dataset...")
+    raw_dataset = load_dataset(input_dir, train_split, val_split, max_patients=max_patients)
     log.info(f"Chunking patients with window_regex={window_regex!r}...")
-    chunked_dataset = dataset.map(
+    chunked = raw_dataset.map(
         lambda batch: chunk_batch(batch, window_regex),
         batched=True,
         batch_size=cfg.batch_size,
         num_proc=cfg.num_workers,
-        remove_columns=dataset[train_split].column_names,
+        remove_columns=raw_dataset[train_split].column_names,
     )
     log.info(
-        f"Kept {len(chunked_dataset[train_split])} train / {len(chunked_dataset[val_split])} val patients "
+        f"Kept {len(chunked[train_split])} train / {len(chunked[val_split])} val patients "
         f"(each with a nested chunks list)."
     )
+    return chunked
 
-    ### Load model
+
+def load_llm(cfg: DictConfig) -> tuple[LLM, SamplingParams, int]:
+    """Load vLLM and return ``(llm, sampling_params, max_prompt_tokens)``."""
     sampling_params = SamplingParams(**OmegaConf.to_container(cfg.sampling_params, resolve=True))
     log.info(f"Loading model ({cfg.model.model})...")
     log.info(sampling_params)
@@ -427,12 +475,28 @@ def main(cfg: DictConfig) -> None:
             f"< model.max_model_len ({cfg.model.max_model_len})."
         )
     log.info(f"Truncating prompts to {max_prompt_tokens} tokens when needed (keeping the end).")
+    return llm, sampling_params, max_prompt_tokens
+
+
+def generate_dataset(
+    chunked_dataset: datasets.DatasetDict,
+    cfg: DictConfig,
+    summarize_fn,
+    llm: LLM,
+    sampling_params: SamplingParams,
+    max_prompt_tokens: int,
+) -> datasets.DatasetDict:
+    """Run summarization over every split."""
+    mode = str(cfg.summarization.get("mode", "summarize"))
+    prompt_template = cfg.summarization.prompt
+    system_prompt = cfg.summarization.get("system_prompt", None)
+    use_chat_template = bool(cfg.summarization.get("use_chat_template", True))
 
     log.info(f"Generating summaries (mode={mode})...")
-    summarized_dataset = datasets.DatasetDict(
+    return datasets.DatasetDict(
         {
             split: summarize_split(
-                chunked_dataset[split],
+                rows,
                 prompt_template,
                 llm,
                 sampling_params,
@@ -442,20 +506,42 @@ def main(cfg: DictConfig) -> None:
                 system_prompt=system_prompt,
                 summarize_fn=summarize_fn,
             )
-            for split in chunked_dataset
+            for split, rows in chunked_dataset.items()
         }
     )
+
+
+@hydra.main(version_base=None, config_path="config/summarize", config_name="summarize")
+def main(cfg: DictConfig) -> None:
+    """Chunk patient EHR text by date windows and summarize each chunk."""
+    mode = str(cfg.summarization.get("mode", "summarize"))
+    out_path = Path(cfg.output_dir) / "summarized_dataset"
+    if not cfg.overwrite and out_path.exists():
+        log.info(
+            f"Summarized dataset already exists at {out_path} "
+            f"and overwrite is {cfg.overwrite}. Skipping."
+        )
+        return
+
+    summarize_fn = build_summarize_fn(cfg, mode)
+    chunked_dataset = load_chunked_dataset(cfg, mode)
+    llm, sampling_params, max_prompt_tokens = load_llm(cfg)
+    summarized_dataset = generate_dataset(
+        chunked_dataset, cfg, summarize_fn, llm, sampling_params, max_prompt_tokens
+    )
+
+    train_split = cfg.dataset.split_names.train
+    val_split = cfg.dataset.split_names.val
+    if train_split not in summarized_dataset:
+        train_split = next(iter(summarized_dataset))
+    if val_split not in summarized_dataset:
+        val_split = train_split
     log.info(
         f"Summarized {len(summarized_dataset[train_split])} train and "
         f"{len(summarized_dataset[val_split])} val patients."
     )
-
     summarized_dataset.save_to_disk(out_path)
     log.info(f"Saved summarized dataset to {out_path}")
-
-    ### Debug printing
-    if cfg.get("debug", False):
-        debug_printing(dataset, summarized_dataset, train_split)
 
 
 if __name__ == "__main__":

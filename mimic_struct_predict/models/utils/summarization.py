@@ -1,10 +1,30 @@
 import logging
+from collections.abc import Iterator
+from dataclasses import dataclass
 
 from vllm import LLM, SamplingParams
 
 log = logging.getLogger(__name__)
 
-NO_PRIOR_DELTAS = "None."
+NO_PRIOR_CONTEXT = "None."
+
+
+@dataclass
+class PromptJob:
+    """One generation request tied back to a ``(patient, chunk)`` location."""
+
+    p_i: int
+    c_i: int
+    prompt: str
+    text: str
+    previous_context: str = NO_PRIOR_CONTEXT
+    was_truncated: bool = False
+
+
+def iter_chunks(chunks_col: list[list[dict]]) -> Iterator[tuple[int, int, dict]]:
+    for p_i, chunks in enumerate(chunks_col):
+        for c_i, chunk in enumerate(chunks):
+            yield p_i, c_i, chunk
 
 
 def format_prompt(
@@ -94,21 +114,21 @@ def truncate_chunk_text(text: str, tokenizer, max_text_tokens: int) -> tuple[str
 
 def fit_delta_inputs(
     text: str,
-    previous_deltas: str,
+    previous_context: str,
     tokenizer,
     max_content_tokens: int,
 ) -> tuple[str, str, bool]:
-    """Fit the new excerpt and prior updates into the content token budget.
+    """Fit the new excerpt and prior context into the content token budget.
 
     When both do not fit, keep the end of each: the latest part of the new
-    excerpt and the most recent prior updates.
+    excerpt and the most recent prior context.
     """
-    prev_ids = tokenizer.encode(previous_deltas, add_special_tokens=False)
+    prev_ids = tokenizer.encode(previous_context, add_special_tokens=False)
     text_ids = tokenizer.encode(text, add_special_tokens=False)
     if len(prev_ids) + len(text_ids) <= max_content_tokens:
-        return text, previous_deltas, False
+        return text, previous_context, False
 
-    has_history = previous_deltas.strip() not in {"", NO_PRIOR_DELTAS}
+    has_history = previous_context.strip() not in {"", NO_PRIOR_CONTEXT}
     if not has_history:
         prev_budget = min(len(prev_ids), max(0, max_content_tokens - 1))
         text_budget = max_content_tokens - prev_budget
@@ -121,7 +141,64 @@ def fit_delta_inputs(
     fitted_prev = (
         tokenizer.decode(prev_ids[-prev_budget:], skip_special_tokens=True)
         if prev_budget
-        else NO_PRIOR_DELTAS
+        else NO_PRIOR_CONTEXT
     )
     fitted_text = tokenizer.decode(text_ids[-text_budget:], skip_special_tokens=True)
     return fitted_text, fitted_prev, True
+
+
+def prepare_summary_prompt(
+    text: str,
+    *,
+    tokenizer,
+    max_text_tokens: int,
+    prompt_template: str,
+    use_chat_template: bool,
+    system_prompt: str | None,
+    subject_id=None,
+    chunk_id=None,
+) -> tuple[str, str, bool]:
+    """Truncate an EHR excerpt and format a standalone summary prompt (no prior context)."""
+    text, was_truncated, n_tokens = truncate_chunk_text(text, tokenizer, max_text_tokens)
+    if was_truncated:
+        log.debug(
+            f"Truncated text for subject_id={subject_id} chunk_id={chunk_id}: "
+            f"{n_tokens} -> {max_text_tokens} tokens"
+        )
+    prompt = format_summarize_prompt(
+        text, prompt_template, tokenizer, use_chat_template, system_prompt
+    )
+    return prompt, text, was_truncated
+
+
+def prepare_context_prompt(
+    text: str,
+    previous_context: str,
+    *,
+    tokenizer,
+    max_content_tokens: int,
+    prompt_template: str,
+    use_chat_template: bool,
+    system_prompt: str | None,
+    subject_id=None,
+    chunk_id=None,
+) -> tuple[str, str, str, bool]:
+    """Fit excerpt + prior context and format a ``{text, previous_context}`` prompt."""
+    text, previous_context, was_truncated = fit_delta_inputs(
+        text, previous_context, tokenizer, max_content_tokens
+    )
+    if was_truncated:
+        log.debug(
+            f"Truncated delta prompt for subject_id={subject_id} chunk_id={chunk_id} "
+            f"to {max_content_tokens} content tokens"
+        )
+    prompt = format_prompt(
+        prompt_template,
+        tokenizer,
+        use_chat_template,
+        system_prompt,
+        text=text,
+        previous_context=previous_context,
+    )
+    return prompt, text, previous_context, was_truncated
+

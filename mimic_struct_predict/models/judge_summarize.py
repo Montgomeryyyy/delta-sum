@@ -12,7 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from vllm import LLM, SamplingParams
 
 from mimic_struct_predict.models.utils.summarization import (
-    NO_PRIOR_DELTAS,
+    NO_PRIOR_CONTEXT,
     content_budget,
     fit_delta_inputs,
     format_prompt,
@@ -21,9 +21,15 @@ from mimic_struct_predict.models.utils.summarization import (
 
 log = logging.getLogger(__name__)
 
-SCORE_METRICS = ("COVERAGE", "FAITHFULNESS", "NOVELTY")
-SCORE_PATTERN = re.compile(r"^(COVERAGE|FAITHFULNESS|NOVELTY):\s*([012])\s*$", re.MULTILINE)
-MAIN_ERROR_PATTERN = re.compile(r"^MAIN_ERROR:\s*([A-Za-z_]+)\s*$", re.MULTILINE)
+SCORE_METRICS = ("coverage", "faithfulness", "novelty")
+SCORE_PATTERN = re.compile(
+    r"^(?:\*\*)?(COVERAGE|FAITHFULNESS|NOVELTY)(?:\*\*)?:\s*([012])\b",
+    re.MULTILINE | re.IGNORECASE,
+)
+MAIN_ERROR_PATTERN = re.compile(
+    r"^(?:\*\*)?MAIN_ERROR(?:\*\*)?:\s*([A-Za-z_]+)\b",
+    re.MULTILINE | re.IGNORECASE,
+)
 
 
 def judgment_body(judgment: str) -> str:
@@ -31,18 +37,23 @@ def judgment_body(judgment: str) -> str:
     return judgment.split("</think>")[-1]
 
 
-def parse_scores(text: str) -> dict[str, int]:
-    """Pull the last 0/1/2 score for each point metric out of a judgment."""
-    found = dict(SCORE_PATTERN.findall(text))
-    return {metric: int(found[metric]) for metric in SCORE_METRICS if metric in found}
+def parse_judgment_fields(judgment: str) -> dict:
+    """Parse point scores and MAIN_ERROR into chunk fields for later filtering."""
+    text = judgment_body(judgment)
+    found = {name.lower(): int(score) for name, score in SCORE_PATTERN.findall(text)}
+    main_errors = MAIN_ERROR_PATTERN.findall(text)
+    return {
+        "coverage": found.get("coverage"),
+        "faithfulness": found.get("faithfulness"),
+        "novelty": found.get("novelty"),
+        "main_error": main_errors[-1].upper() if main_errors else None,
+    }
 
 
-def parse_main_error(text: str) -> str | None:
-    """Pull the last MAIN_ERROR label out of a judgment."""
-    found = MAIN_ERROR_PATTERN.findall(text)
-    if not found:
-        return None
-    return found[-1].upper()
+def attach_judgment(chunk: dict, judgment: str) -> None:
+    """Store the raw judgment and its parsed score fields on a chunk."""
+    chunk["judgment"] = judgment.strip()
+    chunk.update(parse_judgment_fields(chunk["judgment"]))
 
 
 def aggregate_scores(dataset: datasets.DatasetDict) -> dict:
@@ -54,18 +65,19 @@ def aggregate_scores(dataset: datasets.DatasetDict) -> dict:
         for row in split:
             for chunk in row["chunks"]:
                 n_chunks += 1
-                text = judgment_body(str(chunk.get("judgment", "")))
-                for metric, score in parse_scores(text).items():
-                    values[metric].append(score)
-                main_error = parse_main_error(text)
+                for metric in SCORE_METRICS:
+                    score = chunk.get(metric)
+                    if score is not None:
+                        values[metric].append(int(score))
+                main_error = chunk.get("main_error")
                 if main_error is not None:
-                    main_errors.append(main_error)
+                    main_errors.append(str(main_error))
 
     metrics = {}
     for metric, scores in values.items():
         counts = Counter(scores)
         n = len(scores)
-        metrics[metric] = {
+        metrics[metric.upper()] = {
             "n": n,
             "n_unparsed": n_chunks - n,
             "pct": {str(score): (100 * counts[score] / n if n else None) for score in (0, 1, 2)},
@@ -109,11 +121,19 @@ def log_score_summary(summary: dict) -> None:
 
 
 def model_context(chunks: list[dict]) -> list[tuple[str, str]]:
-    """Return the text and previous deltas saved when each summary was generated."""
+    """Return the text and previous context saved when each delta was generated."""
     return [
-        (str(chunk["model_text"]), str(chunk["model_previous_deltas"] or NO_PRIOR_DELTAS))
+        (
+            str(chunk["model_text"]),
+            str(chunk.get("model_previous_context") or NO_PRIOR_CONTEXT),
+        )
         for chunk in chunks
     ]
+
+
+def chunk_delta(chunk: dict) -> str:
+    """Return the generated delta text for judging."""
+    return str(chunk.get("delta") or "").strip()
 
 
 def judge_split(
@@ -135,7 +155,7 @@ def judge_split(
         max_prompt_tokens,
         use_chat_template,
         text="",
-        previous_deltas="",
+        previous_context="",
         summary="",
     )
 
@@ -148,7 +168,7 @@ def judge_split(
         row["chunks"] = chunks
         context = model_context(chunks)
         for c_i, (chunk, (text, prior)) in enumerate(zip(chunks, context, strict=True)):
-            summary = str(chunk.get("summary", "")).strip()
+            summary = chunk_delta(chunk)
             summary_tokens = len(tokenizer.encode(summary, add_special_tokens=False))
             text, prior, _ = fit_delta_inputs(
                 text, prior, tokenizer, max(1, judge_budget - summary_tokens)
@@ -160,7 +180,7 @@ def judge_split(
                     use_chat_template,
                     system_prompt,
                     text=text,
-                    previous_deltas=prior,
+                    previous_context=prior,
                     summary=summary,
                 )
             )
@@ -173,7 +193,7 @@ def judge_split(
         )
 
     for (p_i, c_i), judgment in zip(locations, judgments, strict=True):
-        rows[p_i]["chunks"][c_i]["judgment"] = judgment.strip()
+        attach_judgment(rows[p_i]["chunks"][c_i], judgment)
 
     return datasets.Dataset.from_list(
         [{"subject_id": row["subject_id"], "chunks": row["chunks"]} for row in rows]

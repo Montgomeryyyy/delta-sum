@@ -16,9 +16,13 @@ dataset:
 
 
 # First window has no prior updates, so it is a full summary. Later windows use `prompt`.
+# Modes (prompt text decides what an "update" is; code only changes {previous_context}):
+#   summarize            - plain per-chunk summaries (input: raw parquet)
+#   delta_only_summarize - {previous_context} = prior model outputs (input: raw parquet)
+#   delta_summarize      - {previous_context} = prior summaries (input: summarized_dataset)
 summarization:
   window_regex: "^## Date \\+\\d+ days$"
-  mode: "delta_summarize"
+  mode: "delta_only_summarize"
   use_chat_template: true
 
   initial_system_prompt: >
@@ -60,7 +64,7 @@ summarization:
     clinically relevant information beyond the previous updates.
 
     Previous clinical updates:
-    {previous_deltas}
+    {previous_context}
 
     New EHR excerpt:
     {text}
