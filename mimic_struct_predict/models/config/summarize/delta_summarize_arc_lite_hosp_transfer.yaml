@@ -1,0 +1,95 @@
+# delta_only_summarize: raw pretraining dir (parquet under <split>/*.parquet)
+# delta_summarize:      path to a summarized_dataset from a prior summarize run
+input_dir: ???
+output_dir: ???          # Required: Directory to save the summarized data
+
+overwrite: true
+chunk_size: 1000
+seed: 42
+
+debug: false
+# Limit patients per split for smoke tests (null = full dataset).
+max_patients: 50
+
+dataset:
+  split_names:
+    train: train
+    val: tuning
+
+
+# First window has no prior updates, so it is a full summary. Later windows use `prompt`.
+# Modes (prompt text decides what an "update" is; code only changes {previous_context}):
+#   summarize            - plain per-chunk summaries
+#   delta_only_summarize - {previous_context} = prior model outputs
+#   delta_summarize      - {previous_context} = prior summaries from "summarize" mode
+summarization:
+  window_regex: "^#### Hospital Transfer"
+  mode: "delta_summarize"
+  use_chat_template: false
+
+  system_prompt: >
+    You extract changes and new clinical information from longitudinal EHRs.
+    Your output must contain only information from the current EHR that is not
+    already represented in the previous summaries.
+
+  prompt: |
+    Compare the new EHR excerpt against ALL previous clinical summaries.
+
+    First determine what information in the new excerpt is already known from
+    the previous summaries. Exclude that information from the output.
+
+    Output only:
+    - clinically relevant information that is newly observed
+    - clinically relevant changes to previously known information
+    - new evidence of improvement, worsening, resolution, stability, or absence
+    - new clinically relevant results, treatments, diagnoses, or findings
+
+    Do NOT summarize the entire new EHR excerpt.
+    Do NOT repeat diagnoses, medications, findings, or other information merely
+    because they appear again in the new excerpt.
+    A fact is not new if the same clinical meaning already appears anywhere in
+    the previous summaries, even if the wording differs.
+
+    Routine repeated measurements should only be included if they provide
+    clinically relevant new information or indicate a meaningful change.
+
+    If nothing clinically relevant is new or changed, output exactly:
+    No clinically meaningful update.
+
+    Previous clinical summaries:
+    {previous_context}
+
+    New EHR excerpt:
+    {text}
+
+    New or changed clinical information only:
+
+# model.backend:
+#   local (default) - local GPU via vLLM; needs dtype / gpu_memory_utilization / etc.
+#   arc             - remote ARC AI chat API; no GPU required
+model:
+  backend: arc
+  model: arc:lite
+  api_base: https://ai.create.kcl.ac.uk/api/v1
+  api_key_env: ARC_AI_API_KEY
+  # Optional: HF tokenizer name for local truncation only. Omit to send full texts.
+  # tokenizer: Qwen/Qwen2.5-7B-Instruct
+  max_model_len: 200000
+  max_concurrency: 1
+  # Minimum seconds between ARC API calls (paces rate limits).
+  request_interval_s: 2.0
+  timeout_s: 120
+  max_retries: 5
+
+sampling_params:
+  max_tokens: 1024
+  temperature: 0.0
+  repetition_penalty: 1.0
+  seed: ${seed}
+
+num_workers: 1
+batch_size: 50
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

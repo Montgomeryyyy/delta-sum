@@ -2,22 +2,23 @@ import logging
 import re
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import datasets
 import hydra
 import polars as pl
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from tqdm import tqdm
-from vllm import LLM, SamplingParams
 
+from mimic_struct_predict.models.utils.generation import load_generation_backend
 from mimic_struct_predict.models.utils.summarization import (
     NO_PRIOR_CONTEXT,
     PromptJob,
     content_budget,
+    generate_summaries,
     iter_chunks,
     prepare_context_prompt,
     prepare_summary_prompt,
-    generate_summaries,
 )
 
 log = logging.getLogger(__name__)
@@ -39,8 +40,8 @@ def attach_generation(
 def delta_from_generations(
     batch: dict,
     prompt_template: str,
-    llm: LLM,
-    sampling_params: SamplingParams,
+    llm: Any,
+    sampling_params: Any,
     max_prompt_tokens: int,
     use_chat_template: bool,
     system_prompt: str | None,
@@ -116,7 +117,14 @@ def delta_from_generations(
                 )
             )
 
-        deltas = generate_summaries(llm, [job.prompt for job in jobs], sampling_params)
+        # At chunk index 0 every active patient uses the initial system prompt.
+        active_system = initial_system_prompt if c_i == 0 else system_prompt
+        deltas = generate_summaries(
+            llm,
+            [job.prompt for job in jobs],
+            sampling_params,
+            system_prompt=active_system,
+        )
         for job, delta in zip(jobs, deltas, strict=True):
             delta = delta.strip()
             attach_generation(
@@ -134,11 +142,12 @@ def delta_from_generations(
 def delta_from_summaries(
     batch: dict,
     prompt_template: str,
-    llm: LLM,
-    sampling_params: SamplingParams,
+    llm: Any,
+    sampling_params: Any,
     max_prompt_tokens: int,
     use_chat_template: bool,
     system_prompt: str | None,
+    log_example_prompt: bool = False,
 ) -> tuple[dict, int]:
     """Write deltas from precomputed per-chunk summaries; all prompts are independent."""
     tokenizer = llm.get_tokenizer()
@@ -154,6 +163,7 @@ def delta_from_summaries(
 
     chunks_col = batch["chunks"]
     jobs: list[PromptJob] = []
+    logged_example_prompt = False
 
     for p_i, c_i, chunk in iter_chunks(chunks_col):
         if c_i == 0:
@@ -190,8 +200,30 @@ def delta_from_summaries(
                 was_truncated=was_truncated,
             )
         )
+        if log_example_prompt and not logged_example_prompt:
+            preview_limit = 4000
+            user_preview = (
+                prompt if len(prompt) <= preview_limit else prompt[:preview_limit] + "\n... [truncated for log]"
+            )
+            log.info(
+                "Example delta_summarize prompt "
+                "(subject_id=%s chunk_id=%s, user_chars=%d, previous_context_chars=%d):\n"
+                "----- system -----\n%s\n----- user -----\n%s\n----- end -----",
+                batch["subject_id"][p_i],
+                chunk.get("chunk_id", c_i),
+                len(prompt),
+                len(previous_context),
+                system_prompt or "",
+                user_preview,
+            )
+            logged_example_prompt = True
 
-    deltas = generate_summaries(llm, [job.prompt for job in jobs], sampling_params)
+    deltas = generate_summaries(
+        llm,
+        [job.prompt for job in jobs],
+        sampling_params,
+        system_prompt=system_prompt,
+    )
     for job, delta in zip(jobs, deltas, strict=True):
         attach_generation(
             chunks_col[job.p_i][job.c_i],
@@ -209,8 +241,8 @@ def delta_from_summaries(
 def summarize_batch(
     batch: dict,
     prompt_template: str,
-    llm: LLM,
-    sampling_params: SamplingParams,
+    llm: Any,
+    sampling_params: Any,
     max_prompt_tokens: int,
     use_chat_template: bool = True,
     system_prompt: str | None = None,
@@ -247,7 +279,12 @@ def summarize_batch(
             )
         )
 
-    summaries = generate_summaries(llm, [job.prompt for job in jobs], sampling_params)
+    summaries = generate_summaries(
+        llm,
+        [job.prompt for job in jobs],
+        sampling_params,
+        system_prompt=system_prompt,
+    )
     for job, summary in zip(jobs, summaries, strict=True):
         chunks_col[job.p_i][job.c_i]["summary"] = summary
         chunks_col[job.p_i][job.c_i]["truncated"] = job.was_truncated
@@ -260,8 +297,8 @@ def summarize_batch(
 def summarize_split(
     split_dataset: datasets.Dataset,
     prompt_template: str,
-    llm: LLM,
-    sampling_params: SamplingParams,
+    llm: Any,
+    sampling_params: Any,
     chunk_size: int,
     max_prompt_tokens: int,
     use_chat_template: bool = True,
@@ -424,7 +461,10 @@ def build_summarize_fn(cfg: DictConfig, mode: str):
             initial_system_prompt=None if initial_system_prompt is None else str(initial_system_prompt),
         )
     if mode == "delta_summarize":
-        return delta_from_summaries
+        return partial(
+            delta_from_summaries,
+            log_example_prompt=bool(cfg.summarization.get("log_example_prompt", False)),
+        )
     raise ValueError(
         f"Unknown summarization.mode {mode!r}. "
         "Expected 'summarize', 'delta_summarize', or 'delta_only_summarize'."
@@ -461,29 +501,12 @@ def load_chunked_dataset(cfg: DictConfig, mode: str) -> datasets.DatasetDict:
     return chunked
 
 
-def load_llm(cfg: DictConfig) -> tuple[LLM, SamplingParams, int]:
-    """Load vLLM and return ``(llm, sampling_params, max_prompt_tokens)``."""
-    sampling_params = SamplingParams(**OmegaConf.to_container(cfg.sampling_params, resolve=True))
-    log.info(f"Loading model ({cfg.model.model})...")
-    log.info(sampling_params)
-    llm = LLM(**cfg.model)
-
-    max_prompt_tokens = int(cfg.model.max_model_len) - int(cfg.sampling_params.max_tokens)
-    if max_prompt_tokens <= 0:
-        raise ValueError(
-            f"sampling_params.max_tokens ({cfg.sampling_params.max_tokens}) must be "
-            f"< model.max_model_len ({cfg.model.max_model_len})."
-        )
-    log.info(f"Truncating prompts to {max_prompt_tokens} tokens when needed (keeping the end).")
-    return llm, sampling_params, max_prompt_tokens
-
-
 def generate_dataset(
     chunked_dataset: datasets.DatasetDict,
     cfg: DictConfig,
     summarize_fn,
-    llm: LLM,
-    sampling_params: SamplingParams,
+    llm: Any,
+    sampling_params: Any,
     max_prompt_tokens: int,
 ) -> datasets.DatasetDict:
     """Run summarization over every split."""
@@ -525,7 +548,7 @@ def main(cfg: DictConfig) -> None:
 
     summarize_fn = build_summarize_fn(cfg, mode)
     chunked_dataset = load_chunked_dataset(cfg, mode)
-    llm, sampling_params, max_prompt_tokens = load_llm(cfg)
+    llm, sampling_params, max_prompt_tokens = load_generation_backend(cfg)
     summarized_dataset = generate_dataset(
         chunked_dataset, cfg, summarize_fn, llm, sampling_params, max_prompt_tokens
     )

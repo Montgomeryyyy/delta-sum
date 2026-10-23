@@ -25,6 +25,22 @@
 #     scripts/pretrain-summary-generation.sh delta
 #
 #   scripts/pretrain-summary-generation.sh delta delta_summerize_medgemma
+#
+#   # Remote ARC API configs (model.backend=arc) do not need a GPU:
+#   sbatch \
+#     --job-name=summarize-arc-lite \
+#     --partition=slam_cpu \
+#     --time=4:00:00 \
+#     --ntasks=1 \
+#     --cpus-per-task=8 \
+#     --mem=32G \
+#     --chdir="$(pwd)" \
+#     --export=ALL \
+#     --output="$SCRATCH_DIR/../logs/summarize/%x-%j.out" \
+#     scripts/pretrain-summary-generation.sh delta delta_only_summarize_arc_lite_hosp_transfer \
+#     output_dir="$SCRATCH_DIR/data/natural_language/pre_training/arc_lite_delta_only_hosp_transfer"
+#
+#   Requires ARC_AI_API_KEY in the environment (e.g. from .env).
 
 set -euo pipefail
 
@@ -53,6 +69,8 @@ HYDRA_ARGS=("$@")
 export PATH="${UV_PROJECT_ENVIRONMENT}/bin:${PATH}"
 # System nvcc is CUDA 11.5 and cannot compile FlashInfer's H100 (compute_90a) kernels.
 export VLLM_USE_FLASHINFER_SAMPLER=0
+# Avoid "Cannot re-initialize CUDA in forked subprocess" when vLLM starts EngineCore.
+export VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"
 
 case "$SUM_MODE" in
     delta)

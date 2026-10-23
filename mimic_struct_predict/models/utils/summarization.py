@@ -1,8 +1,7 @@
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
-
-from vllm import LLM, SamplingParams
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -88,12 +87,19 @@ def content_budget(
     return max(1, max_prompt_tokens - wrapper_tokens)
 
 
-def generate_summaries(llm: LLM, prompts: list[str], sampling_params: SamplingParams) -> list[str]:
-    """Run vLLM generation over prompts and return decoded texts."""
-    if not prompts:
-        return []
-    outputs = llm.generate(prompts, sampling_params=sampling_params)
-    return [output.outputs[0].text for output in outputs]
+def generate_summaries(
+    llm: Any,
+    prompts: list[str],
+    sampling_params: Any,
+    *,
+    system_prompt: str | None = None,
+) -> list[str]:
+    """Run generation over prompts and return decoded texts.
+
+    For local vLLM, ``system_prompt`` is ignored when already baked into prompts via
+    chat templates. For the OpenAI backend, it is sent as a chat ``system`` message.
+    """
+    return llm.generate(prompts, sampling_params, system_prompt=system_prompt)
 
 
 def truncate_chunk_text(text: str, tokenizer, max_text_tokens: int) -> tuple[str, bool, int]:
