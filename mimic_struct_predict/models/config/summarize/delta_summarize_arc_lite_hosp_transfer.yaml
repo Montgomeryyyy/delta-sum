@@ -25,36 +25,38 @@ dataset:
 summarization:
   window_regex: "^#### Hospital Transfer"
   mode: "delta_summarize"
-  use_chat_template: false
+  use_chat_template: true
+  log_example_prompt: true
 
   system_prompt: >
-    You extract changes and new clinical information from longitudinal EHRs.
-    Your output must contain only information from the current EHR that is not
-    already represented in the previous summaries.
+    You are a clinical summarization system for longitudinal EHRs.
+    Produce concise, factual clinical updates. Preserve clinically relevant new
+    information and do not invent facts.
 
   prompt: |
-    Compare the new EHR excerpt against ALL previous clinical summaries.
+    Given the previous clinical summaries and the new EHR excerpt, extract the
+    clinically relevant information that is not already represented in the
+    previous summaries.
 
-    First determine what information in the new excerpt is already known from
-    the previous summaries. Exclude that information from the output.
+    Include when relevant:
+    - new diagnoses, symptoms, treatments, procedures, or medications
+    - new laboratory results, vital signs, measurements, imaging, or study findings
+    - meaningful worsening, improvement, resolution, or treatment response
+    - new clinically relevant evidence that a known finding is stable, unchanged,
+      benign, or absent
 
-    Output only:
-    - clinically relevant information that is newly observed
-    - clinically relevant changes to previously known information
-    - new evidence of improvement, worsening, resolution, stability, or absence
-    - new clinically relevant results, treatments, diagnoses, or findings
+    Novelty is relative to the previous summaries provided below.
+    Treat information as already known if it is represented anywhere in the
+    previous summaries, even if it is phrased differently.
 
-    Do NOT summarize the entire new EHR excerpt.
-    Do NOT repeat diagnoses, medications, findings, or other information merely
-    because they appear again in the new excerpt.
-    A fact is not new if the same clinical meaning already appears anywhere in
-    the previous summaries, even if the wording differs.
+    Do not repeat information already represented with the same clinical meaning.
+    Routine repeated measurements need not be included unless they add clinically
+    relevant information or change the interpretation of the patient's state.
+    Do not include administrative details.
+    Do not infer information not stated in the excerpt.
 
-    Routine repeated measurements should only be included if they provide
-    clinically relevant new information or indicate a meaningful change.
-
-    If nothing clinically relevant is new or changed, output exactly:
-    No clinically meaningful update.
+    Output exactly "No clinically meaningful update." only if the excerpt adds no
+    clinically relevant information beyond the previous summaries.
 
     Previous clinical summaries:
     {previous_context}
@@ -62,11 +64,59 @@ summarization:
     New EHR excerpt:
     {text}
 
-    New or changed clinical information only:
+    Clinical update:
+
+# summarization:
+#   window_regex: "^#### Hospital Transfer"
+#   mode: "delta_summarize"
+#   use_chat_template: false
+
+#   system_prompt: >
+#     You extract clinically meaningful updates from longitudinal EHRs.
+#     Do not summarize the current EHR. Compare it with the previous clinical context
+#     and report only new or changed clinical information.
+
+#   prompt: |
+#     Compare the new EHR excerpt with the previous clinical summaries.
+
+#     Classify clinically relevant information into these update types:
+
+#     NEW:
+#     Information not represented in the previous summaries.
+
+#     CHANGED:
+#     A meaningful change in a previously known diagnosis, symptom, treatment,
+#     medication, laboratory result, vital sign, measurement, imaging finding,
+#     or clinical state.
+
+#     RESOLVED:
+#     A previously abnormal or active finding that has improved or resolved.
+
+#     STABLE:
+#     New clinically relevant evidence confirming that an important known condition
+#     or finding remains stable, unchanged, benign, or absent.
+
+#     Do NOT summarize the whole current EHR.
+#     Do NOT repeat information merely because it appears again.
+#     For repeated labs or measurements, report only meaningful changes, new
+#     abnormalities, resolution, or clinically relevant trends. Omit trivial
+#     fluctuations and repeated normal values.
+
+#     If no information fits any category, output exactly:
+#     No clinically meaningful update.
+
+#     Previous clinical summaries:
+#     {previous_context}
+
+#     New EHR excerpt:
+#     {text}
+
+#     Output only the clinically relevant updates.
 
 # model.backend:
 #   local (default) - local GPU via vLLM; needs dtype / gpu_memory_utilization / etc.
 #   arc             - remote ARC AI chat API; no GPU required
+
 model:
   backend: arc
   model: arc:lite

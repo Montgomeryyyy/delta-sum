@@ -17,9 +17,7 @@ dataset:
 
 # First window has no prior updates, so it is a full summary. Later windows use `prompt`.
 summarization:
-  # Matches natural-language date markers after delimiter "//" → " " replacement,
-  # e.g. "## Date +5 days".
-  window_regex: "^## Date \\+\\d+ days$"
+  window_regex: "^#### Hospital Transfer"
   mode: "summarize"
   use_chat_template: true
   system_prompt: >
@@ -32,6 +30,8 @@ summarization:
     findings, important measurements, and meaningful changes when present.
     Remove redundancy and administrative detail. Use complete sentences and no
     introductory phrases.
+    Write the summary as concise plain prose in complete sentences.
+    Do not use headings, bullet points, numbered lists, Markdown, or section labels.
     EHR excerpt:
     {text}
 

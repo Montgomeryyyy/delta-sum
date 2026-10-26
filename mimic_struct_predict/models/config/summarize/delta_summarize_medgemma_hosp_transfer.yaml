@@ -57,6 +57,9 @@ summarization:
     Output exactly "No clinically meaningful update." only if the excerpt adds no
     clinically relevant information beyond the previous summaries.
 
+    Write the summary as concise plain prose in complete sentences.
+    Do not use headings, bullet points, numbered lists, Markdown, or section labels.
+
     Previous clinical summaries:
     {previous_context}
 
@@ -64,7 +67,53 @@ summarization:
     {text}
 
     Clinical update:
-    
+
+# summarization:
+#   window_regex: "^#### Hospital Transfer"
+#   mode: "delta_summarize"
+#   use_chat_template: false
+
+#   system_prompt: >
+#     You extract clinically meaningful changes from longitudinal EHRs.
+#     Do not summarize the current EHR. Report only information that is new,
+#     changed, resolved, or newly confirmed relative to the previous clinical context.
+
+#   prompt: |
+#     Compare the new EHR excerpt with ALL previous clinical summaries.
+
+#     Your task is NOT to summarize the new excerpt.
+#     Your task is to report only clinically meaningful differences from what was
+#     already known.
+
+#     Include:
+#     - genuinely new diagnoses, symptoms, treatments, procedures, or medications
+#     - clinically meaningful changes in laboratory values, vital signs, measurements,
+#       imaging, or other findings
+#     - worsening, improvement, resolution, or treatment response
+#     - new clinically meaningful confirmation of stability, benignity, or absence
+
+#     For repeated laboratory tests or measurements:
+#     - do not list the full new panel
+#     - compare with prior values when available
+#     - report only clinically meaningful changes, new abnormalities, resolution of
+#       abnormalities, or important trends
+#     - omit trivial fluctuations and repeated normal values
+
+#     Do not repeat information already represented in the previous summaries.
+#     A fact is not new merely because it was measured or documented again.
+
+#     If nothing clinically meaningful is new or changed, output exactly:
+#     No clinically meaningful update.
+
+#     Previous clinical summaries:
+#     {previous_context}
+
+#     New EHR excerpt:
+#     {text}
+
+#     TASK: Output only the new or changed clinical information.
+#     Clinical update:
+
 model:
   model: google/medgemma-27b-it
   dtype: bfloat16

@@ -1,0 +1,103 @@
+input_dir: ???   # summarized_dataset directory from a summarize.py run
+output_dir: ???  # directory for the judged dataset
+
+overwrite: true
+chunk_size: 1000
+seed: 42
+max_patients: 50
+
+judge:
+  # ARC sends system/user chat messages; do not apply a local HF chat template.
+  use_chat_template: false
+
+  system_prompt: >
+    You are a strict evaluator of longitudinal clinical delta summaries.
+    Evaluate only from the provided previous updates and current EHR.
+    Look for omissions, unsupported claims, repetition of prior information,
+    and unnecessary detail.
+
+  prompt: |
+    Evaluate the generated delta.
+
+    A good delta contains clinically relevant information from the current EHR
+    that is not already represented in the previous updates.
+
+    COVERAGE:
+    0 = major clinically relevant new information is missing
+    1 = some relevant new information is missing
+    2 = all important new information is captured
+
+    FAITHFULNESS:
+    0 = major unsupported or incorrect claim
+    1 = minor unsupported or inaccurate claim
+    2 = all claims are supported by the provided inputs
+
+    NOVELTY:
+    0 = substantial information is already represented in previous updates
+    1 = some information unnecessarily repeats previous updates
+    2 = no meaningful repetition of previous updates
+
+    CONCISENESS:
+    0 = substantial unnecessary detail or internal redundancy
+    1 = some unnecessary detail
+    2 = concise and high-signal
+
+    Treat information as new only relative to the provided previous clinical
+    summaries. You are not given any other patient history; do not assume or
+    invent prior context beyond those summaries.
+
+    New normal, stable, benign, or negative findings can still be clinically
+    relevant updates.
+
+    Do not reward exhaustive copying of labs, medications, diagnoses, or
+    procedures when they add little clinically relevant information.
+
+    UPDATE_WARRANTED: YES if the current EHR contains clinically relevant
+    information not already represented in the previous summaries; else NO.
+    UPDATE_DECISION_CORRECT: YES if the generated delta's choice to emit an
+    update vs no-update matches UPDATE_WARRANTED; else NO.
+
+    Previous clinical summaries:
+    {previous_context}
+
+    Current EHR:
+    {text}
+
+    Generated delta:
+    {summary}
+
+    Return only:
+    UPDATE_WARRANTED: YES/NO
+    UPDATE_DECISION_CORRECT: YES/NO
+    COVERAGE: 0/1/2
+    FAITHFULNESS: 0/1/2
+    NOVELTY: 0/1/2
+    CONCISENESS: 0/1/2
+    MAIN_ERROR: NONE/MISSED_UPDATE/FALSE_UPDATE/UNSUPPORTED_CLAIM/PRIOR_REPETITION/OVERDETAIL/TEMPORAL_ERROR/IRRELEVANT_DETAIL
+    MISSING_INFORMATION: <brief text or NONE>
+    REDUNDANT_INFORMATION: <brief text or NONE>
+    RATIONALE: <maximum 2 sentences>
+
+# model.backend:
+#   local (default) - local GPU via vLLM
+#   arc             - remote ARC AI chat API; no GPU required
+model:
+  backend: arc
+  model: arc:apex
+  api_base: https://ai.create.kcl.ac.uk/api/v1
+  api_key_env: ARC_AI_API_KEY
+  max_model_len: 200000
+  max_concurrency: 1
+  request_interval_s: 2.0
+  timeout_s: 120
+  max_retries: 5
+
+sampling_params:
+  max_tokens: 2048
+  temperature: 0.0
+  repetition_penalty: 1.0
+  seed: ${seed}
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

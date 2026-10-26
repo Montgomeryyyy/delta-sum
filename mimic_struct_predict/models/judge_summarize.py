@@ -5,12 +5,13 @@ import logging
 import re
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import datasets
 import hydra
-from omegaconf import DictConfig, OmegaConf
-from vllm import LLM, SamplingParams
+from omegaconf import DictConfig
 
+from mimic_struct_predict.models.utils.generation import load_generation_backend
 from mimic_struct_predict.models.utils.summarization import (
     NO_PRIOR_CONTEXT,
     content_budget,
@@ -21,13 +22,18 @@ from mimic_struct_predict.models.utils.summarization import (
 
 log = logging.getLogger(__name__)
 
-SCORE_METRICS = ("coverage", "faithfulness", "novelty")
+SCORE_METRICS = ("coverage", "faithfulness", "novelty", "conciseness")
+YES_NO_METRICS = ("update_warranted", "update_decision_correct")
 SCORE_PATTERN = re.compile(
-    r"^(?:\*\*)?(COVERAGE|FAITHFULNESS|NOVELTY)(?:\*\*)?:\s*([012])\b",
+    r"^(?:\*\*)?(COVERAGE|FAITHFULNESS|NOVELTY|CONCISENESS)(?:\*\*)?:(?:\*\*)?\s*([012])\b",
+    re.MULTILINE | re.IGNORECASE,
+)
+YES_NO_PATTERN = re.compile(
+    r"^(?:\*\*)?(UPDATE_WARRANTED|UPDATE_DECISION_CORRECT)(?:\*\*)?:(?:\*\*)?\s*(YES|NO)\b",
     re.MULTILINE | re.IGNORECASE,
 )
 MAIN_ERROR_PATTERN = re.compile(
-    r"^(?:\*\*)?MAIN_ERROR(?:\*\*)?:\s*([A-Za-z_]+)\b",
+    r"^(?:\*\*)?MAIN_ERROR(?:\*\*)?:(?:\*\*)?\s*([A-Za-z_]+)\b",
     re.MULTILINE | re.IGNORECASE,
 )
 
@@ -38,14 +44,20 @@ def judgment_body(judgment: str) -> str:
 
 
 def parse_judgment_fields(judgment: str) -> dict:
-    """Parse point scores and MAIN_ERROR into chunk fields for later filtering."""
+    """Parse point scores, YES/NO flags, and MAIN_ERROR into chunk fields."""
     text = judgment_body(judgment)
     found = {name.lower(): int(score) for name, score in SCORE_PATTERN.findall(text)}
+    yes_no = {
+        name.lower(): value.upper() for name, value in YES_NO_PATTERN.findall(text)
+    }
     main_errors = MAIN_ERROR_PATTERN.findall(text)
     return {
         "coverage": found.get("coverage"),
         "faithfulness": found.get("faithfulness"),
         "novelty": found.get("novelty"),
+        "conciseness": found.get("conciseness"),
+        "update_warranted": yes_no.get("update_warranted"),
+        "update_decision_correct": yes_no.get("update_decision_correct"),
         "main_error": main_errors[-1].upper() if main_errors else None,
     }
 
@@ -56,9 +68,23 @@ def attach_judgment(chunk: dict, judgment: str) -> None:
     chunk.update(parse_judgment_fields(chunk["judgment"]))
 
 
+def _aggregate_yes_no(values: list[str], n_chunks: int) -> dict:
+    counts = Counter(values)
+    n = len(values)
+    return {
+        "n": n,
+        "n_unparsed": n_chunks - n,
+        "counts": {"YES": counts.get("YES", 0), "NO": counts.get("NO", 0)},
+        "pct": {
+            label: (100 * counts.get(label, 0) / n if n else None) for label in ("YES", "NO")
+        },
+    }
+
+
 def aggregate_scores(dataset: datasets.DatasetDict) -> dict:
     """Score distributions and MAIN_ERROR shares across every judged chunk."""
     values = {metric: [] for metric in SCORE_METRICS}
+    yes_no_values = {metric: [] for metric in YES_NO_METRICS}
     main_errors: list[str] = []
     n_chunks = 0
     for split in dataset.values():
@@ -69,6 +95,10 @@ def aggregate_scores(dataset: datasets.DatasetDict) -> dict:
                     score = chunk.get(metric)
                     if score is not None:
                         values[metric].append(int(score))
+                for metric in YES_NO_METRICS:
+                    flag = chunk.get(metric)
+                    if flag is not None:
+                        yes_no_values[metric].append(str(flag).upper())
                 main_error = chunk.get("main_error")
                 if main_error is not None:
                     main_errors.append(str(main_error))
@@ -84,11 +114,17 @@ def aggregate_scores(dataset: datasets.DatasetDict) -> dict:
             "mean": (sum(scores) / n if n else None),
         }
 
+    yes_no = {
+        metric.upper(): _aggregate_yes_no(flags, n_chunks)
+        for metric, flags in yes_no_values.items()
+    }
+
     error_counts = Counter(main_errors)
     n_errors = len(main_errors)
     return {
         "n_chunks": n_chunks,
         "metrics": metrics,
+        "yes_no": yes_no,
         "main_errors": {
             "n": n_errors,
             "n_unparsed": n_chunks - n_errors,
@@ -112,6 +148,17 @@ def log_score_summary(summary: dict) -> None:
         log.info(
             f"{metric} n={n} unparsed={stats['n_unparsed']} "
             f"2={pct['2']:.1f}% 1={pct['1']:.1f}% 0={pct['0']:.1f}% mean={stats['mean']:.3f}"
+        )
+
+    for metric, stats in summary.get("yes_no", {}).items():
+        n = stats["n"]
+        if n == 0:
+            log.info(f"{metric}: no parsed flags ({stats['n_unparsed']} unparsed)")
+            continue
+        pct = stats["pct"]
+        log.info(
+            f"{metric} n={n} unparsed={stats['n_unparsed']} "
+            f"YES={pct['YES']:.1f}% NO={pct['NO']:.1f}%"
         )
 
     errors = summary["main_errors"]
@@ -140,8 +187,8 @@ def judge_split(
     split: datasets.Dataset,
     prompt_template: str,
     system_prompt: str | None,
-    llm: LLM,
-    sampling_params: SamplingParams,
+    llm: Any,
+    sampling_params: Any,
     max_prompt_tokens: int,
     use_chat_template: bool,
     batch_size: int,
@@ -189,7 +236,12 @@ def judge_split(
     judgments: list[str] = []
     for start in range(0, len(prompts), batch_size):
         judgments.extend(
-            generate_summaries(llm, prompts[start : start + batch_size], sampling_params)
+            generate_summaries(
+                llm,
+                prompts[start : start + batch_size],
+                sampling_params,
+                system_prompt=system_prompt,
+            )
         )
 
     for (p_i, c_i), judgment in zip(locations, judgments, strict=True):
@@ -220,13 +272,7 @@ def main(cfg: DictConfig) -> None:
             {split: rows.select(range(min(max_patients, len(rows)))) for split, rows in dataset.items()}
         )
 
-    sampling_params = SamplingParams(**OmegaConf.to_container(cfg.sampling_params, resolve=True))
-    log.info(f"Loading model ({cfg.model.model})...")
-    llm = LLM(**cfg.model)
-
-    max_prompt_tokens = int(cfg.model.max_model_len) - int(cfg.sampling_params.max_tokens)
-    if max_prompt_tokens <= 0:
-        raise ValueError("sampling_params.max_tokens must be smaller than model.max_model_len.")
+    llm, sampling_params, max_prompt_tokens = load_generation_backend(cfg)
 
     prompt = str(cfg.judge.prompt)
     system_prompt = cfg.judge.get("system_prompt", None)

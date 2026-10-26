@@ -41,9 +41,9 @@ judge:
     1 = some unnecessary detail
     2 = concise and high-signal
 
-    Treat information as new only relative to the provided previous updates.
-    Do not penalize the delta for repeating information that existed in the
-    patient's earlier raw history if it is not represented in the previous updates.
+    Treat information as new only relative to the provided previous clinical
+    summaries. You are not given any other patient history; do not assume or
+    invent prior context beyond those summaries.
 
     New normal, stable, benign, or negative findings can still be clinically
     relevant updates.
@@ -51,7 +51,12 @@ judge:
     Do not reward exhaustive copying of labs, medications, diagnoses, or
     procedures when they add little clinically relevant information.
 
-    Previous updates:
+    UPDATE_WARRANTED: YES if the current EHR contains clinically relevant
+    information not already represented in the previous summaries; else NO.
+    UPDATE_DECISION_CORRECT: YES if the generated delta's choice to emit an
+    update vs no-update matches UPDATE_WARRANTED; else NO.
+
+    Previous clinical summaries:
     {previous_context}
 
     Current EHR:
