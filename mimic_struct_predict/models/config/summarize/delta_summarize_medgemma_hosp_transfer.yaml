@@ -37,28 +37,22 @@ summarization:
     clinically relevant information that is not already represented in the
     previous summaries.
 
-    Include when relevant:
-    - new diagnoses, symptoms, treatments, procedures, or medications
-    - new laboratory results, vital signs, measurements, imaging, or study findings
-    - meaningful worsening, improvement, resolution, or treatment response
-    - new clinically relevant evidence that a known finding is stable, unchanged,
-      benign, or absent
+    Include new diagnoses, symptoms, treatments, procedures, medications,
+    clinically relevant results or findings, and meaningful changes in clinical state.
+    Repeated testing may also be an update when it provides new evidence of stability,
+    persistence, improvement, resolution, benignity, or absence of disease.
 
-    Novelty is relative to the previous summaries provided below.
-    Treat information as already known if it is represented anywhere in the
-    previous summaries, even if it is phrased differently.
+    Do not repeat previously known information unless the new excerpt changes its
+    interpretation. Summarize repeated measurements as trends when possible rather
+    than listing trivial values individually.
 
-    Do not repeat information already represented with the same clinical meaning.
-    Routine repeated measurements need not be included unless they add clinically
-    relevant information or change the interpretation of the patient's state.
-    Do not include administrative details.
-    Do not infer information not stated in the excerpt.
+    Do not include administrative details or infer information not stated in the excerpt.
 
     Output exactly "No clinically meaningful update." only if the excerpt adds no
     clinically relevant information beyond the previous summaries.
 
-    Write the summary as concise plain prose in complete sentences.
-    Do not use headings, bullet points, numbered lists, Markdown, or section labels.
+    Write concise plain prose in complete sentences. Do not use headings, bullets,
+    numbered lists, Markdown, or section labels.
 
     Previous clinical summaries:
     {previous_context}

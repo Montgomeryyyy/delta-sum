@@ -82,6 +82,7 @@ class ArcBackend:
         timeout_s: float = 120.0,
         max_retries: int = 5,
         request_interval_s: float = 0.0,
+        extra_body: dict[str, Any] | None = None,
     ):
         self.model = model
         self.api_base = api_base.rstrip("/")
@@ -90,6 +91,7 @@ class ArcBackend:
         self.timeout_s = float(timeout_s)
         self.max_retries = max(1, int(max_retries))
         self.request_interval_s = max(0.0, float(request_interval_s))
+        self.extra_body = dict(extra_body or {})
         self.pace_lock = threading.Lock()
         self.next_request_time = 0.0
         if tokenizer_name:
@@ -162,8 +164,11 @@ class ArcBackend:
             "max_tokens": int(sampling_params.max_tokens),
             "temperature": float(sampling_params.temperature),
         }
-        if sampling_params.get("seed", None) is not None:
-            body["seed"] = int(sampling_params.seed)
+        seed = sampling_params.get("seed", None)
+        if seed is not None and str(seed).strip() != "":
+            body["seed"] = int(seed)
+        if self.extra_body:
+            body.update(self.extra_body)
 
         url = f"{self.api_base}/chat/completions"
         headers = {
@@ -239,13 +244,21 @@ def load_generation_backend(cfg: DictConfig) -> tuple[GenerationBackend, Any, in
         log.info(sampling_params)
         backend: GenerationBackend = LocalBackend(LLM(**llm_kwargs))
     elif backend_name == "arc":
-        sampling_params = cfg.sampling_params
+        sampling_params = OmegaConf.create(
+            OmegaConf.to_container(cfg.sampling_params, resolve=True)
+        )
         model_name = str(model_cfg.model)
         api_base = str(model_cfg.api_base)
         api_key_env = str(model_cfg.get("api_key_env", "ARC_AI_API_KEY"))
         api_key = str(model_cfg.get("api_key", "") or os.environ[api_key_env])
         tokenizer_cfg = model_cfg.get("tokenizer", model_cfg.get("tokenizer_name", None))
         tokenizer_name = None if tokenizer_cfg in (None, "", "null") else str(tokenizer_cfg)
+        extra_body_cfg = model_cfg.get("extra_body", None)
+        extra_body = (
+            {}
+            if extra_body_cfg in (None, "", "null")
+            else dict(OmegaConf.to_container(extra_body_cfg, resolve=True))
+        )
         log.info(
             "Using ARC backend model=%s api_base=%s tokenizer=%s",
             model_name,
@@ -253,6 +266,8 @@ def load_generation_backend(cfg: DictConfig) -> tuple[GenerationBackend, Any, in
             tokenizer_name or "none (no local truncation)",
         )
         log.info(sampling_params)
+        if extra_body:
+            log.info("ARC extra_body=%s", extra_body)
         backend = ArcBackend(
             model=model_name,
             api_base=api_base,
@@ -262,6 +277,7 @@ def load_generation_backend(cfg: DictConfig) -> tuple[GenerationBackend, Any, in
             timeout_s=float(model_cfg.get("timeout_s", 120.0)),
             max_retries=int(model_cfg.get("max_retries", 5)),
             request_interval_s=float(model_cfg.get("request_interval_s", 0.0)),
+            extra_body=extra_body,
         )
     else:
         raise ValueError(

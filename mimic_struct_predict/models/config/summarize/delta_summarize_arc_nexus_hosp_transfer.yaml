@@ -26,6 +26,7 @@ summarization:
   window_regex: "^#### Hospital Transfer"
   mode: "delta_summarize"
   use_chat_template: true
+  log_example_prompt: true
 
   system_prompt: >
     You are a clinical summarization system for longitudinal EHRs.
@@ -133,6 +134,11 @@ model:
   request_interval_s: 2.0
   timeout_s: 120
   max_retries: 5
+  # Disable Qwen-style thinking / chain-of-thought for Nexus.
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: false
+
 
 sampling_params:
   max_tokens: 1024
