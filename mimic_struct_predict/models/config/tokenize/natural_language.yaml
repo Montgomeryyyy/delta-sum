@@ -1,5 +1,12 @@
-dataset_dir: ???  # Required: directory of meds datasets with quantiles
-output_dir: ???          # Required: directory to save outputs
+# false: classic patient-level ehr_text (parquet raw_data) → output_dir/tokenized_dataset
+# true:  per-chunk input→target examples from summarized_dataset → output_dir (HF dataset path)
+chunked: true
+
+# parquet raw_data (<split>/*.parquet) when chunked=false, or
+# HF summarized_dataset when chunked=true
+input_dir: ???
+# Classic: parent dir (writes tokenized_dataset under it). Chunked: HF dataset path itself.
+output_dir: ???
 
 overwrite: true
 
@@ -8,21 +15,23 @@ dataset:
     train: train
     val: tuning
 
-pre_processing:
-  delimiter: "//"
-  delimiter_replacement: " "
-  append_numeric_values: true
-  numeric_values_sig_figs: 2
-  append_text_values: true
-  code_join_token: "\n\n"
-
 tokenizer:
   pre_trained_tokenizer: ???
   padding_side: right
 
 tokenization:
-  stride: 128
-  max_length: 4096
+  max_length: 16384
+  # Chunk dict keys on summarized_dataset.
+  # For chunk i: join input_field from chunks[0:i] as context (fit in max_length);
+  # supervise only the current chunk's target_field.
+  input_field: text
+  target_field: delta
+  # How to join prior chunk texts into the context string.
+  chunk_join_token: "\n\n"
+  # Also store input_text / target_text on each example (for debugging).
+  save_text: true
+  # Classic overflowing windows only (ignored when chunked=true).
+  # stride: 128
 
 num_workers: 1
 batch_size: 50

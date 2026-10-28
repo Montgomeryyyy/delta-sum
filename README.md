@@ -47,6 +47,7 @@ The repository is modularised into four primary directories:
 │   │   └── calculate_task_prevalences.py # Empirical task label prevalence computation
 │   ├── models/                 # Generative autoregressive modelling pipeline
 │   │   ├── config/             # Hydra configs (tokenize, train, create_task_datasets, generative_inference_hf)
+│   │   ├── meds_to_text.py     # MEDS → patient-level EHR text (raw_data)
 │   │   ├── tokenize.py         # Tokenisation & vocabulary creation
 │   │   ├── train.py            # Language model pre-training with Accelerate
 │   │   ├── create_task_datasets.py # Task prompt & observation dataset construction
@@ -71,6 +72,7 @@ The repository is modularised into four primary directories:
 │   ├── meds-dataset.sh         # Converts raw data to MEDS & extracts ACES cohorts
 │   ├── calculate-task-prevalences.sh # Computes calibration task prevalences
 │   ├── meds-tab.sh             # Tabularises MEDS records & trains XGBoost baselines
+│   ├── pretrain-meds-to-text.sh # MEDS → EHR text (raw_data)
 │   ├── pretrain-tokenize.sh    # Pre-training tokenisation
 │   ├── pretrain-train.sh       # Launches multi-GPU language model pre-training
 │   ├── create-task-datasets.sh # Generates task prompt datasets for rollout evaluation
@@ -155,7 +157,8 @@ flowchart TD
     A["Download MIMIC-IV (scripts/download_mimic.sh)"] --> B["MEDS & ACES Pre-processing (scripts/meds-dataset.sh)"]
     B --> C["Task Prevalences (scripts/calculate-task-prevalences.sh)"]
     B --> D["Tabular Baseline (scripts/meds-tab.sh)"]
-    B --> E["Tokenisation (scripts/pretrain-tokenize.sh)"]
+    B --> E0["MEDS → text (scripts/pretrain-meds-to-text.sh)"]
+    E0 --> E["Tokenisation (scripts/pretrain-tokenize.sh)"]
     E --> F["Pre-training (scripts/pretrain-train.sh)"]
     F --> G["Prompt Generation (scripts/create-task-datasets.sh)"]
     C & G --> H["Rollout Inference (scripts/pretrain-generation-hf.sh)"]
@@ -248,8 +251,27 @@ Models are trained under two distinct modalities:
 - **`natural_language`**: Continual pre-training of Gemma 3 270M on flattened, time-stamped textual narratives.
 - **`structured`**: Training an autoregressive transformer from scratch over structured MEDS code sequences.
 
-#### 5.1 Tokenisation
-Tokenises the MEDS datasets and constructs the vocabulary:
+#### 5.1 MEDS → text (optional standalone)
+Converts MEDS shards to patient-level EHR text under `.../pre_training/raw_data`.
+Required before summarization; also run automatically by tokenisation if missing:
+
+```bash
+export MODE="natural_language"
+
+sbatch \
+    --partition cpu_partition \
+    --time=0:20:00 \
+    --ntasks=1 \
+    --cpus-per-task=32 \
+    --mem=256G \
+    --chdir=$(pwd) \
+    --export=ALL,SCRATCH_DIR,HF_TOKEN,DEMO \
+    --output=$SCRATCH_DIR/../logs/pretrain-meds-to-text/%j.out \
+    scripts/pretrain-meds-to-text.sh $MODE
+```
+
+#### 5.2 Tokenisation
+Tokenises the raw EHR text and constructs the vocabulary:
 
 ```bash
 # Set mode to 'natural_language' or 'structured'
@@ -269,7 +291,7 @@ sbatch \
 
 Repeat for `export MODE="structured"`.
 
-#### 5.2 Model Training
+#### 5.3 Model Training
 Launches distributed pre-training with Hugging Face `accelerate` and Liger kernels:
 
 ```bash
@@ -287,7 +309,7 @@ sbatch \
     scripts/pretrain-train.sh $MODE
 ```
 
-#### 5.3 Monitoring Training
+#### 5.4 Monitoring Training
 Training logs and metrics can be monitored via TensorBoard:
 
 ```bash
@@ -416,6 +438,7 @@ All figures (formatted with publication typography, Tab10 colour palettes, and c
 | MEDS & ACES ETL | `scripts/meds-dataset.sh` | 32× CPU, 256 GB RAM | ~45–60 min |
 | Task Prevalences | `scripts/calculate-task-prevalences.sh` | 16× CPU, 64 GB RAM | ~2–5 min |
 | MEDS-TAB (XGBoost) | `scripts/meds-tab.sh` | 124× CPU, 950 GB RAM | ~12–18 hours |
+| MEDS → text | `scripts/pretrain-meds-to-text.sh` | 32× CPU, 256 GB RAM | ~10–15 min |
 | Tokenisation | `scripts/pretrain-tokenize.sh` | 32× CPU, 256 GB RAM | ~15–20 min |
 | Model Pre-training | `scripts/pretrain-train.sh` | 1× H100 (80GB), 64 GB RAM | ~2.5 days per model |
 | Task Prompts | `scripts/create-task-datasets.sh` | 64× CPU, 512 GB RAM | ~2–4 hours |

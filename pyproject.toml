@@ -52,6 +52,7 @@ merge_age_column = "mimic_struct_predict.preprocessing.meds.transforms.merge_age
 physionet_download = "mimic_struct_predict.preprocessing.meds.physionet_download:main"
 pre_MEDS = "mimic_struct_predict.preprocessing.meds.pre_MEDS:main"
 calculate_task_prevalences = "mimic_struct_predict.preprocessing.calculate_task_prevalences:main"
+pre_training_meds_to_text = "mimic_struct_predict.models.meds_to_text:main"
 pre_training_tokenize = "mimic_struct_predict.models.tokenize:main"
 pre_training_train = "mimic_struct_predict.models.train:main"
 create_task_datasets = "mimic_struct_predict.models.create_task_datasets:main"

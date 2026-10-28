@@ -9,6 +9,8 @@ pad_to_multiple_of: 64
 max_eval_samples: 20000
 seed: 42
 resume_from_checkpoint: null
+# true: dataset has separate input_ids + labels (chunked input→target); use packing collator
+custom_targets: false
 
 model:
   name: ???

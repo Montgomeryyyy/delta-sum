@@ -2063,6 +2063,7 @@ dependencies = [
     { name = "packaging" },
     { name = "peft" },
     { name = "polars" },
+    { name = "requests" },
     { name = "seaborn" },
     { name = "tabulate" },
     { name = "tensorboard" },

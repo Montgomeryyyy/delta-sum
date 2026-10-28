@@ -1,0 +1,21 @@
+dataset_dir: ???  # Required: directory of meds datasets with quantiles
+output_dir: ???   # Required: directory to save raw_data/
+
+overwrite: true
+
+dataset:
+  split_names:
+    train: train
+    val: tuning
+
+pre_processing:
+  delimiter: "//"
+  delimiter_replacement: " "
+  append_numeric_values: true
+  numeric_values_sig_figs: 2
+  append_text_values: true
+  code_join_token: "\n\n"
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

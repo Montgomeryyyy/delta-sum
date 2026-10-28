@@ -1,0 +1,8 @@
+defaults:
+  - natural_language
+  - _self_
+
+pre_processing:
+  delimiter_replacement: null # Tokenizer uses delimiter to define codes
+  code_join_token: "//\n\n//"
+  append_numeric_values: false

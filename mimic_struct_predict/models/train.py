@@ -18,6 +18,7 @@ from transformers import (
     TrainingArguments,
 )
 
+from mimic_struct_predict.models.utils.data_collators import DataCollatorForInputTargetLM
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
 
 log = get_logger(__name__)
@@ -35,8 +36,16 @@ def main(cfg: DictConfig) -> None:
         log.info(f"Tokenized dataset not found at {dataset_dir}. Please run the tokenizer script first.")
         raise FileNotFoundError(f"Tokenized dataset not found at {dataset_dir}")
 
-    log.info("Loading dataset...")
+    custom_targets = bool(cfg.get("custom_targets", False))
+    log.info(f"Loading dataset (custom_targets={custom_targets})...")
     dataset = datasets.load_from_disk(str(dataset_dir))
+    if custom_targets:
+        # Keep only columns the collator needs (drops input_text/target_text/etc.).
+        keep_columns = {"input_ids", "attention_mask", "labels"}
+        for split_name, split in list(dataset.items()):
+            drop = [name for name in split.column_names if name not in keep_columns]
+            if drop:
+                dataset[split_name] = split.remove_columns(drop)
     if len(dataset[cfg.split_names.val]) > cfg.max_eval_samples:
         dataset[cfg.split_names.val] = (
             dataset[cfg.split_names.val].shuffle(seed=cfg.seed).select(range(cfg.max_eval_samples))
@@ -92,7 +101,12 @@ def main(cfg: DictConfig) -> None:
         os.environ["TENSORBOARD_LOGGING_DIR"] = str(run_output_dir)
     log.info(training_args)
 
-    data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, pad_to_multiple_of=cfg.pad_to_multiple_of)
+    if custom_targets:
+        data_collator = DataCollatorForInputTargetLM(tokenizer, pad_to_multiple_of=cfg.pad_to_multiple_of)
+    else:
+        data_collator = DataCollatorForLanguageModeling(
+            tokenizer, mlm=False, pad_to_multiple_of=cfg.pad_to_multiple_of
+        )
     trainer = Trainer(
         model=model,
         args=training_args,
