@@ -7,7 +7,7 @@ seed: 42
 
 debug: false
 # Limit patients per split for smoke tests (null = full dataset).
-max_patients: 50
+max_patients: 500
 
 dataset:
   split_names:

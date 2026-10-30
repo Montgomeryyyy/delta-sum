@@ -87,7 +87,7 @@ model:
   api_base: https://ai.create.kcl.ac.uk/api/v1
   api_key_env: ARC_AI_API_KEY
   max_model_len: 200000
-  max_concurrency: 1
+  max_concurrency: 6
   request_interval_s: 2.0
   timeout_s: 120
   max_retries: 5
