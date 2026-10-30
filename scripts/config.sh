@@ -2,11 +2,11 @@
 # NOTE: This script must be SOURCED, not executed: source config.sh
 
 # ---- Check SCRATCH_DIR already defined ----
-if [ -z "$SCRATCH_DIR" ]; then
+if [ -z "${SCRATCH_DIR:-}" ]; then
     echo "Error: SCRATCH_DIR environment variable must be set." >&2
     return 1
 fi
-if [ -z "$HF_TOKEN" ]; then
+if [ -z "${HF_TOKEN:-}" ]; then
     echo "Error: HF_TOKEN environment variable must be set." >&2
     return 1
 fi
@@ -93,7 +93,7 @@ export UV_PROJECT_ENVIRONMENT="${SCRATCH_DIR}/.venv"
 # Creates a tempdir so can mem offload hugginface operations
 # But cache explodes in size (multiple copies of dataset) and don't care about fast
 # reruns of maps (all are ~quick and should be run once). So delete cache on script exit
-if [ -z "$HF_DATASETS_CACHE" ]; then
+if [ -z "${HF_DATASETS_CACHE:-}" ]; then
     mkdir -p "${CACHE_DIR}"
     export HF_DATASETS_CACHE=$(mktemp -d -p "${CACHE_DIR}" hf_datasets_cache_XXXXXX)
     # Ensure the cache is cleaned up when the script exits
