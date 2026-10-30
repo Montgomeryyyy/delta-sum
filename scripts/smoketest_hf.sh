@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Smoke-test Hugging Face model load + summarize/delta prompts.
 #
-# Prerequisites (same as the rest of this repo):
-#   - SCRATCH_DIR and HF_TOKEN set (e.g. via .env)
+# Prerequisites:
+#   - HF_TOKEN set (for gated models, e.g. Gemma)
 #   - project deps installed:  uv sync
 #
 # Usage:
@@ -13,16 +13,16 @@
 # Optional sbatch (GPU):
 #   sbatch --partition=slam_gpu --gres=gpu:1 --constraint=h100 \
 #     --time=0:30:00 --cpus-per-task=8 --mem=32G --chdir="$(pwd)" \
-#     --export=ALL,SCRATCH_DIR,HF_TOKEN \
-#     --output="$SCRATCH_DIR/../logs/smoketest_hf/%x-%j.out" \
+#     --export=ALL,HF_TOKEN \
+#     --output=smoketest_hf-%j.out \
 #     scripts/smoketest_hf.sh --device cuda
 
 set -euo pipefail
 
-source "./scripts/config.sh"
-
-# Ensure HF hub auth for gated models (e.g. Gemma).
-export HF_TOKEN
+if [ -z "${HF_TOKEN:-}" ]; then
+    echo "Error: HF_TOKEN must be set (e.g. source .env)." >&2
+    exit 1
+fi
 export HUGGING_FACE_HUB_TOKEN="${HUGGING_FACE_HUB_TOKEN:-$HF_TOKEN}"
 
 uv run python scripts/smoketest_hf.py "$@"
