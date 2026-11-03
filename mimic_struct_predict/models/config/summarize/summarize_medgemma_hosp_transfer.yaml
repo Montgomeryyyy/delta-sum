@@ -5,17 +5,17 @@ overwrite: true
 # Patients per generation batch. Each finished batch is saved to <output>_batches/
 # so a rerun skips it; resume=false discards saved batches (e.g. after changing the
 # prompt or model). Batches are deleted after the final save unless keep_batches=true.
-chunk_size: 2000
-resume: true
+chunk_size: 5000
+resume: false
 keep_batches: false
 seed: 42
 
 debug: false
 # Limit patients per split for smoke tests (null = full dataset).
-max_patients: 50 #null #50
+max_patients: null #50
 
 # Keep only patients with at least one row in MIMIC hosp/admissions.
-admitted_only: false
+admitted_only: true
 admissions_path: ${oc.env:MIMICIV_RAW_DIR}/hosp/admissions.csv.gz
 
 # Split patients across a SLURM job array (sbatch --array=0-N). Each task writes
