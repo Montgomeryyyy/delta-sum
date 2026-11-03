@@ -14,20 +14,20 @@ fi
 
 # ---- Internal Script Variables (No export needed) ----
 # Demo flag can be passed via environment or SLURM export (e.g. DEMO=true, demo=true)
-DOWNLOADED_DATA_DIR="/scratch/prj/bhi_ehrfoundationmodels/k2692250/mimic-struct-predict"
+MAIN_DATA_DIR="/storage/archive/UCPH/DeepFetal"
 export DEMO="${DEMO:-${demo:-false}}"
 if [ "${DEMO,,}" = "true" ] || [ "$DEMO" = "1" ]; then
     export DATA_DIR="${SCRATCH_DIR}/data_demo"
     export TRAINING_DIR="${SCRATCH_DIR}/training_demo"
     export INFERENCE_DIR="${SCRATCH_DIR}/inference_demo"
     export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots_demo"
-    export MIMICIV_RAW_DIR="${DOWNLOADED_DATA_DIR}/data_demo/raw_mimic"  # read-only input
+    export RAW_DIR="${MAIN_DATA_DIR}/"  # read-only input
 else
     export DATA_DIR="${SCRATCH_DIR}/data"
     export TRAINING_DIR="${SCRATCH_DIR}/training"
     export INFERENCE_DIR="${SCRATCH_DIR}/inference"
     export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots"
-    export MIMICIV_RAW_DIR="${DOWNLOADED_DATA_DIR}/data/raw_mimic"  # read-only input
+    export RAW_DIR="${MAIN_DATA_DIR}/"  # read-only input
 fi
 export DEBUG_DIR="${DATA_DIR}/debug"
 
@@ -36,8 +36,8 @@ export HF_SUMMARIZATION_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 
 export MIMIC_VERSION="2.2"
 export DATASET_NAME="mimiciv"
-export MIMICIV_PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
-export MIMICIV_MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
+export PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
+export MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
 export ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
 shopt -s nullglob
@@ -47,7 +47,7 @@ shopt -u nullglob
 export ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
 export TASK_PREVALENCES_PATH="${ACES_OUTPUT_DIR}/task_prevalences.json"
 
-export NATURAL_LANGUAGE_MEDS_DIR="${MIMICIV_MEDS_COHORT_DIR}/add_delta_rows"
+export NATURAL_LANGUAGE_MEDS_DIR="${MEDS_COHORT_DIR}/add_delta_rows"
 export NATURAL_LANGUAGE_DATA_DIR="${DATA_DIR}/natural_language"
 export NATURAL_LANGUAGE_PRE_TRAINING_DIR="${NATURAL_LANGUAGE_DATA_DIR}/pre_training"
 export NATURAL_LANGUAGE_RAW_DATA_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/raw_data"
@@ -63,7 +63,7 @@ export NATURAL_LANGUAGE_LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/embedding_lr
 export NATURAL_LANGUAGE_LR_INFERENCE_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/embedding_lr"
 
 export STRUCTURED_DATA_DIR="${DATA_DIR}/structured"
-export STRUCTURED_MEDS_DIR="${MIMICIV_MEDS_COHORT_DIR}/data" # Output of bin_numeric_values
+export STRUCTURED_MEDS_DIR="${MEDS_COHORT_DIR}/data" # Output of bin_numeric_values
 export STRUCTURED_PRE_TRAINING_DIR="${STRUCTURED_DATA_DIR}/pre_training"
 export STRUCTURED_TASK_DATA_DIR="${STRUCTURED_DATA_DIR}/tasks"
 
@@ -72,7 +72,7 @@ export STRUCTURED_INFERENCE_DIR="${INFERENCE_DIR}/structured"
 export STRUCTURED_LR_MODEL_DIR="${STRUCTURED_MODEL_DIR}/embedding_lr/models"
 export STRUCTURED_LR_INFERENCE_DIR="${STRUCTURED_INFERENCE_DIR}/embedding_lr"
 
-export MEDS_TAB_MEDS_DIR="${MIMICIV_MEDS_COHORT_DIR}/regex_replacement"
+export MEDS_TAB_MEDS_DIR="${MEDS_COHORT_DIR}/regex_replacement"
 export MEDS_TAB_OUTPUT_DATA_DIR="${DATA_DIR}/MEDS_tab"
 export MEDS_TAB_OUTPUT_MODEL_DIR="${TRAINING_DIR}/MEDS_tab"
 

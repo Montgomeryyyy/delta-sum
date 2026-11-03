@@ -2,7 +2,7 @@
 # Smoke-test Hugging Face model load + summarize/delta prompts.
 #
 # Prerequisites:
-#   - HF_TOKEN set (for gated models, e.g. Gemma)
+#   - HF_TOKEN set (for gated models, e.g. Gemma), unless --model is a local directory
 #   - an env with torch + transformers already installed
 #
 # Usage:
@@ -11,14 +11,15 @@
 #   ./scripts/smoketest_hf.sh
 #   ./scripts/smoketest_hf.sh --model google/gemma-3-270m --device cpu
 #   ./scripts/smoketest_hf.sh --model Qwen/Qwen2.5-7B-Instruct --device cuda
+#   ./scripts/smoketest_hf.sh --model /path/to/medgemma-27b-it --device auto
 
 set -euo pipefail
 
-if [ -z "${HF_TOKEN:-}" ]; then
-    echo "Error: HF_TOKEN must be set (e.g. source .env)." >&2
-    exit 1
+if [ -n "${HF_TOKEN:-}" ]; then
+    export HUGGING_FACE_HUB_TOKEN="${HUGGING_FACE_HUB_TOKEN:-$HF_TOKEN}"
+else
+    echo "Warning: HF_TOKEN not set; only local or public models will load." >&2
 fi
-export HUGGING_FACE_HUB_TOKEN="${HUGGING_FACE_HUB_TOKEN:-$HF_TOKEN}"
 
 # Prefer the *active* env. Conda sets CONDA_PREFIX, not VIRTUAL_ENV.
 # Never `uv run` here (that syncs and downloads the vllm wheel).
