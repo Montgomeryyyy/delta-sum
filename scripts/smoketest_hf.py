@@ -6,11 +6,15 @@ Independent of Hydra / the full summarize pipeline. Example:
   uv run python scripts/smoketest_hf.py
   uv run python scripts/smoketest_hf.py --model google/gemma-3-270m
   uv run python scripts/smoketest_hf.py --model Qwen/Qwen2.5-7B-Instruct --device cuda
+  uv run python scripts/smoketest_hf.py --model /path/to/medgemma-27b-it --device auto
+
+A directory passed as --model is loaded offline (local_files_only=True).
 """
 
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -121,16 +125,29 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="google/gemma-3-270m")
-    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--device",
+        default="cuda" if torch.cuda.is_available() else "cpu",
+        help='cuda, cpu, or "auto" to spread a large model across GPUs (device_map="auto")',
+    )
     parser.add_argument("--dtype", default="bfloat16", choices=["bfloat16", "float16", "float32"])
     parser.add_argument("--max-new-tokens", type=int, default=256)
     args = parser.parse_args()
 
     dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}[args.dtype]
-    print(f"Loading tokenizer/model={args.model!r} device={args.device} dtype={args.dtype}")
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model = AutoModelForCausalLM.from_pretrained(args.model, dtype=dtype)
-    model.to(args.device)
+    local = Path(args.model).is_dir()
+    print(
+        f"Loading tokenizer/model={args.model!r} device={args.device} dtype={args.dtype} "
+        f"local_files_only={local}"
+    )
+    tokenizer = AutoTokenizer.from_pretrained(args.model, local_files_only=local)
+    if args.device == "auto":
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model, dtype=dtype, device_map="auto", local_files_only=local
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(args.model, dtype=dtype, local_files_only=local)
+        model.to(args.device)
     model.eval()
     print(f"Loaded. params={model.num_parameters():,} device={next(model.parameters()).device}")
 
