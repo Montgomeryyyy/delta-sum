@@ -29,4 +29,4 @@ export NVCC_THREADS=1
 
 # Setup uv
 # rm -rf $UV_PROJECT_ENVIRONMENT
-uv sync --extra flash_attn
+uv sync --extra vllm --extra flash_attn

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 # Exact pins so a plain `pip install` from PyPI gives the same environment everywhere.
 # torch 2.10.0 is the last PyPI build on CUDA 12 (12.8); 2.11+ is CUDA 13 and needs
-# a >=580 driver. vllm 0.19.1 is the last release pinned to torch 2.10.0.
+# a >=580 driver. vllm 0.19.1 (extra) is the last release pinned to torch 2.10.0.
 dependencies = [
     "accelerate==1.14.0",
     "bitsandbytes==0.49.2",
@@ -34,10 +34,13 @@ dependencies = [
     "torchvision==0.25.0",
     "transformers==5.13.0",
     "liger-kernel==0.8.0",
-    "vllm==0.19.1",
 ]
 
 [project.optional-dependencies]
+# Prebuilt wheels need glibc >= 2.31; on older systems pip falls back to a source build.
+vllm = [
+    "vllm==0.19.1",
+]
 # Compiled from source against the installed torch (needs nvcc and GCC >= 9):
 #   pip install --no-build-isolation -e ".[flash_attn]"
 flash_attn = [
