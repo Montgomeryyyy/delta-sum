@@ -244,12 +244,24 @@ def judge_split(
             )
         )
 
-    for (p_i, c_i), judgment in zip(locations, judgments, strict=True):
-        attach_judgment(rows[p_i]["chunks"][c_i], judgment)
+    prompt_records: list[dict] = []
+    for (p_i, c_i), judgment, prompt in zip(locations, judgments, prompts, strict=True):
+        chunk = rows[p_i]["chunks"][c_i]
+        attach_judgment(chunk, judgment)
+        prompt_records.append(
+            {
+                "subject_id": rows[p_i]["subject_id"],
+                "chunk_index": c_i,
+                "prompt": prompt,
+                "judgment": chunk["judgment"],
+                **parse_judgment_fields(chunk["judgment"]),
+            }
+        )
 
-    return datasets.Dataset.from_list(
+    judged = datasets.Dataset.from_list(
         [{"subject_id": row["subject_id"], "chunks": row["chunks"]} for row in rows]
     )
+    return judged, prompt_records
 
 
 @hydra.main(version_base=None, config_path="config/judge", config_name="judge")
@@ -277,23 +289,30 @@ def main(cfg: DictConfig) -> None:
     prompt = str(cfg.judge.prompt)
     system_prompt = cfg.judge.get("system_prompt", None)
     use_chat_template = bool(cfg.judge.get("use_chat_template", True))
-    judged = datasets.DatasetDict(
-        {
-            split: judge_split(
-                rows,
-                prompt,
-                None if system_prompt is None else str(system_prompt),
-                llm,
-                sampling_params,
-                max_prompt_tokens,
-                use_chat_template,
-                int(cfg.chunk_size),
-            )
-            for split, rows in dataset.items()
-        }
-    )
+    judged_splits = {}
+    prompt_records = []
+    for split, rows in dataset.items():
+        judged_splits[split], split_records = judge_split(
+            rows,
+            prompt,
+            None if system_prompt is None else str(system_prompt),
+            llm,
+            sampling_params,
+            max_prompt_tokens,
+            use_chat_template,
+            int(cfg.chunk_size),
+        )
+        prompt_records.extend({"split": split, **record} for record in split_records)
+    judged = datasets.DatasetDict(judged_splits)
     judged.save_to_disk(out_path)
     log.info(f"Saved judged dataset to {out_path}")
+
+    if cfg.get("save_prompts", False):
+        prompts_path = output_dir / "judge_prompts.jsonl"
+        with prompts_path.open("w") as f:
+            for record in prompt_records:
+                f.write(json.dumps(record) + "\n")
+        log.info(f"Saved {len(prompt_records)} judge prompts to {prompts_path}")
 
     summary = aggregate_scores(judged)
     summary_path = output_dir / "score_summary.json"

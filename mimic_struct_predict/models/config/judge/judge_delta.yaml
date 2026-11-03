@@ -5,6 +5,7 @@ overwrite: true
 chunk_size: 1000
 seed: 42
 max_patients: 50
+save_prompts: true  # write every judge prompt + parsed scores to judge_prompts.jsonl
 
 judge:
   use_chat_template: true
@@ -32,9 +33,9 @@ judge:
     2 = all claims are supported by the provided inputs
 
     NOVELTY:
-    0 = substantial information is already represented in previous updates
-    1 = some information unnecessarily repeats previous updates
-    2 = no meaningful repetition of previous updates
+    0 = much of the delta restates information already in the previous summaries
+    1 = some of the delta restates information already in the previous summaries
+    2 = the delta does not repeat information already in the previous summaries
 
     CONCISENESS:
     0 = substantial unnecessary detail or internal redundancy

@@ -1,5 +1,6 @@
 import logging
 import re
+import shutil
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -304,16 +305,36 @@ def summarize_split(
     use_chat_template: bool = True,
     system_prompt: str | None = None,
     summarize_fn=summarize_batch,
+    batch_dir: Path | None = None,
 ) -> datasets.Dataset:
-    """Summarize one split by patient batches."""
-    subject_ids: list = []
-    chunks_col: list[list[dict]] = []
+    """Summarize one split by patient batches.
+
+    If ``batch_dir`` is set, each finished batch is saved there and batches already
+    on disk are loaded instead of regenerated, so an interrupted run can resume.
+    """
+    batches: list[datasets.Dataset] = []
     total = (len(split_dataset) + chunk_size - 1) // chunk_size
     n_truncated_total = 0
     n_prompts_total = 0
+    n_resumed = 0
 
-    for i in tqdm(range(0, len(split_dataset), chunk_size), total=total, desc="Summarizing"):
-        batch = dict(split_dataset[i : i + chunk_size])
+    for start in tqdm(range(0, len(split_dataset), chunk_size), total=total, desc="Summarizing"):
+        end = min(start + chunk_size, len(split_dataset))
+        batch_path = None if batch_dir is None else batch_dir / f"patients_{start:07d}_{end:07d}"
+
+        if batch_path is not None and batch_path.exists():
+            done = datasets.load_from_disk(str(batch_path))
+            expected_ids = split_dataset.select_columns(["subject_id"])[start:end]["subject_id"]
+            if list(done["subject_id"]) != list(expected_ids):
+                raise ValueError(
+                    f"Saved batch {batch_path} has different patients than the current "
+                    "dataset (filters or sharding changed?). Delete it or set resume=false."
+                )
+            batches.append(done)
+            n_resumed += 1
+            continue
+
+        batch = dict(split_dataset[start:end])
         n_prompts_total += sum(len(chunks) for chunks in batch["chunks"])
         result, n_truncated = summarize_fn(
             batch,
@@ -325,14 +346,29 @@ def summarize_split(
             system_prompt=system_prompt,
         )
         n_truncated_total += n_truncated
-        subject_ids.extend(result["subject_id"])
-        chunks_col.extend(result["chunks"])
+        result_dataset = datasets.Dataset.from_dict(
+            {"subject_id": result["subject_id"], "chunks": result["chunks"]}
+        )
 
+        if batch_path is not None:
+            # Write to a temp dir and rename so a killed job never leaves a partial batch.
+            tmp_path = batch_path.with_name(batch_path.name + ".tmp")
+            if tmp_path.exists():
+                shutil.rmtree(tmp_path)
+            result_dataset.save_to_disk(str(tmp_path))
+            tmp_path.rename(batch_path)
+            result_dataset = datasets.load_from_disk(str(batch_path))
+        batches.append(result_dataset)
+
+    if n_resumed:
+        log.info(f"Resumed {n_resumed}/{total} batches from {batch_dir}.")
     log.info(
-        f"Prompt truncation: {n_truncated_total}/{n_prompts_total} prompts truncated "
-        f"to {max_prompt_tokens} tokens"
+        f"Prompt truncation: {n_truncated_total}/{n_prompts_total} newly generated prompts "
+        f"truncated to {max_prompt_tokens} tokens"
     )
-    return datasets.Dataset.from_dict({"subject_id": subject_ids, "chunks": chunks_col})
+    if not batches:
+        return datasets.Dataset.from_dict({"subject_id": [], "chunks": []})
+    return datasets.concatenate_datasets(batches)
 
 
 def chunk_text(text: str, window_regex: str) -> list[str]:
@@ -424,6 +460,65 @@ def load_dataset(
     return dataset
 
 
+def load_admitted_subject_ids(admissions_path: Path) -> set[str]:
+    """Return the subject IDs that appear in MIMIC ``hosp/admissions``, as strings."""
+    log.info(f"Loading admitted patients from {admissions_path}...")
+    subject_ids = pl.read_csv(admissions_path, columns=["subject_id"])["subject_id"].unique()
+    log.info(f"Found {len(subject_ids)} admitted patients.")
+    return {str(subject_id) for subject_id in subject_ids.to_list()}
+
+
+def filter_admitted(
+    dataset: datasets.DatasetDict, admissions_path: Path, num_proc: int
+) -> datasets.DatasetDict:
+    """Keep only patients with at least one hospital admission."""
+    admitted = load_admitted_subject_ids(admissions_path)
+    filtered = dataset.filter(
+        lambda batch: [str(subject_id) in admitted for subject_id in batch["subject_id"]],
+        batched=True,
+        num_proc=num_proc,
+    )
+    for split, rows in filtered.items():
+        log.info(f"Kept {len(rows)}/{len(dataset[split])} admitted {split} patients.")
+    return filtered
+
+
+def shard_dataset(
+    dataset: datasets.DatasetDict, num_shards: int, shard_id: int
+) -> datasets.DatasetDict:
+    """Select this job's contiguous slice of patients from every split."""
+    if not 0 <= shard_id < num_shards:
+        raise ValueError(f"shard_id must be in [0, {num_shards}), got {shard_id}.")
+    sharded = datasets.DatasetDict(
+        {
+            split: rows.shard(num_shards=num_shards, index=shard_id, contiguous=True)
+            for split, rows in dataset.items()
+        }
+    )
+    for split, rows in sharded.items():
+        log.info(f"Shard {shard_id}/{num_shards}: {len(rows)} {split} patients.")
+    return sharded
+
+
+def shard_dir(output_dir: Path, num_shards: int, shard_id: int) -> Path:
+    return output_dir / "summarized_dataset_shards" / f"shard_{shard_id:03d}_of_{num_shards:03d}"
+
+
+def merge_shards(output_dir: Path, num_shards: int) -> datasets.DatasetDict:
+    """Concatenate every shard saved under ``output_dir`` into one DatasetDict."""
+    paths = [shard_dir(output_dir, num_shards, shard_id) for shard_id in range(num_shards)]
+    missing = [str(path) for path in paths if not path.exists()]
+    if missing:
+        raise FileNotFoundError(f"Missing {len(missing)}/{num_shards} shards: {missing}")
+    shards = [datasets.load_from_disk(str(path)) for path in paths]
+    return datasets.DatasetDict(
+        {
+            split: datasets.concatenate_datasets([shard[split] for shard in shards])
+            for split in shards[0]
+        }
+    )
+
+
 def load_summarized_dataset(
     input_dir: Path,
     max_patients: int | None = None,
@@ -508,6 +603,7 @@ def generate_dataset(
     llm: Any,
     sampling_params: Any,
     max_prompt_tokens: int,
+    batch_dir: Path | None = None,
 ) -> datasets.DatasetDict:
     """Run summarization over every split."""
     mode = str(cfg.summarization.get("mode", "summarize"))
@@ -528,6 +624,7 @@ def generate_dataset(
                 use_chat_template=use_chat_template,
                 system_prompt=system_prompt,
                 summarize_fn=summarize_fn,
+                batch_dir=None if batch_dir is None else batch_dir / split,
             )
             for split, rows in chunked_dataset.items()
         }
@@ -538,7 +635,23 @@ def generate_dataset(
 def main(cfg: DictConfig) -> None:
     """Chunk patient EHR text by date windows and summarize each chunk."""
     mode = str(cfg.summarization.get("mode", "summarize"))
-    out_path = Path(cfg.output_dir) / "summarized_dataset"
+    output_dir = Path(cfg.output_dir)
+    num_shards = int(cfg.get("num_shards", 1))
+    shard_id = int(cfg.get("shard_id", 0))
+
+    if cfg.get("merge_shards", False):
+        out_path = output_dir / "summarized_dataset"
+        merged = merge_shards(output_dir, num_shards)
+        for split, rows in merged.items():
+            log.info(f"Merged {len(rows)} {split} patients from {num_shards} shards.")
+        merged.save_to_disk(out_path)
+        log.info(f"Saved merged summarized dataset to {out_path}")
+        return
+
+    if num_shards > 1:
+        out_path = shard_dir(output_dir, num_shards, shard_id)
+    else:
+        out_path = output_dir / "summarized_dataset"
     if not cfg.overwrite and out_path.exists():
         log.info(
             f"Summarized dataset already exists at {out_path} "
@@ -546,11 +659,23 @@ def main(cfg: DictConfig) -> None:
         )
         return
 
+    # Finished patient batches are saved here as they complete, so a rerun resumes.
+    batch_dir = out_path.with_name(out_path.name + "_batches")
+    if not cfg.get("resume", True) and batch_dir.exists():
+        log.info(f"resume is false; deleting saved batches in {batch_dir}")
+        shutil.rmtree(batch_dir)
+
     summarize_fn = build_summarize_fn(cfg, mode)
     chunked_dataset = load_chunked_dataset(cfg, mode)
+    if cfg.get("admitted_only", False):
+        chunked_dataset = filter_admitted(
+            chunked_dataset, Path(cfg.admissions_path), num_proc=cfg.get("num_workers", 1)
+        )
+    if num_shards > 1:
+        chunked_dataset = shard_dataset(chunked_dataset, num_shards, shard_id)
     llm, sampling_params, max_prompt_tokens = load_generation_backend(cfg)
     summarized_dataset = generate_dataset(
-        chunked_dataset, cfg, summarize_fn, llm, sampling_params, max_prompt_tokens
+        chunked_dataset, cfg, summarize_fn, llm, sampling_params, max_prompt_tokens, batch_dir
     )
 
     train_split = cfg.dataset.split_names.train
@@ -565,6 +690,9 @@ def main(cfg: DictConfig) -> None:
     )
     summarized_dataset.save_to_disk(out_path)
     log.info(f"Saved summarized dataset to {out_path}")
+    if not cfg.get("keep_batches", False):
+        shutil.rmtree(batch_dir, ignore_errors=True)
+        log.info(f"Deleted per-batch checkpoints in {batch_dir}")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,15 @@
 #
 #   scripts/pretrain-summary-generation.sh delta delta_summerize_medgemma
 #
+#   # Shard patients across GPUs with a job array (configs that define
+#   # num_shards/shard_id read them from SLURM_ARRAY_TASK_COUNT/ID). With
+#   # --gres=gpu:2, tensor_parallel_size follows NUM_GPUS. Then merge on a CPU node:
+#   sbatch --array=0-7 --gres=gpu:1 --constraint=h100 ... \
+#     --output="$SCRATCH_DIR/../logs/summarize/%x-%A_%a.out" \
+#     scripts/pretrain-summary-generation.sh normal summarize_medgemma_hosp_transfer admitted_only=true
+#   scripts/pretrain-summary-generation.sh normal summarize_medgemma_hosp_transfer \
+#     num_shards=8 merge_shards=true
+#
 #   # Remote ARC API configs (model.backend=arc) do not need a GPU:
 #   sbatch \
 #     --job-name=summarize-arc-lite \

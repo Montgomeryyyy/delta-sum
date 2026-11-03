@@ -2,12 +2,28 @@ input_dir: ???           # Required: Directory of the raw natural language data
 output_dir: ???          # Required: Directory to save the summarized data
 
 overwrite: true
-chunk_size: 1000
+# Patients per generation batch. Each finished batch is saved to <output>_batches/
+# so a rerun skips it; resume=false discards saved batches (e.g. after changing the
+# prompt or model). Batches are deleted after the final save unless keep_batches=true.
+chunk_size: 2000
+resume: true
+keep_batches: false
 seed: 42
 
 debug: false
 # Limit patients per split for smoke tests (null = full dataset).
-max_patients: 50
+max_patients: 50 #null #50
+
+# Keep only patients with at least one row in MIMIC hosp/admissions.
+admitted_only: false
+admissions_path: ${oc.env:MIMICIV_RAW_DIR}/hosp/admissions.csv.gz
+
+# Split patients across a SLURM job array (sbatch --array=0-N). Each task writes
+# summarized_dataset_shards/shard_<id>_of_<n>; run once more with merge_shards=true
+# to concatenate them into summarized_dataset.
+num_shards: ${oc.decode:${oc.env:SLURM_ARRAY_TASK_COUNT,1}}
+shard_id: ${oc.decode:${oc.env:SLURM_ARRAY_TASK_ID,0}}
+merge_shards: false
 
 dataset:
   split_names:
@@ -38,8 +54,11 @@ summarization:
 model:
   model: google/medgemma-27b-it
   dtype: bfloat16
+  # FP8 weights and KV cache need Hopper/Ada GPUs (H100, L40S); set both to null on A100.
+  quantization: fp8
+  kv_cache_dtype: fp8
   seed: ${seed}
-  tensor_parallel_size: 1
+  tensor_parallel_size: ${oc.decode:${oc.env:NUM_GPUS,1}}
   max_model_len: 20000
   gpu_memory_utilization: 0.9
 
@@ -54,4 +73,4 @@ batch_size: 50
 
 hydra:
   run:
-    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}_shard${shard_id}
