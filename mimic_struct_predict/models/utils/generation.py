@@ -199,7 +199,18 @@ class ArcBackend:
                     continue
                 response.raise_for_status()
                 payload = response.json()
-                return str(payload["choices"][0]["message"]["content"])
+                choice = payload["choices"][0]
+                content = choice["message"].get("content")
+                if not content:
+                    # Reasoning models return null content when max_tokens runs out mid-reasoning.
+                    log.warning(
+                        "ARC returned no content (finish_reason=%s, usage=%s); "
+                        "consider raising sampling_params.max_tokens",
+                        choice.get("finish_reason"),
+                        payload.get("usage"),
+                    )
+                    return ""
+                return str(content)
             except requests.HTTPError:
                 raise
             except requests.RequestException as exc:
@@ -240,6 +251,8 @@ def load_generation_backend(cfg: DictConfig) -> tuple[GenerationBackend, Any, in
         sampling_params = SamplingParams(**OmegaConf.to_container(cfg.sampling_params, resolve=True))
         llm_kwargs = OmegaConf.to_container(model_cfg, resolve=True)
         llm_kwargs.pop("backend", None)
+        # null in the config means "use vLLM's default" (e.g. kv_cache_dtype must be a string).
+        llm_kwargs = {key: value for key, value in llm_kwargs.items() if value is not None}
         log.info(f"Loading local model ({llm_kwargs.get('model')})...")
         log.info(sampling_params)
         backend: GenerationBackend = LocalBackend(LLM(**llm_kwargs))
