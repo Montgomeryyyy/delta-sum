@@ -4,6 +4,22 @@ from pathlib import Path
 import polars as pl
 
 
+def _to_pandas(df: pl.DataFrame):
+    """Convert for debug export.
+
+    Some MEDS parquet files store a struct whose child arrays are shorter than
+    the struct itself. pyarrow rejects that in ``to_pandas``. Stringify nested
+    columns first, and drop them if that export fails too.
+    """
+    nested = [name for name, dtype in df.schema.items() if isinstance(dtype, (pl.Struct, pl.List))]
+    if not nested:
+        return df.to_pandas()
+    try:
+        return df.with_columns([pl.col(name).cast(pl.String) for name in nested]).to_pandas()
+    except Exception:
+        return df.drop(nested).to_pandas()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, required=True)
@@ -32,8 +48,8 @@ def main() -> None:
         input_meds = subject_meds.filter(pl.col("time") <= prediction_time)
         output_meds = subject_meds.filter(pl.col("time") > prediction_time)
 
-        input_csv = input_meds.to_pandas().to_csv(index=False)
-        output_csv = output_meds.to_pandas().to_csv(index=False)
+        input_csv = _to_pandas(input_meds).to_csv(index=False)
+        output_csv = _to_pandas(output_meds).to_csv(index=False)
 
         out_str = (
             f"prediction_time: {prediction_time} \n"
@@ -46,7 +62,7 @@ def main() -> None:
         output_file.write_text(out_str)
 
         tex_path = output_dir / f"input_{subject_id}.tex"
-        tex_path.write_text(input_meds.to_pandas().to_latex(index=False, escape=True, float_format="%.2f"))
+        tex_path.write_text(_to_pandas(input_meds).to_latex(index=False, escape=True, float_format="%.2f"))
 
 
 if __name__ == "__main__":
