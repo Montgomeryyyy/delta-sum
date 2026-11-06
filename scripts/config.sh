@@ -12,32 +12,33 @@ if [ -z "${HF_TOKEN:-}" ]; then
 fi
 
 
-# ---- Internal Script Variables (No export needed) ----
+# ---- Paths ----
 # Demo flag can be passed via environment or SLURM export (e.g. DEMO=true, demo=true)
-MAIN_DATA_DIR="/storage/archive/UCPH/DeepFetal"
+# Scratch holds outputs this project writes (labels, text, checkpoints).
 export DEMO="${DEMO:-${demo:-false}}"
 if [ "${DEMO,,}" = "true" ] || [ "$DEMO" = "1" ]; then
     export DATA_DIR="${SCRATCH_DIR}/data_demo"
     export TRAINING_DIR="${SCRATCH_DIR}/training_demo"
     export INFERENCE_DIR="${SCRATCH_DIR}/inference_demo"
     export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots_demo"
-    export RAW_DIR="${MAIN_DATA_DIR}/"  # read-only input
 else
     export DATA_DIR="${SCRATCH_DIR}/data"
     export TRAINING_DIR="${SCRATCH_DIR}/training"
     export INFERENCE_DIR="${SCRATCH_DIR}/inference"
     export EVAL_PLOTS_DIR="${SCRATCH_DIR}/eval_plots"
-    export RAW_DIR="${MAIN_DATA_DIR}/"  # read-only input
 fi
 export DEBUG_DIR="${DATA_DIR}/debug"
 
 export HF_MODEL_NAME="google/gemma-3-270m"
 export HF_SUMMARIZATION_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 
+# Provided MEDS cohort (read-only). Contains data/<split>/*.parquet and metadata/.
+# This project does not build it.
+export MEDS_COHORT_DIR="/users/data/UCPH/DeepFetal/project/preterm_EHR/data/MEDS/SDS_SP/delta_subset_sum"
+
+# Only used by scripts/download_mimic.sh and scripts/meds-dataset.sh.
 export MIMIC_VERSION="2.2"
 export DATASET_NAME="mimiciv"
-export PRE_MEDS_DIR="${DATA_DIR}/pre_MEDS"
-export MEDS_COHORT_DIR="${DATA_DIR}/MEDS_cohort"
 
 export ACES_DEFINITIONS_DIR="./mimic_struct_predict/preprocessing/aces_task_definitions"
 shopt -s nullglob
