@@ -2,13 +2,15 @@
 # Run ACES task definitions on an existing MEDS dataset.
 #
 # Usage:
-#   scripts/fetal-dataset.sh <meds_dir> [task ...]
+#   scripts/fetal-dataset.sh [meds_dir] [task ...]
 #
-#   <meds_dir>  MEDS dataset root (contains data/<split>/*.parquet and metadata/)
+#   [meds_dir]  MEDS dataset root (contains data/<split>/*.parquet and metadata/).
+#               Defaults to MEDS_COHORT_DIR from scripts/config.sh.
 #   [task ...]  ACES definition names in ${ACES_DEFINITIONS_DIR} (without .yaml).
 #               Defaults to every definition in that folder.
 #
 # Example:
+#   scripts/fetal-dataset.sh
 #   scripts/fetal-dataset.sh /path/to/MEDS_cohort ptb first_time_ptb
 
 # Exit immediately if a command exits with a non-zero status
@@ -17,13 +19,14 @@ set -e
 # --- Get config ---
 source "./scripts/config.sh"
 
-if [ $# -lt 1 ]; then
-    echo "Usage: $0 <meds_dir> [task ...]" >&2
-    exit 1
+# A first argument is the cohort root only when it already contains data/.
+# Otherwise every argument is a task name and the cohort comes from config.sh.
+if [ $# -ge 1 ] && [ -d "$1/data" ]; then
+    MEDS_DIR="$1"
+    shift
+else
+    MEDS_DIR="${MEDS_COHORT_DIR}"
 fi
-
-MEDS_DIR="$1"
-shift
 TASKS="${*:-${ACES_TASKS}}"
 
 if [ ! -d "${MEDS_DIR}/data" ]; then
