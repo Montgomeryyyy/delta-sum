@@ -19,9 +19,9 @@ set -e
 # --- Get config ---
 source "./scripts/config.sh"
 
-# A first argument is the cohort root only when it already contains data/.
-# Otherwise every argument is a task name and the cohort comes from config.sh.
-if [ $# -ge 1 ] && [ -d "$1/data" ]; then
+# A first argument that contains a slash is the cohort path. Any other
+# arguments are task names. With no path, use MEDS_COHORT_DIR from config.sh.
+if [ $# -ge 1 ] && [[ "$1" == */* ]]; then
     MEDS_DIR="$1"
     shift
 else
