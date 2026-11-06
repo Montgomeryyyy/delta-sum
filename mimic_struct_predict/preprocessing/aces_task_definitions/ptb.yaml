@@ -1,0 +1,30 @@
+metadata:
+  description: >-
+    True if a preterm birth code occurs within 32 weeks after the second trimester scan, false otherwise.
+    Prediction is made at the second trimester scan, and only includes patients who have a second trimester scan.
+
+predicates:
+  preterm_birth:
+    code:
+      regex: "^DO60.*"
+  second_trimester_scan:
+    code:
+      regex: "^UXUD86B.*"
+
+trigger: second_trimester_scan
+
+windows:
+  input:
+    # All of the patient's history up until the second trimester scan
+    start: NULL
+    end: trigger
+    start_inclusive: True
+    end_inclusive: True
+    index_timestamp: end
+  target:
+    # Count of preterm birth codes in the 32 weeks after the scan.
+    start: input.end
+    end: start + 32 weeks
+    start_inclusive: False
+    end_inclusive: True
+    label: preterm_birth
