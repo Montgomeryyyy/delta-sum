@@ -87,7 +87,34 @@ export VLLM_CACHE_ROOT="${CACHE_DIR}/vllm"
 export TRITON_CACHE_DIR="${CACHE_DIR}/triton"
 
 export TRACKIO_DIR="${TRAINING_DIR}/trackio"
-export UV_PROJECT_ENVIRONMENT="${SCRATCH_DIR}/.venv"
+
+# Prefer an already-activated conda env or virtualenv. `uv run` would otherwise
+# create and sync ${SCRATCH_DIR}/.venv, which needs network access.
+# Job scripts call `uv run ...`. With an active env, run that command directly.
+_USE_ACTIVE_ENV=0
+if [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/python" ]; then
+    export UV_PROJECT_ENVIRONMENT="${CONDA_PREFIX}"
+    export UV_NO_SYNC=1
+    _USE_ACTIVE_ENV=1
+elif [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
+    export UV_PROJECT_ENVIRONMENT="${VIRTUAL_ENV}"
+    export UV_NO_SYNC=1
+    _USE_ACTIVE_ENV=1
+else
+    export UV_PROJECT_ENVIRONMENT="${SCRATCH_DIR}/.venv"
+fi
+
+if [ "${_USE_ACTIVE_ENV}" = 1 ]; then
+    uv() {
+        if [ "$1" = "run" ]; then
+            shift
+            "$@"
+        else
+            command uv "$@"
+        fi
+    }
+fi
+unset _USE_ACTIVE_ENV
 
 
 # Creates a tempdir so can mem offload hugginface operations

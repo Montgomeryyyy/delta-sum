@@ -24,7 +24,7 @@ fi
 
 MEDS_DIR="$1"
 shift
-TASKS=["ptb", "first_time_ptb"] #"${*:-${ACES_TASKS}}"
+TASKS="${*:-${ACES_TASKS}}"
 
 if [ ! -d "${MEDS_DIR}/data" ]; then
     echo "Error: ${MEDS_DIR}/data not found." >&2
