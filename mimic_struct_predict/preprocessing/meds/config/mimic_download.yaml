@@ -16,6 +16,13 @@ dataset_info:
       - url: ${physio_net_url}/mimic-iv-ed/${mimic_version}/
         username: ${oc.env:MIMIC_USER}
         password: ${oc.env:MIMIC_PASSWORD}
+      # No notes demo exists; this is the full credentialed note set.
+      - url: ${physio_net_url}/mimic-iv-note/${mimic_version}/
+        username: ${oc.env:MIMIC_USER}
+        password: ${oc.env:MIMIC_PASSWORD}
     demo:
       - url: ${physio_net_url}/mimic-iv-demo/${mimic_version}/
       - url: ${physio_net_url}/mimic-iv-ed-demo/${mimic_version}/
+      - url: ${physio_net_url}/mimic-iv-note/${mimic_version}/
+        username: ${oc.env:MIMIC_USER}
+        password: ${oc.env:MIMIC_PASSWORD}

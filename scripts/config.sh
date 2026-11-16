@@ -35,7 +35,7 @@ export HF_SUMMARIZATION_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 # Provided MEDS cohort (read-only). Contains data/<split>/*.parquet and metadata/.
 # This project does not build it. Override by passing a path to scripts/fetal-dataset.sh
 # or by setting MEDS_COHORT_DIR before sourcing this file.
-export MEDS_COHORT_DIR="${MEDS_COHORT_DIR:-/users/data/UCPH/DeepFetal/project/preterm_EHR/data/MEDS/SDS_SP/delta_subset_sum}"
+export MEDS_COHORT_DIR="${MEDS_COHORT_DIR:-/users/data/UCPH/DeepFetal/project/preterm_EHR/data/MEDS/SDS_SP/delta_sum}"
 
 # Only used by scripts/download_mimic.sh and scripts/meds-dataset.sh.
 export MIMIC_VERSION="2.2"
@@ -47,6 +47,9 @@ export ACES_TASKS=$(basename -a -s .yaml "${ACES_DEFINITIONS_DIR}"/*.yaml)
 # export ACES_TASKS=hospital_post_discharge_30_day_mortality
 shopt -u nullglob
 export ACES_OUTPUT_DIR="${DATA_DIR}/aces_labels"
+# Copy of ACES_OUTPUT_DIR with one label per subject per day. Written by scripts/fetal-dataset.sh
+# when ONE_LABEL_PER_DAY=true.
+export ACES_ONE_PER_DAY_OUTPUT_DIR="${DATA_DIR}/aces_labels_one_per_day"
 export TASK_PREVALENCES_PATH="${ACES_OUTPUT_DIR}/task_prevalences.json"
 
 export NATURAL_LANGUAGE_MEDS_DIR="${MEDS_COHORT_DIR}/add_delta_rows"

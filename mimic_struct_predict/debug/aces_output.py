@@ -31,9 +31,15 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     aces_df = pl.read_parquet(args.aces_train_dir)
-    meds_df = pl.read_parquet(args.meds_train_dir)
 
     subjects = aces_df["subject_id"].unique().sort().head(10)
+
+    # The full MEDS split does not fit in memory, so only load the sampled subjects.
+    meds_df = (
+        pl.scan_parquet(Path(args.meds_train_dir) / "*.parquet")
+        .filter(pl.col("subject_id").is_in(subjects.to_list()))
+        .collect()
+    )
 
     for subject_id in subjects.to_list():
         subject_aces = aces_df.filter(pl.col("subject_id") == subject_id).sort("prediction_time")

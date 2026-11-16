@@ -9,9 +9,13 @@
 #   [task ...]  ACES definition names in ${ACES_DEFINITIONS_DIR} (without .yaml).
 #               Defaults to every definition in that folder.
 #
+#   Set ONE_LABEL_PER_DAY=true to also write a copy of the labels with one label per
+#   subject per day to ${ACES_ONE_PER_DAY_OUTPUT_DIR}. The raw labels are kept.
+#
 # Example:
 #   scripts/fetal-dataset.sh
 #   scripts/fetal-dataset.sh /path/to/MEDS_cohort ptb first_time_ptb
+#   ONE_LABEL_PER_DAY=true scripts/fetal-dataset.sh ptb
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -28,6 +32,7 @@ else
     MEDS_DIR="${MEDS_COHORT_DIR}"
 fi
 TASKS="${*:-${ACES_TASKS}}"
+ONE_LABEL_PER_DAY="${ONE_LABEL_PER_DAY:-false}"
 
 if [ ! -d "${MEDS_DIR}/data" ]; then
     echo "Error: ${MEDS_DIR}/data not found." >&2
@@ -58,6 +63,14 @@ for task in ${TASKS}; do
         hydra/launcher=joblib \
         hydra.launcher.n_jobs="${NUM_WORKERS}" \
         --multirun
+
+    if [ "${ONE_LABEL_PER_DAY,,}" = "true" ] || [ "$ONE_LABEL_PER_DAY" = "1" ]; then
+        echo "Writing one label per subject per day for task ${task} to ${ACES_ONE_PER_DAY_OUTPUT_DIR}/${task}"
+        rm -rf "${ACES_ONE_PER_DAY_OUTPUT_DIR:?}/${task}"
+        uv run python mimic_struct_predict/preprocessing/one_label_per_day.py \
+            --input_dir "${ACES_OUTPUT_DIR}/${task}" \
+            --output_dir "${ACES_ONE_PER_DAY_OUTPUT_DIR}/${task}"
+    fi
 
     echo "Outputting task ${task} to markdown for debugging at ${DEBUG_DIR}/aces/${task}"
     uv run python mimic_struct_predict/debug/aces_output.py \
