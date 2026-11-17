@@ -1,7 +1,6 @@
 """Copy ACES labels for one task, keeping one label per subject per prediction date.
 
-Many events appear twice on the same day: once as a date-only row (00:00:00) and once with the actual
-time. By default the latest prediction time on each day is kept. The input labels are left untouched.
+By default the earliest prediction time on each day is kept. The input labels are left untouched.
 
 Example:
     uv run python mimic_struct_predict/preprocessing/one_label_per_day.py \
@@ -14,7 +13,7 @@ from pathlib import Path
 import polars as pl
 
 
-def one_label_per_day(df: pl.DataFrame, keep: str = "last") -> pl.DataFrame:
+def one_label_per_day(df: pl.DataFrame, keep: str = "first") -> pl.DataFrame:
     return (
         df.sort("subject_id", "prediction_time")
         .with_columns(pl.col("prediction_time").dt.date().alias("_prediction_date"))
@@ -27,7 +26,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", type=Path, required=True, help="Raw ACES output dir for one task.")
     parser.add_argument("--output_dir", type=Path, required=True)
-    parser.add_argument("--keep", choices=["first", "last"], default="last")
+    parser.add_argument("--keep", choices=["first", "last"], default="first")
     args = parser.parse_args()
 
     if args.input_dir.resolve() == args.output_dir.resolve():
