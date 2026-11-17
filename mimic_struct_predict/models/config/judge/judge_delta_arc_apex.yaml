@@ -4,7 +4,7 @@ output_dir: ???  # directory for the judged dataset
 overwrite: true
 chunk_size: 1000
 seed: 42
-max_patients: 50
+max_patients: 20
 save_prompts: true  # write every judge prompt + parsed scores to judge_prompts.jsonl
 
 judge:
@@ -88,7 +88,7 @@ model:
   api_base: https://ai.create.kcl.ac.uk/api/v1
   api_key_env: ARC_AI_API_KEY
   max_model_len: 200000
-  max_concurrency: 1
+  max_concurrency: 4
   request_interval_s: 2.0
   timeout_s: 600
   max_retries: 5

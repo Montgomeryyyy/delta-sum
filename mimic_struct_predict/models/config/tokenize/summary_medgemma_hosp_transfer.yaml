@@ -1,0 +1,16 @@
+# Chunked tokenization of the MedGemma full summaries (admitted-only, hosp transfer windows).
+defaults:
+  - natural_language
+  - _self_
+
+chunked: true
+input_dir: ${oc.env:NATURAL_LANGUAGE_PRE_TRAINING_DIR}/medgemma_summarized_data_hosp_transfer_only_admitted_biomed_gpu/summarized_dataset
+output_dir: ${oc.env:NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_chunks_dataset/summary_medgemma_hosp_transfer
+num_workers: ${oc.decode:${oc.env:NUM_WORKERS,1}}
+
+tokenizer:
+  pre_trained_tokenizer: google/gemma-3-270m
+
+tokenization:
+  target_field: summary
+  target_prefix: "\n\n### Summary\n"

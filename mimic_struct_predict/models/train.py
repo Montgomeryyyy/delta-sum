@@ -18,7 +18,10 @@ from transformers import (
     TrainingArguments,
 )
 
-from mimic_struct_predict.models.utils.data_collators import DataCollatorForInputTargetLM
+from mimic_struct_predict.models.utils.data_collators import (
+    DataCollatorForInputTargetLM,
+    DataCollatorForPackedInputTargetLM,
+)
 from mimic_struct_predict.models.utils.trainer_callbacks import MultiGpuTensorBoardCallback
 
 log = get_logger(__name__)
@@ -101,7 +104,11 @@ def main(cfg: DictConfig) -> None:
         os.environ["TENSORBOARD_LOGGING_DIR"] = str(run_output_dir)
     log.info(training_args)
 
-    if custom_targets:
+    if custom_targets and cfg.get("packed", False):
+        if model.config._attn_implementation != "flash_attention_2":
+            raise ValueError("packed=true requires model.config.attn_implementation=flash_attention_2")
+        data_collator = DataCollatorForPackedInputTargetLM()
+    elif custom_targets:
         data_collator = DataCollatorForInputTargetLM(tokenizer, pad_to_multiple_of=cfg.pad_to_multiple_of)
     else:
         data_collator = DataCollatorForLanguageModeling(

@@ -4,12 +4,24 @@ input_dir: ???
 output_dir: ???          # Required: Directory to save the summarized data
 
 overwrite: true
+# Patients per generation batch. Each finished batch is saved to <output>_batches/
+# so a rerun skips it; resume=false discards saved batches (e.g. after changing the
+# prompt or model). Batches are deleted after the final save unless keep_batches=true.
 chunk_size: 1000
+resume: true
+keep_batches: false
 seed: 42
 
 debug: false
 # Limit patients per split for smoke tests (null = full dataset).
-max_patients: 50
+max_patients: null #50
+
+# Split patients across a SLURM job array (sbatch --array=0-N). Each task writes
+# summarized_dataset_shards/shard_<id>_of_<n>; run once more with merge_shards=true
+# to concatenate them into summarized_dataset.
+num_shards: ${oc.decode:${oc.env:SLURM_ARRAY_TASK_COUNT,1}}
+shard_id: ${oc.decode:${oc.env:SLURM_ARRAY_TASK_ID,0}}
+merge_shards: false
 
 dataset:
   split_names:
@@ -22,6 +34,7 @@ dataset:
 #   summarize            - plain per-chunk summaries
 #   delta_only_summarize - {previous_context} = prior model outputs
 #   delta_summarize      - {previous_context} = prior summaries from "summarize" mode
+
 summarization:
   window_regex: "^#### Hospital Transfer"
   mode: "delta_summarize"
@@ -61,6 +74,46 @@ summarization:
     {text}
 
     Clinical update:
+
+# summarization:
+#   window_regex: "^#### Hospital Transfer"
+#   mode: "delta_summarize"
+#   use_chat_template: true
+
+#   system_prompt: >
+#     You are a clinical summarization system for longitudinal EHRs.
+#     Produce concise, factual clinical updates. Preserve clinically relevant new
+#     information and do not invent facts.
+
+#   prompt: |
+#     Given the previous clinical summaries and the new EHR excerpt, extract the
+#     clinically relevant information that is not already represented in the
+#     previous summaries.
+
+#     Include new diagnoses, symptoms, treatments, procedures, medications,
+#     clinically relevant results or findings, and meaningful changes in clinical state.
+#     Repeated testing may also be an update when it provides new evidence of stability,
+#     persistence, improvement, resolution, benignity, or absence of disease.
+
+#     Do not repeat previously known information unless the new excerpt changes its
+#     interpretation. Summarize repeated measurements as trends when possible rather
+#     than listing trivial values individually.
+
+#     Do not include administrative details or infer information not stated in the excerpt.
+
+#     Output exactly "No clinically meaningful update." only if the excerpt adds no
+#     clinically relevant information beyond the previous summaries.
+
+#     Write concise plain prose in complete sentences. Do not use headings, bullets,
+#     numbered lists, Markdown, or section labels.
+
+#     Previous clinical summaries:
+#     {previous_context}
+
+#     New EHR excerpt:
+#     {text}
+
+#     Clinical update:
 
 # summarization:
 #   window_regex: "^#### Hospital Transfer"

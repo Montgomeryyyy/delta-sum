@@ -21,6 +21,10 @@
 #     input_dir="$SCRATCH_DIR/data/natural_language/pre_training/medgemma_delta_summarized_data_hosp_transfer/summarized_dataset" \
 #     output_dir="$SCRATCH_DIR/data/natural_language/pre_training/medgemma_delta_tokenized_chunks"
 #   (chunked: output_dir is the HF dataset path itself)
+#
+#   # Named config under mimic_struct_predict/models/config/tokenize/ (no .yaml).
+#   # The yaml supplies input_dir/output_dir/tokenizer; overrides still apply:
+#   ./scripts/pretrain-tokenize.sh natural_language --config-name summary_medgemma_hosp_transfer
 
 set -e
 
@@ -30,6 +34,16 @@ if [[ -z "$MODE" ]]; then
     exit 1
 fi
 shift
+
+NAMED_CONFIG=""
+if [[ "${1:-}" == "--config-name" ]]; then
+    NAMED_CONFIG="${2:-}"
+    if [[ -z "${NAMED_CONFIG}" ]]; then
+        echo "Usage: $0 <mode> --config-name <name> [extra hydra overrides...]" >&2
+        exit 1
+    fi
+    shift 2
+fi
 
 CHUNKED_ARG=""
 if [[ "${1:-}" == "chunked" ]]; then
@@ -48,6 +62,17 @@ fi
 source "./scripts/config.sh"
 
 # --- Pipeline Execution ---
+
+if [[ -n "${NAMED_CONFIG}" ]]; then
+    CONFIG_FILE="./mimic_struct_predict/models/config/tokenize/${NAMED_CONFIG}.yaml"
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo "Config not found: ${CONFIG_FILE}" >&2
+        exit 1
+    fi
+    echo "Tokenizing with config ${NAMED_CONFIG}"
+    uv run pre_training_tokenize --config-name="${NAMED_CONFIG}" "${HYDRA_ARGS[@]}"
+    exit 0
+fi
 
 if [[ "$MODE" == "structured" ]]; then
     CONFIG_NAME="structured.yaml"

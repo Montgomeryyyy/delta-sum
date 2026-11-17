@@ -28,8 +28,12 @@ tokenization:
   target_field: delta
   # How to join prior chunk texts into the context string.
   chunk_join_token: "\n\n"
+  # Appended after the context (masked from the loss) to mark where the target starts.
+  # Inference prompts must end with the same string. Input also starts with <bos>,
+  # and labels end with <eos>.
+  target_prefix: "\n\n### Delta\n"
   # Also store input_text / target_text on each example (for debugging).
-  save_text: true
+  save_text: false
   # Classic overflowing windows only (ignored when chunked=true).
   # stride: 128
 

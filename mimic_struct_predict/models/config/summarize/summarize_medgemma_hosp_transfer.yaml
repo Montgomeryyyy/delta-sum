@@ -1,12 +1,12 @@
 input_dir: ???           # Required: Directory of the raw natural language data
 output_dir: ???          # Required: Directory to save the summarized data
 
-overwrite: true
+overwrite: false
 # Patients per generation batch. Each finished batch is saved to <output>_batches/
 # so a rerun skips it; resume=false discards saved batches (e.g. after changing the
 # prompt or model). Batches are deleted after the final save unless keep_batches=true.
 chunk_size: 5000
-resume: false
+resume: true
 keep_batches: false
 seed: 42
 

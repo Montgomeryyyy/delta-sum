@@ -6,26 +6,36 @@ split_names:
   val: tuning
 
 pad_to_multiple_of: 64
-max_eval_samples: 20000
+max_eval_samples: 5000
 seed: 42
 resume_from_checkpoint: null
 # Chunked dataset: separate input_ids + labels; pack and mask input in the collator
 custom_targets: true
+# Padding-free: concatenate each microbatch into one row (needs flash_attention_2).
+# Examples range from ~400 to 16k tokens, so padding would waste most of the compute.
+packed: true
 
 model:
   name: ???
   random_init: false
   config:
     dtype: bfloat16
-    attn_implementation: eager # [liger_kernel.transformers.model.gemma3][WARNING] - It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `flash_attention_2`. Use `eager` with `AutoModelForCausalLM.from_pretrained('<path-to-checkpoint>', attn_implementation='eager')`
+    # Liger warns to use eager; that applies to Gemma2's attn soft-capping, which
+    # gemma-3-270m does not use (attn_logit_softcapping: null). Eager would also
+    # materialise full 16k x 16k scores for the 512-token sliding-window layers.
+    attn_implementation: flash_attention_2
+    # Otherwise Gemma3 builds a KV cache in forward, which wastes memory and disables
+    # packed-sequence detection from position_ids.
+    use_cache: false
 
 tokenizer_dir: ???
 
 # https://huggingface.co/docs/transformers/en/main_classes/trainer#transformers.TrainingArguments
 training_args:
-  # Long packed sequences (up to ~16k); eager attn is O(seq^2) so keep microbatch tiny.
-  per_device_train_batch_size: 1
-  num_train_epochs: 5
+  # Packed microbatch of 4 examples (<= 4 x 16k tokens) fits an 80GB H100 without
+  # gradient checkpointing. On OOM, set gradient_checkpointing=true or lower this.
+  per_device_train_batch_size: 4
+  num_train_epochs: 2
   # Learning Rate & Scheduler
   learning_rate: 1e-4
   lr_scheduler_type: cosine_with_min_lr
@@ -36,15 +46,15 @@ training_args:
   optim: adamw_torch_fused
   weight_decay: 0.01
   # Regularization & Training Stability
-  # Keep effective batch ≈ 128 (was 32×4) via accumulation.
-  gradient_accumulation_steps: 128
+  # Effective batch = 4 x 32 x NUM_GPUS examples; divide this by NUM_GPUS to keep 128.
+  gradient_accumulation_steps: 32
   max_grad_norm: 1.0
   # Mixed Precision Training
   bf16: true
   bf16_full_eval: true
   tf32: true
   # Gradient Checkpointing
-  gradient_checkpointing: true
+  gradient_checkpointing: false
   # Logging & Monitoring Training
   logging_strategy: steps
   logging_steps: 50
@@ -56,7 +66,7 @@ training_args:
   # Evaluation
   eval_strategy: steps
   eval_steps: 0.025
-  per_device_eval_batch_size: 1
+  per_device_eval_batch_size: 4
   prediction_loss_only: true
   # Checkpointing & Saving
   save_strategy: steps

@@ -67,10 +67,10 @@ elif [[ "$MODE" == "natural_language_lora" ]]; then
     OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining_lora"
 elif [[ "$MODE" == "natural_language_summary" ]]; then
     CONFIG_NAME="natural_language_summary.yaml"
-    # HF DatasetDict path (not the parent tokenized_chunks_dataset/ folder)
-    DATASET_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_chunks_dataset/summary"
+    # HF DatasetDict path written by tokenize/summary_medgemma_hosp_transfer.yaml
+    DATASET_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_chunks_dataset/summary_medgemma_hosp_transfer"
     TOKENIZER_DIR="${HF_MODEL_NAME}"
-    OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining_summary"
+    OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining_summary_medgemma_hosp_transfer"
 fi
 
 if [[ -n "${DATASET_DIR_OVERRIDE}" ]]; then

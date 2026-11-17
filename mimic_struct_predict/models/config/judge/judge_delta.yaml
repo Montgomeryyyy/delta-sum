@@ -4,7 +4,7 @@ output_dir: ???  # directory for the judged dataset
 overwrite: true
 chunk_size: 1000
 seed: 42
-max_patients: 50
+max_patients: 20
 save_prompts: true  # write every judge prompt + parsed scores to judge_prompts.jsonl
 
 judge:
