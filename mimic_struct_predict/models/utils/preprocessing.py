@@ -86,20 +86,27 @@ def meds_to_string_dataset(
 
             # Simple scan and agg
             df = pl.scan_parquet(shard).with_row_index("meds_row_idx")
+            # DEBUG: count "New Month" rows after each step to find where they are lost.
+            new_month = pl.col("code").str.contains("New Month")
+            print(f"[{split}/{name}] after scan: {df.filter(new_month).select(pl.len()).collect().item()}")
             if append_numeric_values:
                 df = df.with_columns(
                     code=append_numeric_values_to_codes_expr(
                         delimiter=delimiter, numeric_values_sig_figs=numeric_values_sig_figs
                     )
                 )
-            if append_text_values: 
+                print(f"[{split}/{name}] after numeric: {df.filter(new_month).select(pl.len()).collect().item()}")
+            if append_text_values:
                 df = df.with_columns(
                     code=append_text_values_to_codes_expr(
                         delimiter=delimiter
                     )
                 )
+                print(f"[{split}/{name}] after text: {df.filter(new_month).select(pl.len()).collect().item()}")
 
             df = df.group_by("subject_id").agg(ehr_text=agg_expr)
+            n_patients = df.filter(pl.col("ehr_text").str.contains("New Month")).select(pl.len()).collect().item()
+            print(f"[{split}/{name}] patients with New Month after group_by: {n_patients}")
 
             out_path.parent.mkdir(parents=True, exist_ok=True)
             df.sink_parquet(out_path)
