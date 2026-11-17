@@ -1,0 +1,76 @@
+# LoRA continued pretraining of MedGemma on raw (Danish) fetal EHR text, then merge.
+# Output: <output_dir>/<timestamp>/adapter and <output_dir>/<timestamp>/merged_model.
+# Use merged_model as model.model in the summarize configs.
+input_dir: ???   # Raw text dir with <split>/*.parquet and an ehr_text column (pretrain-meds-to-text.sh output)
+output_dir: ???
+
+# train: patients the adapter is trained on. val: patients only used to track loss on unseen
+# text (never trained on). held_out is not read, so test patients stay unseen.
+split_names:
+  train: train
+  val: tuning
+
+seed: 42
+num_workers: ${oc.decode:${oc.env:NUM_WORKERS,1}}
+# Random patient subsets, drawn with `seed` before tokenization (null = whole split).
+max_train_patients: 10000
+max_eval_patients: 500
+# Patients are packed into fixed blocks of this many tokens.
+block_size: 2048
+max_eval_blocks: 1000
+resume_from_checkpoint: null
+# Merge the adapter into the base weights after training (needs ~2x model size in CPU RAM).
+merge: true
+
+model:
+  name: google/medgemma-27b-it   # HF id or local path of the model to adapt
+  # QLoRA: 4-bit base weights (~16GB for 27B instead of ~54GB). The merge still uses bf16 weights.
+  load_in_4bit: false
+  config:
+    dtype: bfloat16
+    attn_implementation: sdpa
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: none
+  # Text decoder only; leave MedGemma's vision tower untouched.
+  target_modules: '.*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)'
+
+# https://huggingface.co/docs/transformers/en/main_classes/trainer#transformers.TrainingArguments
+training_args:
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  # Effective batch = 1 x 32 x NUM_GPUS blocks; divide by NUM_GPUS to keep 32.
+  gradient_accumulation_steps: 32
+  num_train_epochs: 1
+  learning_rate: 1e-4
+  lr_scheduler_type: cosine
+  warmup_steps: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  optim: adamw_torch_fused
+  bf16: true
+  tf32: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  logging_strategy: steps
+  logging_steps: 10
+  log_level: info
+  disable_tqdm: true
+  report_to: tensorboard
+  eval_strategy: steps
+  eval_steps: 0.1
+  save_strategy: steps
+  save_steps: 0.1
+  save_total_limit: 2
+  prediction_loss_only: true
+  dataloader_num_workers: 4
+  ddp_find_unused_parameters: false
+  skip_memory_metrics: true
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

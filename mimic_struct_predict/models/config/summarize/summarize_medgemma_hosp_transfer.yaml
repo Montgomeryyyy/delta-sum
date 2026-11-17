@@ -15,7 +15,7 @@ debug: false
 max_patients: null #50
 
 # Keep only patients with at least one row in MIMIC hosp/admissions.
-admitted_only: true
+admitted_only: false
 admissions_path: ${oc.env:MIMICIV_RAW_DIR}/hosp/admissions.csv.gz
 
 # Split patients across a SLURM job array (sbatch --array=0-N). Each task writes

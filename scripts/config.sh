@@ -62,6 +62,8 @@ export NATURAL_LANGUAGE_TASK_DATA_DIR="${NATURAL_LANGUAGE_DATA_DIR}/tasks"
 
 # export EHR_TEXT_DIR="${NATURAL_LANGUAGE_PROMPT_DATA_DIR}/ehr_texts"
 export NATURAL_LANGUAGE_MODEL_DIR="${TRAINING_DIR}/natural_language"
+# LoRA domain adaptation runs (scripts/domain-adapt.sh); merged models live in <run>/merged_model.
+export DOMAIN_ADAPT_MODEL_DIR="${TRAINING_DIR}/domain_adapt"
 export NATURAL_LANGUAGE_INFERENCE_DIR="${INFERENCE_DIR}/natural_language"
 export NATURAL_LANGUAGE_TASK_EMBEDDING_DIR="${NATURAL_LANGUAGE_INFERENCE_DIR}/task_embeddings"
 export NATURAL_LANGUAGE_LR_MODEL_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/embedding_lr/models"
