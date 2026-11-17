@@ -19,24 +19,19 @@ def append_numeric_values_to_codes_expr(
         .otherwise(pl.col(numeric_col).round_sig_figs(numeric_values_sig_figs).cast(pl.String))
     )
 
-    return (
-        pl.when(pl.col(numeric_col).is_not_null())
-        .then(pl.concat_str([pl.col(code_col), rounded_str], separator=delimiter))
-        .otherwise(pl.col(code_col))
-    )
+    # ignore_nulls: rows without a numeric value keep their bare code instead of becoming null,
+    # which str.join would then silently drop.
+    return pl.concat_str([pl.col(code_col), rounded_str], separator=delimiter, ignore_nulls=True)
+
 
 def append_text_values_to_codes_expr(
     delimiter: str | None, code_col: str = "code", text_col: str = "text_value"
 ) -> pl.Expr:
-    """Appends text values to codes with specified significant figures."""
+    """Appends text values to codes."""
     if not delimiter:
         raise ValueError("Delimiter must be specified to append text values to codes.")
 
-    return (
-        pl.when(pl.col(text_col).is_not_null())
-        .then(pl.concat_str([pl.col(code_col), pl.col(text_col)], separator=delimiter))
-        .otherwise(pl.col(code_col))
-    )
+    return pl.concat_str([pl.col(code_col), pl.col(text_col)], separator=delimiter, ignore_nulls=True)
 
 
 def get_agg_expr(
@@ -60,16 +55,6 @@ def get_agg_expr(
             raise ValueError("Delimiter must be specified if delimiter_replacement is not None.")
         expr = expr.str.replace_all(delimiter, delimiter_replacement, literal=True)
     return expr
-
-
-def needed_meds_columns(append_numeric_values: bool, append_text_values: bool, extra: tuple[str, ...] = ()) -> list[str]:
-    """Columns the text conversion reads; other columns (e.g. nested structs) are never loaded."""
-    columns = ["subject_id", *extra, "code"]
-    if append_numeric_values:
-        columns.append("numeric_value")
-    if append_text_values:
-        columns.append("text_value")
-    return columns
 
 
 def meds_to_string_dataset(
@@ -100,8 +85,7 @@ def meds_to_string_dataset(
             log.info(f"Processing Split: [{split}] | Shard: {name}")
 
             # Simple scan and agg
-            columns = needed_meds_columns(append_numeric_values, append_text_values)
-            df = pl.scan_parquet(shard).select(columns).with_row_index("meds_row_idx")
+            df = pl.scan_parquet(shard).with_row_index("meds_row_idx")
             if append_numeric_values:
                 df = df.with_columns(
                     code=append_numeric_values_to_codes_expr(
@@ -172,8 +156,7 @@ def meds_and_aces_to_string_dataset(
 
             # Joined logic
             aces_lazy = pl.scan_parquet(shard)
-            columns = needed_meds_columns(append_numeric_values, append_text_values, extra=("time",))
-            meds_lazy = pl.scan_parquet(meds_p).select(columns).with_row_index("meds_row_idx")
+            meds_lazy = pl.scan_parquet(meds_p).with_row_index("meds_row_idx")
             if append_numeric_values:
                 meds_lazy = meds_lazy.with_columns(
                     code=append_numeric_values_to_codes_expr(
