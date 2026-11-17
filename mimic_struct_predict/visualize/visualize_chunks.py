@@ -22,7 +22,7 @@ from tqdm import tqdm  # noqa: E402
 from transformers import AutoTokenizer  # noqa: E402
 
 SPLITS = ["train", "tuning"]
-WINDOW_REGEX = r"^### Time"
+WINDOW_REGEX = r"^## New Month"
 BATCH_SIZE = 1000
 
 WINDOW_BINS = [

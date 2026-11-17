@@ -62,6 +62,16 @@ def get_agg_expr(
     return expr
 
 
+def needed_meds_columns(append_numeric_values: bool, append_text_values: bool, extra: tuple[str, ...] = ()) -> list[str]:
+    """Columns the text conversion reads; other columns (e.g. nested structs) are never loaded."""
+    columns = ["subject_id", *extra, "code"]
+    if append_numeric_values:
+        columns.append("numeric_value")
+    if append_text_values:
+        columns.append("text_value")
+    return columns
+
+
 def meds_to_string_dataset(
     meds_dir: Path,
     output_dir: Path,
@@ -90,7 +100,8 @@ def meds_to_string_dataset(
             log.info(f"Processing Split: [{split}] | Shard: {name}")
 
             # Simple scan and agg
-            df = pl.scan_parquet(shard).with_row_index("meds_row_idx")
+            columns = needed_meds_columns(append_numeric_values, append_text_values)
+            df = pl.scan_parquet(shard).select(columns).with_row_index("meds_row_idx")
             if append_numeric_values:
                 df = df.with_columns(
                     code=append_numeric_values_to_codes_expr(
@@ -161,7 +172,8 @@ def meds_and_aces_to_string_dataset(
 
             # Joined logic
             aces_lazy = pl.scan_parquet(shard)
-            meds_lazy = pl.scan_parquet(meds_p).with_row_index("meds_row_idx")
+            columns = needed_meds_columns(append_numeric_values, append_text_values, extra=("time",))
+            meds_lazy = pl.scan_parquet(meds_p).select(columns).with_row_index("meds_row_idx")
             if append_numeric_values:
                 meds_lazy = meds_lazy.with_columns(
                     code=append_numeric_values_to_codes_expr(
