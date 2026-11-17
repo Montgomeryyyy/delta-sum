@@ -5,7 +5,8 @@
 #   scripts/domain-adapt.sh [--model <hf_id_or_path>] [--input-dir <raw_text_dir>] \
 #       [--output-dir <dir>] [--config-name <name>] [extra hydra overrides...]
 #
-#   --model        Model to adapt. Defaults to model.name in the config (google/medgemma-27b-it).
+#   --model        Model to adapt: a local directory, or an HF id already downloaded into HF_HOME
+#                  (the hub is not contacted). Defaults to model.name in the config.
 #   --input-dir    Raw text with <split>/*.parquet and an ehr_text column.
 #                  Defaults to NATURAL_LANGUAGE_RAW_DATA_DIR (pretrain-meds-to-text.sh output).
 #   --output-dir   Defaults to ${DOMAIN_ADAPT_MODEL_DIR}/<model name>.
@@ -70,6 +71,8 @@ echo "Input: ${INPUT_DIR}"
 echo "Output: ${OUTPUT_DIR}"
 
 export NCCL_P2P_DISABLE=1
+# Compute nodes have no internet: load the model from a local path or the HF_HOME cache only.
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 
 uv run accelerate launch \
     --config_file mimic_struct_predict/models/config/train/accelerate.yaml \

@@ -45,6 +45,8 @@ training_args:
   # Effective batch = 1 x 32 x NUM_GPUS blocks; divide by NUM_GPUS to keep 32.
   gradient_accumulation_steps: 32
   num_train_epochs: 1
+  # -1 = run num_train_epochs; set e.g. 5 for a smoke test.
+  max_steps: -1
   learning_rate: 1e-4
   lr_scheduler_type: cosine
   warmup_steps: 0.03
