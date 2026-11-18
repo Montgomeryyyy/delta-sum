@@ -74,7 +74,12 @@ def main(cfg: DictConfig) -> None:
     else:
         log.info(f"Loading pre-trained model from {cfg.model.name}...")
 
+        # Multimodal configs (e.g. Gemma3ForConditionalGeneration) keep use_cache on the
+        # text sub-config, so from_pretrained would forward it to the model __init__.
+        use_cache = hydra_model_config.pop("use_cache", None)
         model = AutoModelForCausalLM.from_pretrained(cfg.model.name, **hydra_model_config)
+        if use_cache is not None:
+            model.config.get_text_config().use_cache = use_cache
     model.train()
     log.info(f"Model dtype: {model.dtype}")
 

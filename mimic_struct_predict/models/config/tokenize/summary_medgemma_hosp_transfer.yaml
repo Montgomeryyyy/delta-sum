@@ -9,7 +9,7 @@ output_dir: ${oc.env:NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_chunks_dataset
 num_workers: ${oc.decode:${oc.env:NUM_WORKERS,1}}
 
 tokenizer:
-  pre_trained_tokenizer: google/gemma-3-270m
+  pre_trained_tokenizer: google/medgemma-1.5-4b-it
 
 tokenization:
   target_field: summary

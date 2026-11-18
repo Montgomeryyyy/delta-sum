@@ -31,7 +31,7 @@ else
 fi
 export DEBUG_DIR="${DATA_DIR}/debug"
 
-export HF_MODEL_NAME="google/gemma-3-270m"
+export HF_MODEL_NAME="google/medgemma-1.5-4b-it"
 export HF_SUMMARIZATION_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 
 export MIMIC_VERSION="2.2"

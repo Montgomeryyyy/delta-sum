@@ -1,0 +1,18 @@
+# Chunked next-window tokenization: prior raw windows → current raw window
+# (same patients/examples as summary_medgemma_hosp_transfer, raw text as target).
+defaults:
+  - natural_language
+  - _self_
+
+chunked: true
+input_dir: ${oc.env:NATURAL_LANGUAGE_PRE_TRAINING_DIR}/medgemma_summarized_data_hosp_transfer_only_admitted_biomed_gpu/summarized_dataset
+output_dir: ${oc.env:NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_chunks_dataset/text_medgemma_hosp_transfer
+num_workers: ${oc.decode:${oc.env:NUM_WORKERS,1}}
+
+tokenizer:
+  pre_trained_tokenizer: google/medgemma-1.5-4b-it
+
+tokenization:
+  target_field: text
+  # Same as chunk_join_token, so context + target reads as the original record.
+  target_prefix: "\n\n"

@@ -1738,15 +1738,15 @@ wheels = [
 
 [[package]]
 name = "liger-kernel"
-version = "0.8.0"
+version = "0.8.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "torch" },
     { name = "triton" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/41/d6/85f032b40fc30c969e817f9f3527f987b508171b46d9958befd0868855fd/liger_kernel-0.8.0.tar.gz", hash = "sha256:f98b94faf018814a0757e7b72bb8ebaaf12a78782cd09b157732acca2791e72c", size = 3989670, upload-time = "2026-04-30T23:02:15.183Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3c/4e/98697a67e4e45f9faad58fe478e5f877137bf7a6ad1068179ff77e9efed6/liger_kernel-0.8.5.tar.gz", hash = "sha256:4e8f8f611a8ad735c37c989410d09820bb08881f131851a3967c34baa7889d66", size = 6832492, upload-time = "2026-10-21T00:35:33.161Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/6b/eb29b56f128a819e2cded552e293212c57daa949481206b82490b207deac/liger_kernel-0.8.0-py3-none-any.whl", hash = "sha256:e1f03eeb4ba6a6a413d585dacf92c4c15d164bab5844fa4ead2fede6bcac469c", size = 403120, upload-time = "2026-04-30T23:02:13.443Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/73/9667e4a05457e99ec921380df8d279fbcb8f8e8bd76b033ee0c82bb1d3a0/liger_kernel-0.8.5-py3-none-any.whl", hash = "sha256:60789cd576af073ab9b192b570d2597fd0cdad489cd62fb44fb16256d43754c9", size = 910117, upload-time = "2026-10-21T00:35:30.998Z" },
 ]
 
 [[package]]

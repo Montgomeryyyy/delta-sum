@@ -31,7 +31,7 @@ dependencies = [
     "torchaudio>=2.11.0",
     "torchvision>=0.26.0",
     "transformers>=5.0.0",
-    "liger-kernel>=0.8.0",
+    "liger-kernel>=0.8.5",
     "vllm",
 ]
 

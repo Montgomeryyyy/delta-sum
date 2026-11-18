@@ -14,9 +14,10 @@ source "./scripts/config.sh"
 MODE=${1}
 shift || true
 
-if [[ "$MODE" != "structured" && "$MODE" != "natural_language" && "$MODE" != "natural_language_lora" && "$MODE" != "natural_language_summary" ]]; then
+if [[ "$MODE" != "structured" && "$MODE" != "natural_language" && "$MODE" != "natural_language_lora" && "$MODE" != "natural_language_summary" && "$MODE" != "natural_language_summary_lora" ]]; then
     echo "Usage: $0 <mode> [options]"
-    echo "Modes: structured | natural_language | natural_language_lora | natural_language_summary"
+    echo "Modes: structured | natural_language | natural_language_lora | natural_language_summary | natural_language_summary_lora"
+    echo "Env:   MODEL_NAME=<hf id> to override HF_MODEL_NAME from config.sh for this run"
     echo "Options:"
     echo "  --dataset-dir <path>              Tokenized HF dataset directory"
     echo "  --output-dir <path>               Training output / checkpoint parent"
@@ -50,6 +51,9 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
+# config.sh re-exports HF_MODEL_NAME on every source, so per-job overrides need a separate var.
+MODEL_NAME="${MODEL_NAME:-${HF_MODEL_NAME}}"
+
 if [[ "$MODE" == "structured" ]]; then
     CONFIG_NAME="structured.yaml"
     DATASET_DIR="${STRUCTURED_PRE_TRAINING_DIR}/tokenized_dataset"
@@ -58,19 +62,24 @@ if [[ "$MODE" == "structured" ]]; then
 elif [[ "$MODE" == "natural_language" ]]; then
     CONFIG_NAME="natural_language.yaml"
     DATASET_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_dataset"
-    TOKENIZER_DIR="${HF_MODEL_NAME}"
+    TOKENIZER_DIR="${MODEL_NAME}"
     OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining"
 elif [[ "$MODE" == "natural_language_lora" ]]; then
     CONFIG_NAME="natural_language_lora.yaml"
     DATASET_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_dataset"
-    TOKENIZER_DIR="${HF_MODEL_NAME}"
+    TOKENIZER_DIR="${MODEL_NAME}"
     OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining_lora"
 elif [[ "$MODE" == "natural_language_summary" ]]; then
     CONFIG_NAME="natural_language_summary.yaml"
     # HF DatasetDict path written by tokenize/summary_medgemma_hosp_transfer.yaml
     DATASET_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_chunks_dataset/summary_medgemma_hosp_transfer"
-    TOKENIZER_DIR="${HF_MODEL_NAME}"
+    TOKENIZER_DIR="${MODEL_NAME}"
     OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining_summary_medgemma_hosp_transfer"
+elif [[ "$MODE" == "natural_language_summary_lora" ]]; then
+    CONFIG_NAME="natural_language_summary_lora.yaml"
+    DATASET_DIR="${NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_chunks_dataset/summary_medgemma_hosp_transfer"
+    TOKENIZER_DIR="${MODEL_NAME}"
+    OUTPUT_DIR="${NATURAL_LANGUAGE_MODEL_DIR}/pretraining_summary_medgemma_hosp_transfer_lora"
 fi
 
 if [[ -n "${DATASET_DIR_OVERRIDE}" ]]; then
@@ -80,10 +89,12 @@ if [[ -n "${OUTPUT_DIR_OVERRIDE}" ]]; then
     OUTPUT_DIR="${OUTPUT_DIR_OVERRIDE}"
 fi
 
-echo "Training mode=${MODE} dataset_dir=${DATASET_DIR} output_dir=${OUTPUT_DIR}"
+echo "Training mode=${MODE} model=${MODEL_NAME} dataset_dir=${DATASET_DIR} output_dir=${OUTPUT_DIR}"
 
 # (P2P) over PCIe is broken or blocked by the BIOS/IOMMU
 export NCCL_P2P_DISABLE=1
+# Packed rows vary from ~400 to 64k tokens; avoids fragmentation OOMs from odd-sized blocks
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 uv run accelerate launch \
     --config_file mimic_struct_predict/models/config/train/accelerate.yaml \
@@ -92,6 +103,6 @@ uv run accelerate launch \
     --config-name "${CONFIG_NAME}" \
     dataset_dir="${DATASET_DIR}" \
     output_dir="${OUTPUT_DIR}" \
-    model.name="${HF_MODEL_NAME}" \
+    model.name="${MODEL_NAME}" \
     tokenizer_dir="${TOKENIZER_DIR}" \
     "${HYDRA_ARGS[@]}"

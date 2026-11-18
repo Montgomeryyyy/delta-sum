@@ -1,0 +1,31 @@
+# LoRA variant of natural_language_summary for multimodal Gemma 3 checkpoints
+# (e.g. google/medgemma-1.5-4b-it) on a single 80GB H100.
+defaults:
+  - natural_language_summary
+  - _self_
+
+# Each eval example is a full forward pass of the 4B model; 5000 would cost ~1h per eval.
+max_eval_samples: 1000
+
+lora:
+  r: 64
+  lora_alpha: 128
+  # Full-match regex: only the text decoder. "all-linear" would also adapt the SigLIP
+  # vision tower and multi_modal_projector, which never see an image here.
+  target_modules: ".*language_model.*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)"
+  lora_dropout: 0.0
+  bias: "none"
+
+training_args:
+  # Packed microbatch of 4 examples (<= 64k tokens). Without checkpointing the 4B
+  # activations for 64k tokens are >100GB; with it, ~40GB.
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 32
+  gradient_checkpointing: true
+  # Non-reentrant is required when the frozen embeddings produce no grad (PEFT).
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  learning_rate: 2e-4
+  num_train_epochs: 1
+  eval_steps: 0.05
+  save_steps: 0.05

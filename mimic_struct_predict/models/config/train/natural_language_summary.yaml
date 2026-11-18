@@ -66,7 +66,8 @@ training_args:
   # Evaluation
   eval_strategy: steps
   eval_steps: 0.025
-  per_device_eval_batch_size: 4
+  per_device_eval_batch_size: 1
+  eval_on_start: true
   prediction_loss_only: true
   # Checkpointing & Saving
   save_strategy: steps
