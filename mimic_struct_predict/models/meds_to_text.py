@@ -18,8 +18,7 @@ def main(cfg: DictConfig) -> None:
     output_dir = Path(cfg.output_dir)
     raw_data_dir = output_dir / "raw_data"
 
-    train_split = cfg.dataset.split_names.train
-    val_split = cfg.dataset.split_names.val
+    splits = set(cfg.dataset.split_names.values())
 
     if not cfg.overwrite and raw_data_dir.exists() and any(raw_data_dir.glob("*/*.parquet")):
         log.info(
@@ -28,11 +27,11 @@ def main(cfg: DictConfig) -> None:
         )
         return
 
-    log.info("Creating raw pretraining dataset from MEDS shards...")
+    log.info(f"Creating raw pretraining dataset from MEDS shards (splits={sorted(splits)})...")
     meds_to_string_dataset(
         meds_dir=meds_data_dir,
         output_dir=raw_data_dir,
-        splits={train_split, val_split},
+        splits=splits,
         overwrite=cfg.overwrite,
         **cfg.pre_processing,
     )
