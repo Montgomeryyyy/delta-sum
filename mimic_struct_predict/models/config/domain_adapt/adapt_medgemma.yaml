@@ -7,8 +7,8 @@ output_dir: ???
 # train: patients the adapter is trained on. val: patients only used to track loss on unseen
 # text (never trained on). held_out is not read, so test patients stay unseen.
 split_names:
-  train: train
-  val: tuning
+  train: domain_adapt_train
+  val: domain_adapt_tuning
 
 seed: 42
 num_workers: ${oc.decode:${oc.env:NUM_WORKERS,1}}

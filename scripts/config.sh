@@ -35,7 +35,7 @@ export HF_SUMMARIZATION_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 # Provided MEDS cohort (read-only). Contains data/<split>/*.parquet and metadata/.
 # This project does not build it. Override by passing a path to scripts/fetal-dataset.sh
 # or by setting MEDS_COHORT_DIR before sourcing this file.
-export MEDS_COHORT_DIR="${MEDS_COHORT_DIR:-/users/data/UCPH/DeepFetal/projects/preterm_EHR/data/MEDS/SDS_SP/delta_sum_code_mapped}"
+export MEDS_COHORT_DIR="${MEDS_COHORT_DIR:-/users/data/UCPH/DeepFetal/projects/preterm_EHR/data/MEDS/SDS_SP/delta_sum_code_mapped_domain_adapt}"
 
 # Only used by scripts/download_mimic.sh and scripts/meds-dataset.sh.
 export MIMIC_VERSION="2.2"
