@@ -7,6 +7,8 @@ dataset:
   split_names:
     train: train
     val: tuning
+    domain_train: domain_train
+    domain_val: domain_tuning
 
 pre_processing:
   delimiter: "//"
