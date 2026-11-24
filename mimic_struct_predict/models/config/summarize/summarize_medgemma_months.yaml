@@ -12,11 +12,11 @@ seed: 42
 
 debug: false
 # Limit patients per split for smoke tests (null = full dataset).
-max_patients: null #50
+max_patients: 50
 
 # Keep only patients with at least one row in MIMIC hosp/admissions.
 admitted_only: false
-admissions_path: ${oc.env:MIMICIV_RAW_DIR}/hosp/admissions.csv.gz
+admissions_path: null
 
 # Split patients across a SLURM job array (sbatch --array=0-N). Each task writes
 # summarized_dataset_shards/shard_<id>_of_<n>; run once more with merge_shards=true
@@ -33,7 +33,7 @@ dataset:
 
 # First window has no prior updates, so it is a full summary. Later windows use `prompt`.
 summarization:
-  window_regex: "^#### Hospital Transfer"
+  window_regex: "^## New Month"
   mode: "summarize"
   use_chat_template: true
   system_prompt: >
