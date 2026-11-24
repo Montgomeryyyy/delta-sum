@@ -30,7 +30,10 @@ fi
 export DEBUG_DIR="${DATA_DIR}/debug"
 
 export HF_MODEL_NAME="google/gemma-3-270m"
-export HF_SUMMARIZATION_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
+# Local domain-adapted merged model used as the default summarizer.
+# Set DOMAIN_ADAPT_MODEL_SUM in the env (path to .../merged_model) before sourcing.
+export DOMAIN_ADAPT_MODEL_SUM="${DOMAIN_ADAPT_MODEL_SUM:-}"
+export HF_SUMMARIZATION_MODEL_NAME="${DOMAIN_ADAPT_MODEL_SUM}"
 
 # Provided MEDS cohort (read-only). Contains data/<split>/*.parquet and metadata/.
 # This project does not build it. Override by passing a path to scripts/fetal-dataset.sh

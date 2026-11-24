@@ -102,8 +102,13 @@ if [[ -n "${CONFIG_NAME}" ]]; then
         echo "Config not found: ${CONFIG_FILE}" >&2
         exit 1
     fi
-    # Leave model.model to the named yaml. A later hydra override can still change it.
-    MODEL_ARGS=()
+    # Named yaml owns model.model unless DOMAIN_ADAPT_MODEL_SUM is set; trailing
+    # hydra overrides (model.model=...) still win either way.
+    if [[ -n "${DOMAIN_ADAPT_MODEL_SUM}" ]]; then
+        MODEL_ARGS=(model.model="${DOMAIN_ADAPT_MODEL_SUM}")
+    else
+        MODEL_ARGS=()
+    fi
 else
     CONFIG_NAME="${DEFAULT_CONFIG}"
     MODEL_ARGS=(model.model="${HF_SUMMARIZATION_MODEL_NAME}")
