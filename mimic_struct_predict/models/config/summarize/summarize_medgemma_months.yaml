@@ -1,26 +1,16 @@
-input_dir: ???           # Required: Directory of the raw natural language data
-output_dir: ???          # Required: Directory to save the summarized data
+# input_dir / output_dir are required by Hydra; scripts/pretrain-summary-generation.sh sets both.
+input_dir: ???
+output_dir: ???
 
 overwrite: false
-# Patients per generation batch. Each finished batch is saved to <output>_batches/
-# so a rerun skips it; resume=false discards saved batches (e.g. after changing the
-# prompt or model). Batches are deleted after the final save unless keep_batches=true.
 chunk_size: 5000
 resume: true
 keep_batches: false
 seed: 42
 
-debug: false
-# Limit patients per split for smoke tests (null = full dataset).
+# null = full dataset.
 max_patients: 50
 
-# Keep only patients with at least one row in MIMIC hosp/admissions.
-admitted_only: false
-admissions_path: null
-
-# Split patients across a SLURM job array (sbatch --array=0-N). Each task writes
-# summarized_dataset_shards/shard_<id>_of_<n>; run once more with merge_shards=true
-# to concatenate them into summarized_dataset.
 num_shards: ${oc.decode:${oc.env:SLURM_ARRAY_TASK_COUNT,1}}
 shard_id: ${oc.decode:${oc.env:SLURM_ARRAY_TASK_ID,0}}
 merge_shards: false
@@ -30,8 +20,6 @@ dataset:
     train: train
     val: tuning
 
-
-# First window has no prior updates, so it is a full summary. Later windows use `prompt`.
 summarization:
   window_regex: "^## New Month"
   mode: "summarize"
@@ -52,15 +40,19 @@ summarization:
     {text}
 
 model:
-  model: google/medgemma-27b-it
+  # Set DOMAIN_ADAPT_MODEL_SUM to the local merged_model path (or pass model.model=...).
+  model: ${oc.env:DOMAIN_ADAPT_MODEL_SUM}
   dtype: bfloat16
-  # FP8 weights and KV cache need Hopper/Ada GPUs (H100, L40S); set both to null on A100.
+  # FP8 needs Hopper/Ada (H100, L40S); set both to null on A100.
   quantization: fp8
   kv_cache_dtype: fp8
   seed: ${seed}
   tensor_parallel_size: ${oc.decode:${oc.env:NUM_GPUS,1}}
   max_model_len: 20000
   gpu_memory_utilization: 0.9
+  # MedGemma ships a multimodal processor; summarization is text-only.
+  limit_mm_per_prompt:
+    image: 0
 
 sampling_params:
   max_tokens: 2048
