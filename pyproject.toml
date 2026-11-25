@@ -1,50 +1,39 @@
 [project]
 name = "mimic-struct-predict"
 version = "0.1.0"
-description = "Quantifying the Silent Failure Modes of Generative Electronic Health Record Models"
+description = "Delta sum NGC"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
-# Exact pins so a plain `pip install` from PyPI gives the same environment everywhere.
-# torch 2.10.0 is the last PyPI build on CUDA 12 (12.8); 2.11+ is CUDA 13 and needs
-# a >=580 driver. vllm 0.19.1 (extra) is the last release pinned to torch 2.10.0.
+requires-python = ">=3.11,<3.13"
 dependencies = [
-    "accelerate==1.14.0",
-    "bitsandbytes==0.49.2",
-    "datasets==5.0.0",
-    "es-aces==0.7.3",
-    "hydra-optuna-sweeper==1.2.0",
-    "jupyter==1.1.1",
-    "matplotlib==3.10.9",
-    "meds==0.4.1",
-    "meds-extract==0.3.0",
-    "meds-tab==0.2.0",
-    "meds-transforms[local-parallelism]==0.5.4",
-    "ninja==1.13.2",
-    "peft==0.18.1",
-    "polars==1.32.3",
-    "requests==2.34.2",
-    "tabulate==0.10.0",
-    "torch==2.10.0",
-    "seaborn==0.13.2",
-    "packaging==26.2",
-    "tensorboard==2.20.0",
-    "flash-linear-attention==0.5.2",
-    "gputil==1.4.0",
-    "torchaudio==2.10.0",
-    "torchvision==0.25.0",
-    "transformers==5.13.0",
-    "liger-kernel==0.8.0",
-]
-
-[project.optional-dependencies]
-# Prebuilt wheels need glibc >= 2.31; on older systems pip falls back to a source build.
-vllm = [
-    "vllm==0.19.1",
-]
-# Compiled from source against the installed torch (needs nvcc and GCC >= 9):
-#   pip install --no-build-isolation -e ".[flash_attn]"
-flash_attn = [
-    "flash-attn==2.8.3.post1",
+    "accelerate>=1.13.0",
+    "bitsandbytes>=0.49.2",
+    "datasets>=5.0.0",
+    "es-aces>=0.7.0",
+    "hydra-optuna-sweeper>=1.2.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.9",
+    "meds>=0.4.1",
+    "meds-extract~=0.3.0",
+    "meds-tab>=0.2.0",
+    "meds-transforms[local-parallelism]>=0.5.1",
+    "ninja",
+    "peft>=0.18.1",
+    "polars>=1.27.1",
+    "requests>=2.32.0",
+    "scikit-learn>=1.9.0",
+    "tabulate>=0.10.0",
+    "torch==2.9.0",
+    "seaborn>=0.13.2",
+    "packaging>=26.2",
+    "tensorboard>=2.20.0",
+    "flash-attn>=2.8.3.post1",
+    "flash-linear-attention>=0.4.2",
+    "gputil>=1.4.0",
+    "torchaudio==2.9.0",
+    "torchvision==0.24.0",
+    "transformers==4.57.6",
+    "liger-kernel>=0.8.5",
+    "vllm==0.11.2",
 ]
 
 [build-system]
@@ -69,6 +58,8 @@ pre_training_tokenize = "mimic_struct_predict.models.tokenize:main"
 pre_training_train = "mimic_struct_predict.models.train:main"
 create_task_datasets = "mimic_struct_predict.models.create_task_datasets:main"
 pre_training_generative_inference = "mimic_struct_predict.models.generative_inference:main"
+pre_training_evaluate_tasks = "mimic_struct_predict.models.evaluate_tasks:main"
+pre_training_evaluate_checkpoints = "mimic_struct_predict.models.evaluate_checkpoints:main"
 
 [tool.ruff]
 exclude = [
@@ -105,10 +96,26 @@ testpaths = ["tests"]  # Or whatever your test folder name is (e.g., "test")
 norecursedirs = [".venv", "scratch", "*.egg-info", ".git", ".pytest_cache"]
 
 [tool.uv]
-no-build-isolation-package = ["flash-attn", "causal-conv1d"]
-environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+system-certs = true
 preview = true
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+constraint-dependencies = [
+    "llguidance<=1.6.1",
+]
+
+[[tool.uv.index]]
+name = "tre-mirror"
+url = "https://nexus.mgmt.cld/repository/ngc-cloud-pypi/simple"
+default = true
 
 [tool.uv.extra-build-dependencies]
-flash-attn = [{ requirement = "torch", match-runtime = true }, "ninja"]
-causal-conv1d = ["ninja"]
+flash-attn = [
+    { requirement = "torch", match-runtime = true },
+    "ninja",
+]
+causal-conv1d = [
+    { requirement = "torch", match-runtime = true },
+    "ninja",
+]
