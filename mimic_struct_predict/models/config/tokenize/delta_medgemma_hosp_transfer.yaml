@@ -1,0 +1,18 @@
+# Chunked tokenization of the MedGemma deltas (admitted-only, hosp transfer windows).
+# Context is the prior raw windows (input_field: text, inherited). Target is the
+# current chunk's delta. max_length 8192 comes from natural_language.yaml.
+defaults:
+  - natural_language
+  - _self_
+
+chunked: true
+input_dir: ${oc.env:NATURAL_LANGUAGE_PRE_TRAINING_DIR}/medgemma_delta_summarized_full_hosp_transfer_only_admitted_biomed_gpu/summarized_dataset_time_only_fixed
+output_dir: ${oc.env:NATURAL_LANGUAGE_PRE_TRAINING_DIR}/tokenized_chunks_dataset/delta_medgemma_hosp_transfer_8k
+num_workers: ${oc.decode:${oc.env:NUM_WORKERS,1}}
+
+tokenizer:
+  pre_trained_tokenizer: google/medgemma-1.5-4b-it
+
+tokenization:
+  target_field: delta
+  target_prefix: "\n\n### Delta\n"

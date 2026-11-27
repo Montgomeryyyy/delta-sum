@@ -20,7 +20,7 @@ tokenizer:
   padding_side: right
 
 tokenization:
-  max_length: 16384
+  max_length: 8192
   # Chunk dict keys on summarized_dataset.
   # For chunk i: join input_field from chunks[0:i] as context (fit in max_length);
   # supervise only the current chunk's target_field.
