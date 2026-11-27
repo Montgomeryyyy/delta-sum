@@ -168,10 +168,15 @@ def log_score_summary(summary: dict) -> None:
 
 
 def model_context(chunks: list[dict]) -> list[tuple[str, str]]:
-    """Return the text and previous context saved when each delta was generated."""
+    """Return the text and previous context the judge should see.
+
+    Prefers the fields saved by delta summarization (``model_text`` /
+    ``model_previous_context``). Falls back to plain ``text`` with no prior
+    context for summarize-mode datasets.
+    """
     return [
         (
-            str(chunk["model_text"]),
+            str(chunk.get("model_text") or chunk["text"]),
             str(chunk.get("model_previous_context") or NO_PRIOR_CONTEXT),
         )
         for chunk in chunks
@@ -179,8 +184,8 @@ def model_context(chunks: list[dict]) -> list[tuple[str, str]]:
 
 
 def chunk_delta(chunk: dict) -> str:
-    """Return the generated delta text for judging."""
-    return str(chunk.get("delta") or "").strip()
+    """Return the generated text for judging (delta, else plain summary)."""
+    return str(chunk.get("delta") or chunk.get("summary") or "").strip()
 
 
 def judge_split(

@@ -1,0 +1,82 @@
+input_dir: ???   # summarized_dataset directory from a summarize.py run
+output_dir: ???  # directory for the judged dataset
+
+overwrite: true
+chunk_size: 1000
+seed: 42
+max_patients: 2000 #null 
+save_prompts: true  # write every judge prompt + parsed scores to judge_prompts.jsonl
+
+judge:
+  # ARC sends system/user chat messages; do not apply a local HF chat template.
+  use_chat_template: false
+
+  system_prompt: >
+    You are a strict evaluator of clinical EHR summaries.
+    Evaluate the generated summary only against the provided EHR excerpt.
+    Look for omissions, unsupported claims, and unnecessary detail.
+
+  prompt: |
+    Evaluate the generated summary against the current EHR excerpt.
+
+    First determine whether the EHR excerpt contains any clinical information.
+    If the excerpt is empty or contains no clinical information, the summary
+    should not introduce clinical facts.
+
+    COVERAGE:
+    0 = major clinically relevant information is missing
+    1 = some relevant information is missing
+    2 = the important clinical information is adequately captured
+
+    FAITHFULNESS:
+    0 = major unsupported or incorrect clinical information is present
+    1 = minor unsupported, inaccurate, or misleading information is present
+    2 = all clinical claims are supported by the EHR
+
+    CONCISENESS:
+    0 = substantial unnecessary detail or redundancy
+    1 = some unnecessary detail
+    2 = concise and high-signal
+
+    Current EHR:
+    {text}
+
+    Generated summary:
+    {summary}
+
+    Return only:
+    INPUT_HAS_CLINICAL_CONTENT: YES/NO
+    SUMMARY_APPROPRIATE_FOR_EMPTY_INPUT: YES/NO/NA
+    COVERAGE: 0/1/2
+    FAITHFULNESS: 0/1/2
+    CONCISENESS: 0/1/2
+    MAIN_ERROR: NONE/MISSED_INFORMATION/UNSUPPORTED_CLAIM/EMPTY_INPUT_HALLUCINATION/OVERDETAIL/TEMPORAL_ERROR/IRRELEVANT_DETAIL
+    MISSING_INFORMATION: <brief text or NONE>
+    UNSUPPORTED_INFORMATION: <brief text or NONE>
+    RATIONALE: <maximum 2 sentences>
+
+# model.backend:
+#   local (default) - local GPU via vLLM
+#   arc             - remote ARC AI chat API; no GPU required
+model:
+  backend: arc
+  model: arc:apex
+  api_base: https://ai.create.kcl.ac.uk/api/v1
+  api_key_env: ARC_AI_API_KEY
+  max_model_len: 200000
+  max_concurrency: 4
+  request_interval_s: 2.0
+  timeout_s: 600
+  max_retries: 5
+
+sampling_params:
+  # apex reasons before answering; reasoning counts toward max_tokens, and running
+  # out mid-reasoning returns no content at all.
+  max_tokens: 16384
+  temperature: 0.0
+  repetition_penalty: 1.0
+  seed: ${seed}
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}
