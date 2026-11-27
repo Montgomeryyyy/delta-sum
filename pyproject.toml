@@ -20,6 +20,7 @@ dependencies = [
     "peft>=0.18.1",
     "polars>=1.27.1",
     "requests>=2.32.0",
+    "scikit-learn>=1.9.0",
     "tabulate>=0.10.0",
     "torch>=2.11.0",
     "seaborn>=0.13.2",
@@ -57,6 +58,8 @@ pre_training_tokenize = "mimic_struct_predict.models.tokenize:main"
 pre_training_train = "mimic_struct_predict.models.train:main"
 create_task_datasets = "mimic_struct_predict.models.create_task_datasets:main"
 pre_training_generative_inference = "mimic_struct_predict.models.generative_inference:main"
+pre_training_evaluate_tasks = "mimic_struct_predict.models.evaluate_tasks:main"
+pre_training_evaluate_checkpoints = "mimic_struct_predict.models.evaluate_checkpoints:main"
 
 [tool.ruff]
 exclude = [
