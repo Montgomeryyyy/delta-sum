@@ -25,6 +25,15 @@ from mimic_struct_predict.models.utils.summarization import (
 log = logging.getLogger(__name__)
 
 
+def has_summarizable_content(text: str) -> bool:
+    """True if the chunk has any non-header content (not just ``## New Month`` / ``#### Time``)."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return True
+    return False
+
+
 def attach_generation(
     chunk: dict,
     delta: str,
@@ -260,6 +269,11 @@ def summarize_batch(
     chunks_col = batch["chunks"]
     jobs: list[PromptJob] = []
     for p_i, c_i, chunk in iter_chunks(chunks_col):
+        # Marker-only windows (e.g. just "## New Month") make the model hallucinate.
+        if not has_summarizable_content(str(chunk["text"])):
+            chunks_col[p_i][c_i]["summary"] = ""
+            chunks_col[p_i][c_i]["truncated"] = False
+            continue
         prompt, text, was_truncated = prepare_summary_prompt(
             chunk["text"],
             tokenizer=tokenizer,
@@ -280,11 +294,15 @@ def summarize_batch(
             )
         )
 
-    summaries = generate_summaries(
-        llm,
-        [job.prompt for job in jobs],
-        sampling_params,
-        system_prompt=system_prompt,
+    summaries = (
+        generate_summaries(
+            llm,
+            [job.prompt for job in jobs],
+            sampling_params,
+            system_prompt=system_prompt,
+        )
+        if jobs
+        else []
     )
     for job, summary in zip(jobs, summaries, strict=True):
         chunks_col[job.p_i][job.c_i]["summary"] = summary
