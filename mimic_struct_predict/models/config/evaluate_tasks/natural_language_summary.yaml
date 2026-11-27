@@ -1,0 +1,7 @@
+# For models trained by tokenize/summary_*: must match tokenization.target_prefix used in training
+defaults:
+  - natural_language
+  - _self_
+
+embedding:
+  prompt_suffix: "\n\n### Summary\n"

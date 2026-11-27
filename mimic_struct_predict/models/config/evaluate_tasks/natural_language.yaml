@@ -1,0 +1,51 @@
+task_dataset_dir: ???  # Required: create_task_datasets output_dir (contains tokenized/<task>)
+output_dir: ???        # Required: directory to save outputs
+models: ???            # Required: {model_name: pretrained_model_name_or_path}
+tokenizer_dir: null    # Defaults to each model's path; set when checkpoints lack tokenizer files
+base_model: null       # Optional base HF id/path for LoRA checkpoints missing base_model_name_or_path
+
+# Metrics the checkpoint sweeper logs to TensorBoard (subset of compute_metrics keys)
+tensorboard_metrics:
+  - auroc
+
+tasks:
+  - ed_72hr_reattendance
+  - ed_to_hospital_admission
+  - hospital_length_of_stay_leq_7_days
+  - hospital_post_discharge_30_day_mortality
+  - in_hospital_mortality
+
+# Probe is fit on train_split and scored on test_split; both must exist for every task
+train_split: train
+test_split: held_out
+max_train_samples: 20000
+max_test_samples: null
+seed: 42
+save_embeddings: true
+
+model_kwargs:
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+
+tokenizer:
+  max_input_length: 3072
+  keep_first_token: true
+
+embedding:
+  batch_size: 4
+  pad_to_multiple_of: 64
+  pooling: last  # last | mean
+  layer: -1      # Index into hidden_states (0 = input embeddings, -1 = final layer)
+  # Appended to every input, e.g. the training target_prefix "\n\n### Summary\n" so last-token
+  # pooling reads the state the model summarises from
+  prompt_suffix: null
+
+probe:
+  Cs: [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0]
+  cv_folds: 5
+  max_iter: 1000
+  n_jobs: -1
+
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y%m%d_%H%M%S}

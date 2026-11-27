@@ -1,21 +1,40 @@
 #!/usr/bin/env bash
 
 # Usage:
-#   ./scripts/pretrain-dataset.sh [MODE]
+#   # Interactive / already on a node:
+#   ./scripts/create-task-datasets.sh natural_language google/gemma-3-270m
+#   ./scripts/create-task-datasets.sh natural_language google/gemma-3-270m \
+#     'splits_to_process=[train,held_out]'
+#
+#   # Batch on slam_cpu (NUM_WORKERS follows --cpus-per-task via config.sh):
+#   source .env && source scripts/config.sh
+#   mkdir -p "$SCRATCH_DIR/../logs/create-task-datasets"
+#   sbatch \
+#     --job-name=create-task-datasets \
+#     --partition=slam_cpu \
+#     --time=12:00:00 \
+#     --ntasks=1 \
+#     --cpus-per-task=18 \
+#     --mem=64G \
+#     --chdir="$(pwd)" \
+#     --export=ALL \
+#     --output="$SCRATCH_DIR/../logs/create-task-datasets/%x-%j.out" \
+#     scripts/create-task-datasets.sh natural_language google/gemma-3-270m \
+#       'splits_to_process=[train,held_out]'
 #
 # Arguments:
-#   MODE: Either 'natural_language' (default) or 'structured'.
-#         Determines which configuration and output directory are used.
-#   TOKENIZER_DIR: Optional. Path to the model directory for tokenizer. Defaults to HF_MODEL_NAME.
+#   MODE: structured | natural_language
+#   TOKENIZER_DIR: HuggingFace model id or path used for tokenization
+#   Remaining args: optional Hydra overrides (e.g. splits_to_process)
 
-# Exit immediately if a command exits with a non-zero status
-set -e
+set -euo pipefail
 
-MODE=${1}
-TOKENIZER_DIR=${2}
+MODE=${1:-}
+TOKENIZER_DIR=${2:-}
+shift 2 || true
 
 if [[ "$MODE" != "structured" && "$MODE" != "natural_language" ]]; then
-    echo "Usage: $0 [structured|natural_language] [TOKENIZER_DIR]"
+    echo "Usage: $0 [structured|natural_language] [TOKENIZER_DIR] [hydra overrides...]"
     exit 1
 fi
 if [ -z "$TOKENIZER_DIR" ]; then
@@ -26,10 +45,7 @@ fi
 # --- Get config ---
 source "./scripts/config.sh"
 
-# --- Pipeline Execution ---
-
-# Print commands
-# set -x
+export PATH="${UV_PROJECT_ENVIRONMENT}/bin:${PATH}"
 
 DEBUG_ARGS=""
 if [[ "$MODE" == "structured" ]]; then
@@ -48,7 +64,7 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 
 for TASK_NAME in $ACES_TASKS; do
-    echo "Processing task: ${TASK_NAME}"
+    echo "Processing task: ${TASK_NAME} (num_workers=${NUM_WORKERS})"
     uv run create_task_datasets \
         --config-name="${CONFIG_NAME}" \
         meds_dir="${MEDS_DIR}" \
@@ -56,7 +72,8 @@ for TASK_NAME in $ACES_TASKS; do
         output_dir="${OUTPUT_DIR}" \
         tokenizer.pretrained_model_name_or_path="${TOKENIZER_DIR}" \
         num_workers="${NUM_WORKERS}" \
-        "tasks=[${TASK_NAME}]"
+        "tasks=[${TASK_NAME}]" \
+        "$@"
 
     # Aggressively delete HF_DATASETS_CACHE and full text directory to prevent disk space exhaustion
     echo "Deleting ${HF_DATASETS_CACHE} and ${OUTPUT_DIR}/full_text/${TASK_NAME}"

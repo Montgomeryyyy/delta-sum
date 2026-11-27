@@ -1,0 +1,17 @@
+# @package _global_
+defaults:
+  - /evaluate_tasks/natural_language_summary@_global_
+  - _self_
+
+train_run_dir: ???
+base_model: null
+poll_seconds: 0
+max_poll_hours: 168
+skip_existing: true
+save_embeddings: false
+models: {}
+output_dir: ${train_run_dir}/task_probe
+
+hydra:
+  run:
+    dir: ${output_dir}/hydra/${now:%Y%m%d_%H%M%S}

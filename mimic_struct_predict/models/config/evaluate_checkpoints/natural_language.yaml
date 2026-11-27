@@ -1,0 +1,25 @@
+# @package _global_
+# Sweep linear probes over every checkpoint in a pretraining run dir.
+defaults:
+  - /evaluate_tasks/natural_language@_global_
+  - _self_
+
+train_run_dir: ???  # Hydra training output dir containing checkpoint-*
+# Optional override when adapter_config lacks base_model_name_or_path
+base_model: null
+
+# Poll for new checkpoints while training is still running (0 = single pass)
+poll_seconds: 0
+max_poll_hours: 168
+skip_existing: true
+
+# Avoid dumping embeddings for every checkpoint (disk heavy)
+save_embeddings: false
+
+# Satisfy evaluate_tasks required keys unused by the sweeper
+models: {}
+output_dir: ${train_run_dir}/task_probe
+
+hydra:
+  run:
+    dir: ${output_dir}/hydra/${now:%Y%m%d_%H%M%S}
